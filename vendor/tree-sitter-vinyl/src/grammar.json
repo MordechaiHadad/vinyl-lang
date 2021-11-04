@@ -101,6 +101,19 @@
       "type": "STRING",
       "value": "var"
     },
+    "return_type": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "primitive_type"
+        },
+        {
+          "type": "STRING",
+          "value": "void"
+        }
+      ]
+    },
     "array_type": {
       "type": "SEQ",
       "members": [

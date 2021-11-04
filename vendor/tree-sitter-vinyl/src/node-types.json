@@ -198,5 +198,9 @@
   {
     "type": "true",
     "named": false
+  },
+  {
+    "type": "void",
+    "named": false
   }
 ]

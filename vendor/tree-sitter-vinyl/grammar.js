@@ -32,6 +32,8 @@ module.exports = grammar({
 	)),
 	
 	implicit_type: $ => 'var',
+
+    return_type: $ => choice($.primitive_type, 'void'),
 	
 	array_type: $ => seq(
 		field('type', $._type),
