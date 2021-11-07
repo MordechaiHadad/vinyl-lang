@@ -2,15 +2,39 @@ module.exports = grammar({
   name: 'vinyl',
 
   rules: {
-    source_file: $ => repeat($._declaration),
+    source_file: $ => repeat($._statement),
 	
+    _statement: $ => choice(
+        $._declaration,
+        $._expression),
+
+    _declaration: $ => choice(
+		$.variable_declaration,
+        $.function_declaration,
+	),
+
+	variable_declaration: $ => seq(
+		field('type', choice($._type, $.implicit_type)),
+		field('name', $.identifier),
+		optional(seq(
+			'=',
+			field('expression', $._expression))),
+        ';'
+	),
+
+    function_declaration: $ => seq(
+        field('return_type', choice($._type, $.void_type)),
+        field('identifier', $.identifier),
+        field('parameters', $.parameters),
+    ),
+
 	// Types
 	
 	_type: $ => choice(
 		$.primitive_type,
-		$.implicit_type,
         $.array_type
 	),
+
 
 	primitive_type: $ => token(choice(
 		'bool',
@@ -33,7 +57,7 @@ module.exports = grammar({
 	
 	implicit_type: $ => 'var',
 
-    return_type: $ => choice($.primitive_type, 'void'),
+    void_type: $ => 'void',
 	
 	array_type: $ => seq(
 		field('type', $._type),
@@ -74,20 +98,9 @@ module.exports = grammar({
 	),
 	
 	// Declerations
-	_declaration: $ => choice(
-		$.variable_declaration
-	),
 
 	identifier: $ => token(seq(/[a-zA-Zα-ωΑ-Ωµ_][a-zA-Zα-ωΑ-Ωµ_0-9]*/)),
 	
-	variable_declaration: $ => seq(
-		field('type', $._type),
-		field('name', $.identifier),
-		optional(seq(
-			'=',
-			field('expression', $._expression))),
-        ';'
-	),
 	
 	// Expressions
 	_expression: $ => choice(
@@ -97,6 +110,17 @@ module.exports = grammar({
 	
     array_creation_expression: $ => seq(
         'new',
-        field('type', $.array_type))
+        field('type', $.array_type)),
+
+    parameters: $ => seq(
+        '(',
+        ')',
+    ),
+
+    block: $ => seq(
+        '{',
+        repeat($._statement),
+        '}',
+    ),
   }
 });
