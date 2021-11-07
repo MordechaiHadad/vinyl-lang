@@ -102,7 +102,32 @@
   {
     "type": "parameters",
     "named": true,
-    "fields": {}
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "array_type",
+            "named": true
+          },
+          {
+            "type": "primitive_type",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "source_file",

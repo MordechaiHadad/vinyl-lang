@@ -99,7 +99,7 @@ module.exports = grammar({
 	
 	// Declerations
 
-	identifier: $ => token(seq(/[a-zA-Zα-ωΑ-Ωµ_][a-zA-Zα-ωΑ-Ωµ_0-9]*/)),
+	identifier: $ => token(seq(/[a-zA-Z_][a-zA-Z_0-9]*/)),
 	
 	
 	// Expressions
@@ -114,6 +114,12 @@ module.exports = grammar({
 
     parameters: $ => seq(
         '(',
+        optional(
+            seq(
+                field('type', $._type),
+                field('name', $.identifier),
+            ),
+        ),
         ')',
     ),
 
