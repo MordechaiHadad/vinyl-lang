@@ -26,6 +26,7 @@ module.exports = grammar({
         field('return_type', choice($._type, $.void_type)),
         field('identifier', $.identifier),
         field('parameters', $.parameters),
+        field('body', $.block),
     ),
 
 	// Types
@@ -116,16 +117,27 @@ module.exports = grammar({
         '(',
         optional(
             seq(
-                field('type', $._type),
-                field('name', $.identifier),
+                $.parameter,
+                    repeat(
+                        seq(
+                            ',',
+                            $.parameter,
+                        )
+                    )
             ),
         ),
         ')',
     ),
 
+    parameter: $ => seq(
+        field('type', $._type),
+        field('name', $.identifier),
+    ),
+
     block: $ => seq(
         '{',
-        repeat($._statement),
+        optional(
+        repeat($._statement)),
         '}',
     ),
   }
