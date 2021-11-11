@@ -167,10 +167,6 @@
           },
           {
             "type": "STRING",
-            "value": "string"
-          },
-          {
-            "type": "STRING",
             "value": "int8"
           },
           {

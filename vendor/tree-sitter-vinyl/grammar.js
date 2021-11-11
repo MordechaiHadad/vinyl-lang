@@ -40,7 +40,7 @@ module.exports = grammar({
 	primitive_type: $ => token(choice(
 		'bool',
 		'char',
-		'string',
+		// 'string',
 		'int8',
 		'int16',
 		'int32',
