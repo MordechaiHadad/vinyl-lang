@@ -1,3 +1,10 @@
+mod ast;
+
+use ast::{Function, AST};
+use inkwell::builder::Builder;
+use inkwell::context::Context;
+use inkwell::module::Module;
+
 use tree_sitter::{Parser, Language, Node};
 
 
@@ -12,47 +19,25 @@ fn main() {
     let source_code = std::fs::read_to_string("vendor/tree-sitter-vinyl/test.vnl").unwrap();
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
-
-    loop_root(&root, 0, &source_code);
-
-    println!("\n");
-    println!("source code:");
-    println!("{}", &source_code);
 }
 
 // NOTE: Loop through parsed smybols.
-fn loop_root(node: &Node, jump_count: usize, source: &String) {
-
+fn parser_into_ast(node: &Node, source: &String) -> Option<Vec<AST>> {
     let mut cursor = node.walk();
-
+    let mut ast = Vec::new();
     if node.child_count() > 0 {
-        for child in node.children(&mut cursor) {
-            
-            if child.child_count() > 0 {
-                println!("{:width$}{}", "", child.kind(), width = jump_count);
-                loop_root(&child, jump_count + 1, source);
-            }
-            else {
-                let value = get_node_value(&source, child.start_byte(), child.end_byte());
-                if value != "" {
-                    println!("{:width$}{}: {}", "", child.kind(), value, width = jump_count);
-                } else {
-                    println!("{:width$}{}", "", child.kind(), width = jump_count);
+        for child in node.children(&mut cursor.clone()) {
+            match child.kind() {
+                "function_declaration" => println!("hello"),
+                "variable_declaration" => {
+                    if node.kind() == "source_file" {
+
+                    }
                 }
+                _ => continue,
             }
         }
     }
-}
 
-// NOTE: Gets node's value
-fn get_node_value(source: &String, start: usize, end: usize) -> String {
-    let value = source[start..end].to_string();
-    match value.as_str() {
-        "=" => return String::from(""),
-        ";" => return String::from(""),
-        "\"" => return String::from(""),
-        "true" => return String::from(""),
-        "false" => return String::from(""),
-        _ => return value
-    };
+    Some(ast)
 }
