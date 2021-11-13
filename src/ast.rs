@@ -82,7 +82,7 @@ pub struct Literal {
     pub id: usize,
 }
 
-pub struct LiteralKind {
+pub enum LiteralKind {
     String,
     Char,
     Int,

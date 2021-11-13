@@ -30,8 +30,8 @@ fn parser_into_ast(node: &Node, source: &String) -> Option<Vec<AST>> {
             match child.kind() {
                 "function_declaration" => println!("hello"),
                 "variable_declaration" => {
-                    if node.kind() == "source_file" {
-
+                    for child in child.children(&mut cursor) {
+                        println!("{}", child.kind());
                     }
                 }
                 _ => continue,
