@@ -58,9 +58,10 @@ pub enum StatementKind {
 
 #[derive(Debug)]
 pub struct Variable {
-    pub is_initialized: bool,
     pub var_type: Type,
+    pub expression: Option<bool>,
     pub name: Span,
+    pub span: Span,
     pub id: usize,
 }
 
