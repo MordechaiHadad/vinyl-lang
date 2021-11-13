@@ -65,23 +65,27 @@ pub struct Variable {
     pub id: usize,
 }
 
+#[derive(Debug)]
 pub struct Expression {
     pub id: usize,
     pub span: Span,
     pub kind: Box<ExpressionKind>
 }
 
+#[derive(Debug)]
 pub enum ExpressionKind {
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Litera(Literal),
 }
 
+#[derive(Debug)]
 pub struct Literal {
     pub kind: LiteralKind,
     pub span: Span,
     pub id: usize,
 }
 
+#[derive(Debug)]
 pub enum LiteralKind {
     String,
     Char,
@@ -90,10 +94,12 @@ pub enum LiteralKind {
     Float
 }
 
+#[derive(Debug)]
 pub struct BinaryOperator {
     pub kind: BinaryOperatorKind,
 }
 
+#[derive(Debug)]
 pub enum BinaryOperatorKind {
     Add,
     Subtract,
