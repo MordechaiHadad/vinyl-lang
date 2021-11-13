@@ -53,7 +53,6 @@ module.exports = grammar({
 		'uint128',
         'float32',
         'float64',
-        'float128'
 	)),
 	
 	implicit_type: $ => 'var',

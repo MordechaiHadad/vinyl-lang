@@ -34,7 +34,6 @@ pub enum PrimitiveType {
     Char,
     Float32,
     Float64,
-    Float128,
 }
 
 #[derive(Debug)]
@@ -53,16 +52,67 @@ pub struct Statement {
 
 #[derive(Debug)]
 pub enum StatementKind {
-    Variable(Variable)
+    Variable(Variable),
+    Expression(Expression),
 }
 
 #[derive(Debug)]
 pub struct Variable {
     pub var_type: Type,
-    pub expression: Option<bool>,
+    pub expression: Option<Expression>,
     pub name: Span,
     pub span: Span,
     pub id: usize,
+}
+
+pub struct Expression {
+    pub id: usize,
+    pub span: Span,
+    pub kind: ExpressionKind
+}
+
+pub enum ExpressionKind {
+    Binary(BinaryOperator, Expression, Expression),
+    Litera(Literal),
+}
+
+pub struct Literal {
+    pub kind: LiteralKind,
+    pub span: Span,
+    pub id: usize,
+}
+
+pub struct LiteralKind {
+    String,
+    Char,
+    Int,
+    Bool,
+    Float
+}
+
+pub struct BinaryOperator {
+    pub kind: BinaryOperatorKind,
+}
+
+pub enum BinaryOperatorKind {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulus,
+    And,
+    Or,
+    BitXor,
+    BitAnd,
+    BitOr,
+    ShiftLeft,
+    ShiftRight,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
 }
 
 #[derive(Debug)]
