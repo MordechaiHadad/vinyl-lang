@@ -68,11 +68,11 @@ pub struct Variable {
 pub struct Expression {
     pub id: usize,
     pub span: Span,
-    pub kind: ExpressionKind
+    pub kind: Box<ExpressionKind>
 }
 
 pub enum ExpressionKind {
-    Binary(BinaryOperator, Expression, Expression),
+    Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Litera(Literal),
 }
 
