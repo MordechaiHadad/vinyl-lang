@@ -212,10 +212,6 @@
           {
             "type": "STRING",
             "value": "float64"
-          },
-          {
-            "type": "STRING",
-            "value": "float128"
           }
         ]
       }
