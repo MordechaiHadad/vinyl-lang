@@ -1,3 +1,20 @@
+pub enum TreeSitter {
+    VariableDeclaration = 26,
+    FunctionDeclaration = 27,
+
+    PrimitiveType = 3,
+    Identifier = 16,
+    EqualSign = 1,
+
+    IntegerLiteal = 8,
+    FloatingPointLiteral = 9,
+    StringLiteral = 31,
+    CharLiteral = 32,
+    BoolLiteral = 33,
+
+    SemiColon = 2,
+}
+
 #[derive(Debug)]
 pub enum AST {
     Function(Function),
@@ -75,13 +92,13 @@ pub struct Expression {
 #[derive(Debug)]
 pub enum ExpressionKind {
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
-    Litera(Literal),
+    Literal(Literal),
 }
 
 #[derive(Debug)]
 pub struct Literal {
     pub kind: LiteralKind,
-    pub span: Span,
+    pub value: Span,
     pub id: usize,
 }
 
