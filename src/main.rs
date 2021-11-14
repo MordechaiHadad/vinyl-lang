@@ -21,7 +21,14 @@ fn main() {
 
     let ast = ast::parser::parse_into_ast(&root, &source_code);
 
-    for child in ast.unwrap() {
-        println!("{:?}\n", child);
+    let mut cursor = root.walk();
+    for node in root.children(&mut cursor.clone()) {
+        println!("{} {}", node.kind(), node.kind_id());
+        for child in node.children(&mut cursor.clone()) {
+            println!("{} {}", child.kind(), child.kind_id());
+            for child in child.children(&mut cursor.clone()) {
+                println!("{} {}", child.kind(), child.kind_id());
+            }
+        }
     }
 }

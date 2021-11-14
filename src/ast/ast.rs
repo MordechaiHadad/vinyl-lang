@@ -1,18 +1,20 @@
 pub enum TreeSitter {
-    VariableDeclaration = 26,
+    VariableDeclaration = 44,
     FunctionDeclaration = 27,
 
     PrimitiveType = 3,
-    Identifier = 16,
+    Identifier = 8,
     EqualSign = 1,
 
-    IntegerLiteal = 8,
+    Literal = 51,
+    IntegerLiteal = 28,
     FloatingPointLiteral = 9,
     StringLiteral = 31,
-    CharLiteral = 32,
+    CharLiteral = 53,
     BoolLiteral = 33,
 
     SemiColon = 2,
+    PlusSign = 22,
 }
 
 #[derive(Debug)]
