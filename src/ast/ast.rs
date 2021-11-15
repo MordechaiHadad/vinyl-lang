@@ -4,17 +4,24 @@ pub enum TreeSitter {
 
     PrimitiveType = 3,
     Identifier = 8,
-    EqualSign = 1,
-
+    
     Literal = 51,
-    IntegerLiteal = 28,
+    IntegerLiteral = 28,
     FloatingPointLiteral = 9,
     StringLiteral = 31,
     CharLiteral = 53,
     BoolLiteral = 33,
-
+    
+    BinaryExpression = 49,
+    
+    EqualSign = 1,
     SemiColon = 2,
+    ShiftLeft = 20,
+    ShiftRight = 21,
     PlusSign = 22,
+    MinusSign = 23,
+    Multiply = 24,
+    Divide = 25,
 }
 
 #[derive(Debug)]

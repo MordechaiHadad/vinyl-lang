@@ -25,7 +25,6 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
                 subchild = children.next().unwrap();
 
                 if subchild.kind_id() != 1 {
-                    println!("doesnt have equal sign continuing");
                     ast.push(AST::Variable(Variable{
                     var_type, name, span: Span(child.start_byte(), child.end_byte()),
                     id: child.id(), expression: None,
@@ -33,8 +32,8 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
                     continue;
                 }
 
-                let nodes: Vec<Node> = children.collect();
-                let expression = parse_expression(&nodes);
+                let node = children.next().unwrap();
+                let expression = parse_expression(&node);
 
                 ast.push(AST::Variable(Variable{
                     var_type, name, span: Span(child.start_byte(), child.end_byte()),
@@ -75,45 +74,102 @@ fn parse_type(span: Span, source: &str) -> Option<Type> {
     new_type
 }
 
-fn parse_expression(nodes: &Vec<Node>) -> Expression {
-    const IntegerLiteral: u16 = TreeSitter::IntegerLiteal as u16;
-    const BoolLiteral: u16 = TreeSitter::BoolLiteral as u16;
-    const CharLiteral: u16 = TreeSitter::CharLiteral as u16;
-    const FloatingPointLiteral: u16 = TreeSitter::FloatingPointLiteral as u16;
-    const StringLiteral: u16 = TreeSitter::StringLiteral as u16;
+fn parse_expression(root: &Node) -> Expression {
+    const Literal: u16 = TreeSitter::Literal as u16;
+    const BinaryExpression: u16 = TreeSitter::BinaryExpression as u16;
+    
+    let mut expression_kind = match root.kind_id() {
+        Literal => {
+            const IntegerLiteral: u16 = TreeSitter::IntegerLiteral as u16;
+            const BoolLiteral: u16 = TreeSitter::BoolLiteral as u16;
+            const CharLiteral: u16 = TreeSitter::CharLiteral as u16;
+            const FloatingPointLiteral: u16 = TreeSitter::FloatingPointLiteral as u16;
+            const StringLiteral: u16 = TreeSitter::StringLiteral as u16;
 
-    let mut expression_kind = match nodes[0].kind_id() {
-        IntegerLiteral => ExpressionKind::Literal(Literal {
-                id: nodes[0].id(),
-                kind: LiteralKind::Int,
-                value: Span(nodes[0].start_byte(), nodes[0].end_byte())
-            }),
-        BoolLiteral => ExpressionKind::Literal(Literal {
-            id: nodes[0].id(),
-            kind: LiteralKind::Bool,
-            value: Span(nodes[0].start_byte(), nodes[0].end_byte())
-        }),
-        CharLiteral => ExpressionKind::Literal(Literal {
-            id: nodes[0].id(),
-            kind: LiteralKind::Char,
-            value: Span(nodes[0].start_byte(), nodes[0].end_byte())
-        }),
-        FloatingPointLiteral => ExpressionKind::Literal(Literal {
-            id: nodes[0].id(),
-            kind: LiteralKind::Float,
-            value: Span(nodes[0].start_byte(), nodes[0].end_byte())
-        }),
-        StringLiteral => ExpressionKind::Literal(Literal { 
-            id: nodes[0].id(),
-            kind: LiteralKind::String,
-            value: Span(nodes[0].start_byte(), nodes[0].end_byte())
-        }),
+            let node = root.child(0).unwrap();
+            match node.kind_id() {
+                IntegerLiteral => ExpressionKind::Literal(Literal {
+                        id: node.id(),
+                        kind: LiteralKind::Int,
+                        value: Span(node.start_byte(), node.end_byte())
+                    }),
+                BoolLiteral => ExpressionKind::Literal(Literal {
+                    id: node.id(),
+                    kind: LiteralKind::Bool,
+                    value: Span(node.start_byte(), node.end_byte())
+                }),
+                CharLiteral => ExpressionKind::Literal(Literal {
+                    id: node.id(),
+                    kind: LiteralKind::Char,
+                    value: Span(node.start_byte(), node.end_byte())
+                }),
+                FloatingPointLiteral => ExpressionKind::Literal(Literal {
+                    id: node.id(),
+                    kind: LiteralKind::Float,
+                    value: Span(node.start_byte(), node.end_byte())
+                }),
+                StringLiteral => ExpressionKind::Literal(Literal { 
+                    id: node.id(),
+                    kind: LiteralKind::String,
+                    value: Span(node.start_byte(), node.end_byte())
+                }),
+                _ => ExpressionKind::Literal(Literal {
+                    id: node.id(),
+                    kind: LiteralKind::Int,
+                    value: Span(node.start_byte(), node.end_byte())
+                })
+            }
+        },
+        BinaryExpression => {
+            const AddSign: u16 = TreeSitter::PlusSign as u16;
+            const MinusSign: u16 = TreeSitter::MinusSign as u16;
+            const Multiply: u16 = TreeSitter::Multiply as u16;
+            const Divide: u16 = TreeSitter::Divide as u16;
+            const ShiftLeft: u16 = TreeSitter::ShiftLeft as u16;
+            const ShiftRight: u16 = TreeSitter::ShiftRight as u16;
+
+            let mut cursor = root.walk();
+            let mut children = root.children(&mut cursor);
+            let left_expression = parse_expression(&children.next().unwrap());
+
+            let operator = match children.next().unwrap().kind_id() {
+                AddSign =>  BinaryOperator {
+                    kind: BinaryOperatorKind::Add,
+                },
+                MinusSign => BinaryOperator {
+                    kind: BinaryOperatorKind::Subtract
+                },
+                Multiply => BinaryOperator {
+                    kind: BinaryOperatorKind::Multiply
+                },
+                Divide => BinaryOperator {
+                    kind: BinaryOperatorKind::Divide
+                },
+                ShiftLeft => BinaryOperator {
+                    kind: BinaryOperatorKind::ShiftLeft
+                },
+                ShiftRight => BinaryOperator {
+                    kind: BinaryOperatorKind::ShiftRight
+                },
+                _ => BinaryOperator {
+                    kind: BinaryOperatorKind::Add,
+                }
+            };
+
+
+            let right_expression = parse_expression(&children.next().unwrap());
+
+
+            ExpressionKind::Binary(operator, Box::new(left_expression), Box::new(right_expression))
+
+        }
         _ => ExpressionKind::Literal(Literal {
-            id: nodes[0].id(),
+            id: root.id(),
             kind: LiteralKind::Int,
-            value: Span(nodes[0].start_byte(), nodes[0].end_byte())
+            value: Span(root.start_byte(), root.end_byte())
         })
+
     };
 
-    Expression { id: nodes[0].id(), span: Span(nodes[0].start_byte(), nodes.last().unwrap().end_byte()), kind: Box::new(expression_kind)}
+    Expression { id: root.id(), span: Span(root.start_byte(), root.end_byte()), kind: Box::new(expression_kind)}
 }
