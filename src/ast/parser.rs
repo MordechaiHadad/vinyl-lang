@@ -10,47 +10,176 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
         const FunctionDeclaration: u16 = TreeSitter::FunctionDeclaration as u16;
 
         match child.kind_id() {
-            VariableDecleration => { // If node is a variable declaration do:
-
-                let mut children = child.children(&mut cursor);
-
-
-                let mut subchild = children.next().unwrap();
-                let var_type = parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
-
-
-                subchild = children.next().unwrap();
-                let name = Span(subchild.start_byte(), subchild.end_byte());
-
-                subchild = children.next().unwrap();
-
-                if subchild.kind_id() != 1 {
-                    ast.push(AST::Variable(Variable{
-                    var_type, name, span: Span(child.start_byte(), child.end_byte()),
-                    id: child.id(), expression: None,
-                }));
-                    continue;
-                }
-
-                let node = children.next().unwrap();
-                let expression = parse_expression(&node);
-
-                ast.push(AST::Variable(Variable{
-                    var_type, name, span: Span(child.start_byte(), child.end_byte()),
-                    id: child.id(), expression: Some(expression),
-                }));
+            VariableDecleration => { 
+                let variable = parse_variable(&child, &source);
+                
+                ast.push(AST::Variable(variable));
             },
+            FunctionDeclaration => {
+                let function = parse_function(&child, &source);
+
+                ast.push(AST::Function(function));
+            }
             _ => continue,
         }
 
     }
 
+
     Some(ast)
 }
 
+fn parse_function(root: &Node, source: &str) -> Function {
+    const LeftParen: u16 = TreeSitter::LeftParen as u16;
+    const RightParen: u16 = TreeSitter::RightParen as u16;
+    const LeftCurly: u16 = TreeSitter::LeftCurly as u16;
+    const RightCurly: u16 = TreeSitter::RightCurly as u16;
+
+    let mut cursor = root.walk();
+
+    let mut children = root.children(&mut cursor);
+
+    let mut subchild = children.next().unwrap();
+
+    let return_type = parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
+
+    subchild = children.next().unwrap();
+    let name = Span(subchild.start_byte(), subchild.end_byte());
+
+    
+    subchild = children.next().unwrap();
+    let parameters = parse_parameters(&subchild, &source);
+
+
+    subchild = children.next().unwrap();
+    let body = parse_function_body(&subchild, source);
+
+    Function {
+        return_type, name, parameters, body, span: Span(root.start_byte(), root.end_byte()),
+        id: root.id()
+    }
+
+}
+
+fn parse_variable(root: &Node, source: &str) -> Variable {
+    const EqualSign: u16 = TreeSitter::EqualSign as u16;
+    
+    let mut cursor = root.walk();
+
+    let mut children = root.children(&mut cursor);
+
+    let mut subchild = children.next().unwrap();
+
+    let var_type = parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
+
+    subchild = children.next().unwrap();
+    let name = Span(subchild.start_byte(), subchild.end_byte());
+
+    subchild = children.next().unwrap();
+    if subchild.kind_id() != EqualSign {
+        return Variable {
+        var_type, name, span: Span(root.start_byte(), root.end_byte()),
+        id: root.id(), expression: None};
+    }
+    
+    let node = children.next().unwrap();
+    let expression = parse_expression(&node);   
+
+    Variable {
+    var_type, name, span: Span(root.start_byte(), root.end_byte()),
+    id: root.id(), expression: Some(expression)}
+}
+
+fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
+    const VariableDecleration: u16 = TreeSitter::VariableDeclaration as u16;
+    const Literal: u16 = TreeSitter::Literal as u16;
+    const BinaryExpression: u16 = TreeSitter::BinaryExpression as u16;
+    if root.child_count() <= 2 {
+        return None;
+    }
+
+    let mut statements = Vec::new();
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        match child.kind_id() {
+            VariableDecleration => {
+                let var = parse_variable(&child, &source);
+                statements.push(Statement {
+                    kind: StatementKind::Variable(var),
+                    span: Span(child.start_byte(), child.end_byte()),
+                    id: child.id()
+                });
+            },
+            Literal | BinaryExpression => {
+                let expression = parse_expression(&child);
+                statements.push(Statement {
+                    kind: StatementKind::Expression(expression),
+                    span: Span(child.start_byte(), child.end_byte()),
+                    id: child.id()
+                })
+            }
+            _ => continue,
+        }
+    }
+
+    Some(Block {
+        statements,
+        span: Span(root.start_byte(), root.end_byte()),
+        id: root.id(),
+    })
+}
+
+fn parse_parameters(root: &Node, source: &str) -> Option<Parameters> {
+    const Parameter: u16 = TreeSitter::Parameter as u16;
+    if root.child_count() <= 2 {
+        return None;
+    }
+
+    let mut parameters = Vec::new();
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        match child.kind_id() {
+            Parameter => {
+                let parameter = parse_parameter(&child, &source);
+                parameters.push(parameter);
+            }
+            _ => continue,
+        }
+    }
+
+    Some(Parameters {
+        parameters,
+        span: Span(root.start_byte(), root.end_byte()),
+        id: root.id()
+    })
+
+    
+}
+
+fn parse_parameter(root: &Node, source: &str) -> Parameter {
+
+    let mut cursor = root.walk();
+
+    let mut children = root.children(&mut cursor);
+
+    let mut subchild = children.next().unwrap();
+    let param_type = parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
+
+
+    subchild = children.next().unwrap();
+    let name = Span(subchild.start_byte(), subchild.end_byte());
+
+    Parameter {
+        param_type,
+        name,
+        span: Span(root.start_byte(), root.end_byte()),
+        id: root.id(),
+    }
+}
+
 fn parse_type(span: Span, source: &str) -> Option<Type> {
-    use crate::ast::ast::PrimitiveType::*;
-    use crate::ast::ast::Type::*;
+    use PrimitiveType::*;
+    use Type::*;
     let type_text = &source[span.0..span.1];
 
     let new_type = match type_text {
@@ -127,6 +256,17 @@ fn parse_expression(root: &Node) -> Expression {
             const Divide: u16 = TreeSitter::Divide as u16;
             const ShiftLeft: u16 = TreeSitter::ShiftLeft as u16;
             const ShiftRight: u16 = TreeSitter::ShiftRight as u16;
+            const And: u16 = TreeSitter::And as u16;
+            const Or: u16 = TreeSitter::Or as u16;
+            const BitAnd: u16 = TreeSitter::BitAnd as u16;
+            const BitOr: u16 = TreeSitter::BitOr as u16;
+            const BitXor: u16 = TreeSitter::BitXor as u16;
+            const Equal: u16 = TreeSitter::Equal as u16;
+            const NotEqual: u16 = TreeSitter::NotEqual as u16;
+            const LessThan: u16 = TreeSitter::LessThan as u16;
+            const LessThanOrEqual: u16 = TreeSitter::LessThanOrEqual as u16;
+            const GreaterThan: u16 = TreeSitter::GreaterThan as u16;
+            const GreaterThanOrEqual: u16 = TreeSitter::GreaterThanOrEqual as u16;
 
             let mut cursor = root.walk();
             let mut children = root.children(&mut cursor);
@@ -150,6 +290,39 @@ fn parse_expression(root: &Node) -> Expression {
                 },
                 ShiftRight => BinaryOperator {
                     kind: BinaryOperatorKind::ShiftRight
+                },
+                And => BinaryOperator {
+                    kind: BinaryOperatorKind::And
+                },
+                Or => BinaryOperator {
+                    kind: BinaryOperatorKind::Or
+                },
+                BitAnd => BinaryOperator {
+                    kind: BinaryOperatorKind::BitAnd
+                },
+                BitOr => BinaryOperator {
+                    kind: BinaryOperatorKind::BitOr
+                },
+                BitXor => BinaryOperator {
+                    kind: BinaryOperatorKind::BitXor
+                },
+                Equal => BinaryOperator {
+                    kind: BinaryOperatorKind::Equal
+                },
+                NotEqual => BinaryOperator {
+                    kind: BinaryOperatorKind::NotEqual
+                },
+                LessThan => BinaryOperator {
+                    kind: BinaryOperatorKind::LessThan
+                },
+                LessThanOrEqual => BinaryOperator {
+                    kind: BinaryOperatorKind::LessThanOrEqual
+                },
+                GreaterThan => BinaryOperator {
+                    kind: BinaryOperatorKind::GreaterThan
+                },
+                GreaterThanOrEqual => BinaryOperator {
+                    kind: BinaryOperatorKind::GreaterThanOrEqual
                 },
                 _ => BinaryOperator {
                     kind: BinaryOperatorKind::Add,

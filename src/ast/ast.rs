@@ -1,13 +1,13 @@
 pub enum TreeSitter {
     VariableDeclaration = 44,
-    FunctionDeclaration = 27,
+    FunctionDeclaration = 45,
 
     PrimitiveType = 3,
     Identifier = 8,
     
     Literal = 51,
     IntegerLiteral = 28,
-    FloatingPointLiteral = 9,
+    FloatingPointLiteral = 29,
     StringLiteral = 31,
     CharLiteral = 53,
     BoolLiteral = 33,
@@ -16,12 +16,33 @@ pub enum TreeSitter {
     
     EqualSign = 1,
     SemiColon = 2,
+
+
+    And = 9,
+    Or = 10,
+    BitAnd = 11,
+    BitOr = 12,
+    BitXor = 13,
+    Equal = 14,
+    NotEqual = 15,
+    LessThan = 16,
+    LessThanOrEqual = 17,
+    GreaterThan = 18,
+    GreaterThanOrEqual = 19,
     ShiftLeft = 20,
     ShiftRight = 21,
     PlusSign = 22,
     MinusSign = 23,
     Multiply = 24,
     Divide = 25,
+
+    Parameters = 55,
+    Parameter = 56,
+    Block = 57,
+    LeftParen = 36,
+    RightParen = 38,
+    LeftCurly = 39,
+    RightCurly = 40,
 }
 
 #[derive(Debug)]
@@ -32,9 +53,10 @@ pub enum AST {
 
 #[derive(Debug)]
 pub struct Function {
-    pub fn_type: Type,
+    pub return_type: Type,
     pub name: Span,
-    pub block: Option<Block>,
+    pub parameters: Option<Parameters>,
+    pub body: Option<Block>,
     pub span: Span,
     pub id: usize,
 }
@@ -65,6 +87,21 @@ pub enum PrimitiveType {
 #[derive(Debug)]
 pub struct Block {
     pub statements: Vec<Statement>,
+    pub span: Span,
+    pub id: usize,
+}
+
+#[derive(Debug)]
+pub struct Parameters {
+    pub parameters: Vec<Parameter>,
+    pub span: Span,
+    pub id: usize,
+}
+
+#[derive(Debug)]
+pub struct Parameter {
+    pub param_type: Type,
+    pub name: Span,
     pub span: Span,
     pub id: usize,
 }
