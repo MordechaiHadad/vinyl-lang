@@ -26,7 +26,7 @@ module.exports = grammar({
 	),
 
 	variable_declaration: $ => seq(
-		field('type', choice($._type, $.implicit_type)),
+		field('type', $._type),
 		field('name', $.identifier),
 		optional(seq(
 			'=',
@@ -35,7 +35,7 @@ module.exports = grammar({
 	),
 
     function_declaration: $ => seq(
-        field('return_type', choice($._type, $.void_type)),
+        field('return_type', $._type),
         field('identifier', $.identifier),
         field('parameters', $.parameters),
         field('body', $.block),
@@ -65,11 +65,9 @@ module.exports = grammar({
 		'uint128',
         'float32',
         'float64',
+        'var',
+        'void'
 	)),
-	
-	implicit_type: $ => 'var',
-
-    void_type: $ => 'void',
 	
 	array_type: $ => seq(
 		field('type', $._type),

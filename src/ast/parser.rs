@@ -201,6 +201,8 @@ fn parse_type(span: Span, source: &str) -> Option<Type> {
         "uint128" => Some(Primitive(U128)),
         "float32" => Some(Primitive(Float32)),
         "float64" => Some(Primitive(Float64)),
+        "void" => Some(Primitive(Void)),
+        "var" => Some(Primitive(Var)),
         _ => None,
     };
 
@@ -271,6 +273,7 @@ fn parse_expression(root: &Node) -> Expression {
             const LessThanOrEqual: u16 = TreeSitter::LessThanOrEqual as u16;
             const GreaterThan: u16 = TreeSitter::GreaterThan as u16;
             const GreaterThanOrEqual: u16 = TreeSitter::GreaterThanOrEqual as u16;
+            const Modulus: u16 = TreeSitter::Modulus as u16;
 
             let mut cursor = root.walk();
             let mut children = root.children(&mut cursor);
@@ -327,6 +330,9 @@ fn parse_expression(root: &Node) -> Expression {
                 },
                 GreaterThanOrEqual => BinaryOperator {
                     kind: BinaryOperatorKind::GreaterThanOrEqual,
+                },
+                Modulus => BinaryOperator {
+                    kind: BinaryOperatorKind::Modulus,
                 },
                 _ => BinaryOperator {
                     kind: BinaryOperatorKind::Add,

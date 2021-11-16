@@ -41,17 +41,8 @@
           "type": "FIELD",
           "name": "type",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "_type"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "implicit_type"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "_type"
           }
         },
         {
@@ -100,17 +91,8 @@
           "type": "FIELD",
           "name": "return_type",
           "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "_type"
-              },
-              {
-                "type": "SYMBOL",
-                "name": "void_type"
-              }
-            ]
+            "type": "SYMBOL",
+            "name": "_type"
           }
         },
         {
@@ -212,17 +194,17 @@
           {
             "type": "STRING",
             "value": "float64"
+          },
+          {
+            "type": "STRING",
+            "value": "var"
+          },
+          {
+            "type": "STRING",
+            "value": "void"
           }
         ]
       }
-    },
-    "implicit_type": {
-      "type": "STRING",
-      "value": "var"
-    },
-    "void_type": {
-      "type": "STRING",
-      "value": "void"
     },
     "array_type": {
       "type": "SEQ",

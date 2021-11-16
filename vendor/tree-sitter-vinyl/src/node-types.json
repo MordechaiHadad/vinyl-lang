@@ -252,10 +252,6 @@
           {
             "type": "primitive_type",
             "named": true
-          },
-          {
-            "type": "void_type",
-            "named": true
           }
         ]
       }
@@ -414,10 +410,6 @@
             "named": true
           },
           {
-            "type": "implicit_type",
-            "named": true
-          },
-          {
             "type": "primitive_type",
             "named": true
           }
@@ -538,10 +530,6 @@
     "named": true
   },
   {
-    "type": "implicit_type",
-    "named": true
-  },
-  {
     "type": "integer_literal",
     "named": true
   },
@@ -556,10 +544,6 @@
   {
     "type": "true",
     "named": false
-  },
-  {
-    "type": "void_type",
-    "named": true
   },
   {
     "type": "{",

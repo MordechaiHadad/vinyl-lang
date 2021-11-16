@@ -1,9 +1,5 @@
 mod ast;
 
-use inkwell::builder::Builder;
-use inkwell::context::Context;
-use inkwell::module::Module;
-
 use tree_sitter::{Language, Node, Parser};
 
 extern "C" {
@@ -18,11 +14,11 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    let ast = ast::parser::parse_into_ast(&root, &source_code);
+    let ast = ast::parser::parse_into_ast(&root, &source_code).unwrap();
 
     // print(&root);
 
-    for node in ast.unwrap() {
+    for node in ast {
         println!("{:?}\n", node);
     }
 }
