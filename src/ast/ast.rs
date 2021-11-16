@@ -37,7 +37,7 @@ pub enum TreeSitter {
     Modulus = 24,
 
     Parameters = 53,
-    Parameter = 56,
+    Parameter = 54,
     Block = 55,
     LeftParen = 34,
     RightParen = 36,
