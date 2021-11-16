@@ -1,31 +1,62 @@
 pub enum TreeSitter {
-    VariableDeclaration = 26,
-    FunctionDeclaration = 27,
+    VariableDeclaration = 42,
+    FunctionDeclaration = 43,
 
     PrimitiveType = 3,
-    Identifier = 16,
+    Identifier = 6,
+
+    Literal = 49,
+    IntegerLiteral = 26,
+    FloatingPointLiteral = 27,
+    StringLiteral = 50,
+    CharLiteral = 51,
+    BoolLiteral = 52,
+
+    BinaryExpression = 47,
+
     EqualSign = 1,
-
-    IntegerLiteal = 8,
-    FloatingPointLiteral = 9,
-    StringLiteral = 31,
-    CharLiteral = 32,
-    BoolLiteral = 33,
-
     SemiColon = 2,
+
+    And = 7,
+    Or = 8,
+    BitAnd = 9,
+    BitOr = 10,
+    BitXor = 11,
+    Equal = 12,
+    NotEqual = 13,
+    LessThan = 14,
+    LessThanOrEqual = 15,
+    GreaterThan = 16,
+    GreaterThanOrEqual = 17,
+    ShiftLeft = 18,
+    ShiftRight = 19,
+    PlusSign = 20,
+    MinusSign = 21,
+    Multiply = 22,
+    Divide = 23,
+    Modulus = 24,
+
+    Parameters = 53,
+    Parameter = 54,
+    Block = 55,
+    LeftParen = 34,
+    RightParen = 36,
+    LeftCurly = 37,
+    RightCurly = 38,
 }
 
 #[derive(Debug)]
 pub enum AST {
     Function(Function),
-    Variable(Variable)
+    Variable(Variable),
 }
 
 #[derive(Debug)]
 pub struct Function {
-    pub fn_type: Type,
+    pub return_type: Type,
     pub name: Span,
-    pub block: Option<Block>,
+    pub parameters: Option<Parameters>,
+    pub body: Option<Block>,
     pub span: Span,
     pub id: usize,
 }
@@ -51,11 +82,28 @@ pub enum PrimitiveType {
     Char,
     Float32,
     Float64,
+    Void,
+    Var,
 }
 
 #[derive(Debug)]
 pub struct Block {
     pub statements: Vec<Statement>,
+    pub span: Span,
+    pub id: usize,
+}
+
+#[derive(Debug)]
+pub struct Parameters {
+    pub parameters: Vec<Parameter>,
+    pub span: Span,
+    pub id: usize,
+}
+
+#[derive(Debug)]
+pub struct Parameter {
+    pub param_type: Type,
+    pub name: Span,
     pub span: Span,
     pub id: usize,
 }
@@ -86,7 +134,7 @@ pub struct Variable {
 pub struct Expression {
     pub id: usize,
     pub span: Span,
-    pub kind: Box<ExpressionKind>
+    pub kind: Box<ExpressionKind>,
 }
 
 #[derive(Debug)]
@@ -108,7 +156,7 @@ pub enum LiteralKind {
     Char,
     Int,
     Bool,
-    Float
+    Float,
 }
 
 #[derive(Debug)]

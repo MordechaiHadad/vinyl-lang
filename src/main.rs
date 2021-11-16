@@ -1,17 +1,12 @@
 mod ast;
 
-use inkwell::builder::Builder;
-use inkwell::context::Context;
-use inkwell::module::Module;
+use tree_sitter::{Language, Node, Parser};
 
-use tree_sitter::{Parser, Language, Node};
-
-
-extern "C" {fn tree_sitter_vinyl() -> Language;}
+extern "C" {
+    fn tree_sitter_vinyl() -> Language;}
 
 fn main() {
-
-    let language = unsafe {tree_sitter_vinyl()};
+    let language = unsafe { tree_sitter_vinyl() };
     let mut parser = Parser::new();
     parser.set_language(language).unwrap();
 
@@ -19,9 +14,20 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    let ast = ast::parser::parse_into_ast(&root, &source_code);
+    let ast = ast::parser::parse_into_ast(&root, &source_code).unwrap();
 
-    for child in ast.unwrap() {
-        println!("{:?}\n", child);
+    // print(&root);
+
+    for node in ast {
+        println!("{:?}\n", node);
+    }
+}
+
+fn print(root: &Node) {
+    println!("{} {}", root.kind(), root.kind_id());
+
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        print(&child);
     }
 }

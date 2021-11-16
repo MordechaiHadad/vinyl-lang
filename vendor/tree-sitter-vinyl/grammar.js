@@ -1,3 +1,15 @@
+const PREC = {
+    Multiply: 8,
+    Addition: 7,
+    Shift: 6,
+    BitAnd: 5,
+    BitXor: 4,
+    BitOr: 3,
+    Equal: 2,
+    And: 1,
+    Or: 0,
+}
+
 module.exports = grammar({
   name: 'vinyl',
 
@@ -14,7 +26,7 @@ module.exports = grammar({
 	),
 
 	variable_declaration: $ => seq(
-		field('type', choice($._type, $.implicit_type)),
+		field('type', $._type),
 		field('name', $.identifier),
 		optional(seq(
 			'=',
@@ -23,7 +35,7 @@ module.exports = grammar({
 	),
 
     function_declaration: $ => seq(
-        field('return_type', choice($._type, $.void_type)),
+        field('return_type', $._type),
         field('identifier', $.identifier),
         field('parameters', $.parameters),
         field('body', $.block),
@@ -53,11 +65,9 @@ module.exports = grammar({
 		'uint128',
         'float32',
         'float64',
+        'var',
+        'void'
 	)),
-	
-	implicit_type: $ => 'var',
-
-    void_type: $ => 'void',
 	
 	array_type: $ => seq(
 		field('type', $._type),
@@ -66,9 +76,45 @@ module.exports = grammar({
         ']'
     ),
 
-	// Literals
 	
-	_literal: $ => choice(
+	
+	// Declerations
+
+	identifier: $ => token(seq(/[a-zA-Z_][a-zA-Z_0-9]*/)),
+	
+	
+	// Expressions
+	_expression: $ => choice(
+        $.array_creation_expression,
+		$.literal,
+        $.binary_expression,
+	),
+
+    binary_expression: $ => {
+        const table = [
+            [PREC.And, '&&'],
+            [PREC.Or, '||'],
+            [PREC.BitOr, '&'],
+            [PREC.BitOr, '|'],
+            [PREC.BitXor, '^'],
+            [PREC.Equal, choice('==', '!=', '<', '<=', '>', '>=')],
+            [PREC.Shift, choice('<<', '>>')],
+            [PREC.Addition, choice('+', '-')],
+            [PREC.Multiply, choice('*', '/', '%')],
+        ];
+
+      return choice(...table.map(([precedence, operator]) => prec.left(precedence, seq(
+        field('left', $._expression),
+        field('operator', operator),
+        field('right', $._expression),
+      ))));
+    },
+
+    array_creation_expression: $ => seq(
+        'new',
+        field('type', $.array_type)),
+
+	literal: $ => choice(
 		$.integer_literal,
 		$.string_literal,
 		$.char_literal,
@@ -97,20 +143,6 @@ module.exports = grammar({
 		'false'
 	),
 	
-	// Declerations
-
-	identifier: $ => token(seq(/[a-zA-Z_][a-zA-Z_0-9]*/)),
-	
-	
-	// Expressions
-	_expression: $ => choice(
-        $.array_creation_expression,
-		$._literal
-	),
-	
-    array_creation_expression: $ => seq(
-        'new',
-        field('type', $.array_type)),
 
     parameters: $ => seq(
         '(',
@@ -136,7 +168,7 @@ module.exports = grammar({
     block: $ => seq(
         '{',
         optional(
-        repeat($._statement)),
+        repeat(field('statement', $._statement))),
         '}',
     ),
   }
