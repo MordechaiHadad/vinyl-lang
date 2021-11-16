@@ -4,14 +4,13 @@ use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
 
-use tree_sitter::{Parser, Language, Node};
+use tree_sitter::{Language, Node, Parser};
 
-
-extern "C" {fn tree_sitter_vinyl() -> Language;}
+extern "C" {
+    fn tree_sitter_vinyl() -> Language;}
 
 fn main() {
-
-    let language = unsafe {tree_sitter_vinyl()};
+    let language = unsafe { tree_sitter_vinyl() };
     let mut parser = Parser::new();
     parser.set_language(language).unwrap();
 

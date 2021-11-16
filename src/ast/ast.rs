@@ -4,19 +4,18 @@ pub enum TreeSitter {
 
     PrimitiveType = 3,
     Identifier = 8,
-    
+
     Literal = 51,
     IntegerLiteral = 28,
     FloatingPointLiteral = 29,
     StringLiteral = 31,
     CharLiteral = 53,
     BoolLiteral = 33,
-    
+
     BinaryExpression = 49,
-    
+
     EqualSign = 1,
     SemiColon = 2,
-
 
     And = 9,
     Or = 10,
@@ -48,7 +47,7 @@ pub enum TreeSitter {
 #[derive(Debug)]
 pub enum AST {
     Function(Function),
-    Variable(Variable)
+    Variable(Variable),
 }
 
 #[derive(Debug)]
@@ -132,7 +131,7 @@ pub struct Variable {
 pub struct Expression {
     pub id: usize,
     pub span: Span,
-    pub kind: Box<ExpressionKind>
+    pub kind: Box<ExpressionKind>,
 }
 
 #[derive(Debug)]
@@ -154,7 +153,7 @@ pub enum LiteralKind {
     Char,
     Int,
     Bool,
-    Float
+    Float,
 }
 
 #[derive(Debug)]
