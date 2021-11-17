@@ -1,4 +1,6 @@
 mod ast;
+mod codegen;
+
 
 use tree_sitter::{Language, Node, Parser};
 
@@ -16,11 +18,9 @@ fn main() {
 
     let ast = ast::parser::parse_into_ast(&root, &source_code).unwrap();
 
-    // print(&root);
+    codegen::llvm::codegen::codegen(&ast, &source_code);
 
-    for node in ast {
-        println!("{:?}\n", node);
-    }
+    // print(&root);
 }
 
 fn print(root: &Node) {
