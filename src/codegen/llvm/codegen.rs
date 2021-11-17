@@ -5,6 +5,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::AddressSpace;
 use inkwell::values::FunctionValue;
+use inkwell::types::{AnyTypeEnum, StringRadix};
 
 pub fn codegen(ast: &Vec<AST>, source: &str) {
     let context = Context::create();
@@ -29,7 +30,6 @@ pub fn codegen(ast: &Vec<AST>, source: &str) {
 }
 
 fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<FunctionValue>, module: &'b Module<'a>, source: &'a str, context: &'a Context) {
-    use inkwell::types::AnyTypeEnum;
 
     let var_type = &variable.var_type;
     let var_type = type_codegen(&var_type, &context);
@@ -46,7 +46,7 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
                         crate::ast::ast::ExpressionKind::Literal(expression) => &expression.value,
                     };
                     let new_var = module.add_global(value, None, &source[variable.name.0..variable.name.1]);                
-                    let int_value = value.const_int_from_string(&source[var_value.0..var_value.1], inkwell::types::StringRadix::Decimal).unwrap();
+                    let int_value = value.const_int_from_string(&source[var_value.0..var_value.1], StringRadix::Decimal).unwrap();
                     new_var.set_initializer(&int_value);
                 }
                 AnyTypeEnum::FloatType(value) => {
@@ -59,7 +59,6 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
                     new_var.set_initializer(&float_value);
                 }
                 AnyTypeEnum::FloatType(value) => {
-                    // let variable = module.add_global(value, Some(AddressSpace::Const), &source[variable.name.0..variable.name.1]);                
                 }
                 _ => println!("nothing")
             }
@@ -67,9 +66,7 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
     }
 }
 
-fn type_codegen<'a>(sent_type: &'a Type, context: &'a Context) -> inkwell::types::AnyTypeEnum<'a> {
-    use inkwell::types::AnyTypeEnum;
-
+fn type_codegen<'a>(sent_type: &'a Type, context: &'a Context) -> AnyTypeEnum<'a> {
 
     let sent_type = match sent_type {
         Type::Primitive(the_type) => {
@@ -81,6 +78,7 @@ fn type_codegen<'a>(sent_type: &'a Type, context: &'a Context) -> inkwell::types
                 PrimitiveType::I128 => AnyTypeEnum::IntType(context.i128_type()),
                 PrimitiveType::Float32 => AnyTypeEnum::FloatType(context.f32_type()),
                 PrimitiveType::Float64 => AnyTypeEnum::FloatType(context.f64_type()),
+                PrimitiveType::Char => AnyTypeEnum::IntType(context.i32_type()),
                 _ => AnyTypeEnum::VoidType(context.void_type()),
             }
         },
