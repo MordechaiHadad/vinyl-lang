@@ -14,19 +14,6 @@ pub fn codegen(ast: &Vec<AST>, source: &str) {
     for node in ast {
         match node {
             AST::Variable(variable) => {
-                // let var_type = &variable.var_type;
-                // let var_type = match var_type {
-                //     Type::Primitive(hii) => {
-                //         match hii {
-                //             PrimitiveType::I32 => context.i32_type(),
-                //             _ => continue,
-                //         }
-                //     },
-                //     _ => continue,
-                // };
-                // let variable = module.add_global(var_type, Some(AddressSpace::Const), &source[variable.name.0..variable.name.1]);
-                // let i32_value = var_type.const_int(10,  false);
-                // variable.set_initializer(&i32_value);
                 variable_codegen(&variable, &None, &module, &source, &context);
 
             },
