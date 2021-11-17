@@ -58,8 +58,6 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
                     let float_value = value.const_float_from_string(&source[var_value.0..var_value.1]);
                     new_var.set_initializer(&float_value);
                 }
-                AnyTypeEnum::FloatType(value) => {
-                }
                 _ => println!("nothing")
             }
         }
