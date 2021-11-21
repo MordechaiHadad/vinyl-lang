@@ -1,5 +1,6 @@
 mod ast;
 mod codegen;
+mod utilities;
 
 
 use tree_sitter::{Language, Node, Parser};
