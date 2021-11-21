@@ -21,6 +21,8 @@ fn main() {
 
     codegen::llvm::codegen::codegen(&ast, &source_code);
 
+    utilities::utilities::print_ast(&ast);
+
     // print(&root);
 }
 

@@ -1,4 +1,7 @@
 use tree_sitter::Node;
+use crate::ast::ast::{AST};
+use std::io::prelude::*;
+use std::fs::File;
 
 pub fn treesitter_to_enum(root: &Node) {
     let kind = match root.kind() {
@@ -48,4 +51,43 @@ pub fn treesitter_to_enum(root: &Node) {
     for child in root.children(&mut cursor) {
         treesitter_to_enum(&child);
     }
+}
+
+pub fn print_ast(ast: &Vec<AST>) {
+    let mut file = File::create("output.html").unwrap();
+
+    writeln!(file, "
+    <html>
+        <head>
+            <style>
+                body {{
+                    background-color: #2e3440;
+                    color: #E5E9F0;
+                }}
+            </style>
+        </head>
+    <body>
+    ");
+
+    for child in ast {
+        match child {
+            AST::Function(function) => {
+                writeln!(file, "<div style=\"background-color:#4c566a;\">");
+                writeln!(file, "<h3>Function Decleration: {} [{}, {}]<h3>", function.id, function.span.0, function.span.1);
+                writeln!(file, "<h3>Return Type: {:?}</h3>", function.return_type);
+                writeln!(file, "</div>");
+            },
+            AST::Variable(variable) => {
+                writeln!(file, "<div style=\"background-color:#4c566a;\">");
+                writeln!(file, "<h3>Variable Decleration: {} [{}, {}]<h3>", variable.id, variable.span.0, variable.span.1);
+                writeln!(file, "<h3>Type: {:?}</h3>", variable.var_type);
+                writeln!(file, "</div>");
+            }
+        }
+    }
+
+    writeln!(file, "
+    </body>
+    </html>
+    ");
 }
