@@ -23,7 +23,7 @@ fn main() {
 
     utilities::utilities::print_ast(&ast, &source_code);
 
-    // codegen::llvm::codegen::codegen(&ast, &source_code);
+    codegen::llvm::codegen::codegen(&ast, &source_code);
 
 
     // print(&root);

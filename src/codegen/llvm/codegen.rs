@@ -1,4 +1,4 @@
-use crate::ast::ast::{AST, PrimitiveType, Type, Variable};
+use crate::ast::ast::{AST, Expression, ExpressionKind, PrimitiveType, Span, Type, Variable};
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -41,26 +41,48 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
         None => {
             match var_type {
                 AnyTypeEnum::IntType(value) => {
-                    let var_value = match &*variable.expression.as_ref().unwrap().kind {
-                        crate::ast::ast::ExpressionKind::Binary(..) => &crate::ast::ast::Span(10, 10),
-                        crate::ast::ast::ExpressionKind::Literal(expression) => &expression.value,
-                    };
                     let new_var = module.add_global(value, None, &source[variable.name.0..variable.name.1]);                
-                    let int_value = value.const_int_from_string(&source[var_value.0..var_value.1], StringRadix::Decimal).unwrap();
-                    new_var.set_initializer(&int_value);
+
+                    if let Some(expression) = &variable.expression {
+                        match &*expression.kind {
+                            ExpressionKind::Binary(..) => {},
+                            ExpressionKind::Literal(expression) => {
+
+                                let int_value = value.const_int_from_string(&source[expression.value.0..expression.value.1], StringRadix::Decimal).unwrap();
+                                new_var.set_initializer(&int_value);
+                            }
+                        }
+                    }
                 }
                 AnyTypeEnum::FloatType(value) => {
-                    let var_value = match &*variable.expression.as_ref().unwrap().kind {
-                        crate::ast::ast::ExpressionKind::Binary(..) => &crate::ast::ast::Span(10, 10),
-                        crate::ast::ast::ExpressionKind::Literal(expression) => &expression.value,
-                    };
+
                     let new_var = module.add_global(value, None, &source[variable.name.0..variable.name.1]);                
-                    let float_value = value.const_float_from_string(&source[var_value.0..var_value.1]);
-                    new_var.set_initializer(&float_value);
+                    if let Some(expression) = &variable.expression {
+                        match &*expression.kind {
+                            ExpressionKind::Binary(..) => {},
+                            ExpressionKind::Literal(expression) => {
+
+                                let float_value = value.const_float_from_string(&source[expression.value.0..expression.value.1]);
+                                new_var.set_initializer(&float_value);
+                            }
+                        }
+                    }
                 }
                 _ => println!("nothing")
             }
         }
+    }
+}
+
+fn parse_expression(expression: &Option<Expression>) -> Option<Span> {
+    match expression {
+        Some(expression) => {
+            match &*expression.kind {
+                ExpressionKind::Literal(value) => Some(value.value),
+                _ => None,
+            }
+        },
+        None => None
     }
 }
 

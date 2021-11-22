@@ -186,5 +186,5 @@ pub enum BinaryOperatorKind {
     GreaterThanOrEqual,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Span(pub usize, pub usize);
