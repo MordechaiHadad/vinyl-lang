@@ -6,6 +6,7 @@ mod utilities;
 
 
 use tree_sitter::{Language, Node, Parser};
+use inkwell::context::Context;
 
 extern "C" {
     fn tree_sitter_vinyl() -> Language;}
@@ -21,10 +22,9 @@ fn main() {
 
     let ast = ast::parser::parse_into_ast(&root, &source_code).unwrap();
 
-    utilities::utilities::print_ast(&ast, &source_code);
+    // utilities::utilities::print_ast(&ast, &source_code);
 
-    codegen::llvm::codegen::codegen(&ast, &source_code);
-
+    codegen::llvm::export::test_execute(&ast, &source_code);
 
     // print(&root);
 }

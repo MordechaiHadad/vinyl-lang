@@ -7,8 +7,7 @@ use inkwell::AddressSpace;
 use inkwell::values::FunctionValue;
 use inkwell::types::{AnyTypeEnum, StringRadix};
 
-pub fn codegen(ast: &Vec<AST>, source: &str) {
-    let context = Context::create();
+pub fn codegen<'a>(ast: &'a Vec<AST>, source: &'a str, context: &'a Context) -> Module<'a> {
     let module = context.create_module("test");
     let builder = context.create_builder();
 
@@ -26,7 +25,7 @@ pub fn codegen(ast: &Vec<AST>, source: &str) {
 
     module.print_to_file("test");
 
-
+    module
 }
 
 fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<FunctionValue>, module: &'b Module<'a>, source: &'a str, context: &'a Context) {
