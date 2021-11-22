@@ -1,6 +1,12 @@
+#![allow(unused)]
+
 mod ast;
+mod codegen;
+mod utilities;
+
 
 use tree_sitter::{Language, Node, Parser};
+use inkwell::context::Context;
 
 extern "C" {
     fn tree_sitter_vinyl() -> Language;}
@@ -16,11 +22,11 @@ fn main() {
 
     let ast = ast::parser::parse_into_ast(&root, &source_code).unwrap();
 
-    // print(&root);
+    // utilities::utilities::print_ast(&ast, &source_code);
 
-    for node in ast {
-        println!("{:?}\n", node);
-    }
+    codegen::llvm::export::test_execute(&ast, &source_code);
+
+    // print(&root);
 }
 
 fn print(root: &Node) {

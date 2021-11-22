@@ -6,16 +6,16 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
     let mut ast = Vec::new();
 
     for child in node.children(&mut cursor.clone()) {
-        const VariableDecleration: u16 = TreeSitter::VariableDeclaration as u16;
-        const FunctionDeclaration: u16 = TreeSitter::FunctionDeclaration as u16;
+        const VARIABLE_DECLERATION: u16 = TreeSitter::VariableDeclaration as u16;
+        const FUNCTION_DECLARATION: u16 = TreeSitter::FunctionDeclaration as u16;
 
         match child.kind_id() {
-            VariableDecleration => {
+            VARIABLE_DECLERATION => {
                 let variable = parse_variable(&child, &source);
 
                 ast.push(AST::Variable(variable));
             }
-            FunctionDeclaration => {
+            FUNCTION_DECLARATION => {
                 let function = parse_function(&child, &source);
 
                 ast.push(AST::Function(function));
@@ -28,10 +28,10 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
 }
 
 fn parse_function(root: &Node, source: &str) -> Function {
-    const LeftParen: u16 = TreeSitter::LeftParen as u16;
-    const RightParen: u16 = TreeSitter::RightParen as u16;
-    const LeftCurly: u16 = TreeSitter::LeftCurly as u16;
-    const RightCurly: u16 = TreeSitter::RightCurly as u16;
+    const LEFT_PAREN: u16 = TreeSitter::LeftParen as u16;
+    const RIGHT_PAREN: u16 = TreeSitter::RightParen as u16;
+    const LEFT_CURLY: u16 = TreeSitter::LeftCurly as u16;
+    const RIGHT_CURLY: u16 = TreeSitter::RightCurly as u16;
 
     let mut cursor = root.walk();
 
@@ -62,7 +62,7 @@ fn parse_function(root: &Node, source: &str) -> Function {
 }
 
 fn parse_variable(root: &Node, source: &str) -> Variable {
-    const EqualSign: u16 = TreeSitter::EqualSign as u16;
+    const EQUAL_SIGN: u16 = TreeSitter::EqualSign as u16;
 
     let mut cursor = root.walk();
 
@@ -76,7 +76,7 @@ fn parse_variable(root: &Node, source: &str) -> Variable {
     let name = Span(subchild.start_byte(), subchild.end_byte());
 
     subchild = children.next().unwrap();
-    if subchild.kind_id() != EqualSign {
+    if subchild.kind_id() != EQUAL_SIGN {
         return Variable {
             var_type,
             name,
@@ -99,9 +99,9 @@ fn parse_variable(root: &Node, source: &str) -> Variable {
 }
 
 fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
-    const VariableDecleration: u16 = TreeSitter::VariableDeclaration as u16;
-    const Literal: u16 = TreeSitter::Literal as u16;
-    const BinaryExpression: u16 = TreeSitter::BinaryExpression as u16;
+    const VARIABLE_DECLERATION: u16 = TreeSitter::VariableDeclaration as u16;
+    const LITERAL: u16 = TreeSitter::Literal as u16;
+    const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
     if root.child_count() <= 2 {
         return None;
     }
@@ -110,7 +110,7 @@ fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
         match child.kind_id() {
-            VariableDecleration => {
+            VARIABLE_DECLERATION => {
                 let var = parse_variable(&child, &source);
                 statements.push(Statement {
                     kind: StatementKind::Variable(var),
@@ -118,7 +118,7 @@ fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
                     id: child.id(),
                 });
             }
-            Literal | BinaryExpression => {
+            LITERAL| BINARY_EXPRESSION => {
                 let expression = parse_expression(&child);
                 statements.push(Statement {
                     kind: StatementKind::Expression(expression),
@@ -138,7 +138,7 @@ fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
 }
 
 fn parse_parameters(root: &Node, source: &str) -> Option<Parameters> {
-    const Parameter: u16 = TreeSitter::Parameter as u16;
+    const PARAMETER: u16 = TreeSitter::Parameter as u16;
     if root.child_count() <= 2 {
         return None;
     }
@@ -147,7 +147,7 @@ fn parse_parameters(root: &Node, source: &str) -> Option<Parameters> {
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
         match child.kind_id() {
-            Parameter => {
+            PARAMETER => {
                 let parameter = parse_parameter(&child, &source);
                 parameters.push(parameter);
             }
@@ -210,40 +210,40 @@ fn parse_type(span: Span, source: &str) -> Option<Type> {
 }
 
 fn parse_expression(root: &Node) -> Expression {
-    const Literal: u16 = TreeSitter::Literal as u16;
-    const BinaryExpression: u16 = TreeSitter::BinaryExpression as u16;
+    const LITERAL: u16 = TreeSitter::Literal as u16;
+    const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
 
     let mut expression_kind = match root.kind_id() {
-        Literal => {
-            const IntegerLiteral: u16 = TreeSitter::IntegerLiteral as u16;
-            const BoolLiteral: u16 = TreeSitter::BoolLiteral as u16;
-            const CharLiteral: u16 = TreeSitter::CharLiteral as u16;
-            const FloatingPointLiteral: u16 = TreeSitter::FloatingPointLiteral as u16;
-            const StringLiteral: u16 = TreeSitter::StringLiteral as u16;
+        LITERAL => {
+            const INTEGER_LITERAL: u16 = TreeSitter::IntegerLiteral as u16;
+            const BOOL_LITERAL: u16 = TreeSitter::BoolLiteral as u16;
+            const CHAR_LITERAL: u16 = TreeSitter::CharLiteral as u16;
+            const FLOATING_POINT_LITERAL: u16 = TreeSitter::FloatingPointLiteral as u16;
+            const STRING_LITERAL: u16 = TreeSitter::StringLiteral as u16;
 
             let node = root.child(0).unwrap();
             match node.kind_id() {
-                IntegerLiteral => ExpressionKind::Literal(Literal {
+                INTEGER_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::Int,
                     value: Span(node.start_byte(), node.end_byte()),
                 }),
-                BoolLiteral => ExpressionKind::Literal(Literal {
+                BOOL_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::Bool,
                     value: Span(node.start_byte(), node.end_byte()),
                 }),
-                CharLiteral => ExpressionKind::Literal(Literal {
+                CHAR_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::Char,
                     value: Span(node.start_byte(), node.end_byte()),
                 }),
-                FloatingPointLiteral => ExpressionKind::Literal(Literal {
+                FLOATING_POINT_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::Float,
                     value: Span(node.start_byte(), node.end_byte()),
                 }),
-                StringLiteral => ExpressionKind::Literal(Literal {
+                STRING_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::String,
                     value: Span(node.start_byte(), node.end_byte()),
@@ -255,83 +255,83 @@ fn parse_expression(root: &Node) -> Expression {
                 }),
             }
         }
-        BinaryExpression => {
-            const AddSign: u16 = TreeSitter::PlusSign as u16;
-            const MinusSign: u16 = TreeSitter::MinusSign as u16;
-            const Multiply: u16 = TreeSitter::Multiply as u16;
-            const Divide: u16 = TreeSitter::Divide as u16;
-            const ShiftLeft: u16 = TreeSitter::ShiftLeft as u16;
-            const ShiftRight: u16 = TreeSitter::ShiftRight as u16;
-            const And: u16 = TreeSitter::And as u16;
-            const Or: u16 = TreeSitter::Or as u16;
-            const BitAnd: u16 = TreeSitter::BitAnd as u16;
-            const BitOr: u16 = TreeSitter::BitOr as u16;
-            const BitXor: u16 = TreeSitter::BitXor as u16;
-            const Equal: u16 = TreeSitter::Equal as u16;
-            const NotEqual: u16 = TreeSitter::NotEqual as u16;
-            const LessThan: u16 = TreeSitter::LessThan as u16;
-            const LessThanOrEqual: u16 = TreeSitter::LessThanOrEqual as u16;
-            const GreaterThan: u16 = TreeSitter::GreaterThan as u16;
-            const GreaterThanOrEqual: u16 = TreeSitter::GreaterThanOrEqual as u16;
-            const Modulus: u16 = TreeSitter::Modulus as u16;
+        BINARY_EXPRESSION => {
+            const ADD_SIGN: u16 = TreeSitter::PlusSign as u16;
+            const MINUS_SIGN: u16 = TreeSitter::MinusSign as u16;
+            const MULTIPLY: u16 = TreeSitter::Multiply as u16;
+            const DIVIDE: u16 = TreeSitter::Divide as u16;
+            const SHIFT_LEFT: u16 = TreeSitter::ShiftLeft as u16;
+            const SHIFT_RIGHT: u16 = TreeSitter::ShiftRight as u16;
+            const AND: u16 = TreeSitter::And as u16;
+            const OR: u16 = TreeSitter::Or as u16;
+            const BIT_AND: u16 = TreeSitter::BitAnd as u16;
+            const BIT_OR: u16 = TreeSitter::BitOr as u16;
+            const BIT_XOR: u16 = TreeSitter::BitXor as u16;
+            const EQUAL: u16 = TreeSitter::Equal as u16;
+            const NOT_EQUAL: u16 = TreeSitter::NotEqual as u16;
+            const LESS_THAN: u16 = TreeSitter::LessThan as u16;
+            const LESS_THAN_OR_EQUAL: u16 = TreeSitter::LessThanOrEqual as u16;
+            const GREATER_THAN: u16 = TreeSitter::GreaterThan as u16;
+            const GREATER_THAN_OR_EQUAL: u16 = TreeSitter::GreaterThanOrEqual as u16;
+            const MODULUS: u16 = TreeSitter::Modulus as u16;
 
             let mut cursor = root.walk();
             let mut children = root.children(&mut cursor);
             let left_expression = parse_expression(&children.next().unwrap());
 
             let operator = match children.next().unwrap().kind_id() {
-                AddSign => BinaryOperator {
+                ADD_SIGN => BinaryOperator {
                     kind: BinaryOperatorKind::Add,
                 },
-                MinusSign => BinaryOperator {
+                MINUS_SIGN => BinaryOperator {
                     kind: BinaryOperatorKind::Subtract,
                 },
-                Multiply => BinaryOperator {
+                MULTIPLY => BinaryOperator {
                     kind: BinaryOperatorKind::Multiply,
                 },
-                Divide => BinaryOperator {
+                DIVIDE => BinaryOperator {
                     kind: BinaryOperatorKind::Divide,
                 },
-                ShiftLeft => BinaryOperator {
+                SHIFT_LEFT => BinaryOperator {
                     kind: BinaryOperatorKind::ShiftLeft,
                 },
-                ShiftRight => BinaryOperator {
+                SHIFT_RIGHT => BinaryOperator {
                     kind: BinaryOperatorKind::ShiftRight,
                 },
-                And => BinaryOperator {
+                AND => BinaryOperator {
                     kind: BinaryOperatorKind::And,
                 },
-                Or => BinaryOperator {
+                OR => BinaryOperator {
                     kind: BinaryOperatorKind::Or,
                 },
-                BitAnd => BinaryOperator {
+                BIT_AND => BinaryOperator {
                     kind: BinaryOperatorKind::BitAnd,
                 },
-                BitOr => BinaryOperator {
+                BIT_OR => BinaryOperator {
                     kind: BinaryOperatorKind::BitOr,
                 },
-                BitXor => BinaryOperator {
+                BIT_XOR => BinaryOperator {
                     kind: BinaryOperatorKind::BitXor,
                 },
-                Equal => BinaryOperator {
+                EQUAL => BinaryOperator {
                     kind: BinaryOperatorKind::Equal,
                 },
-                NotEqual => BinaryOperator {
+                NOT_EQUAL => BinaryOperator {
                     kind: BinaryOperatorKind::NotEqual,
                 },
-                LessThan => BinaryOperator {
+                LESS_THAN => BinaryOperator {
                     kind: BinaryOperatorKind::LessThan,
                 },
-                LessThanOrEqual => BinaryOperator {
+                LESS_THAN_OR_EQUAL => BinaryOperator {
                     kind: BinaryOperatorKind::LessThanOrEqual,
                 },
-                GreaterThan => BinaryOperator {
+                GREATER_THAN => BinaryOperator {
                     kind: BinaryOperatorKind::GreaterThan,
                 },
-                GreaterThanOrEqual => BinaryOperator {
+                GREATER_THAN_OR_EQUAL => BinaryOperator {
                     kind: BinaryOperatorKind::GreaterThanOrEqual,
                 },
-                Modulus => BinaryOperator {
+                MODULUS => BinaryOperator {
                     kind: BinaryOperatorKind::Modulus,
                 },
                 _ => BinaryOperator {

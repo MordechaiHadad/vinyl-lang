@@ -1,0 +1,3 @@
+[submodule "vendor/tree-sitter-vinyl"]
+	path = vendor/tree-sitter-vinyl
+	url = git@github.com:MordechaiHadad/tree-sitter-vinyl.git
