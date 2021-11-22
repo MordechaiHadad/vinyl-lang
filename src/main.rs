@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 mod ast;
 mod codegen;
 mod utilities;
@@ -19,9 +21,10 @@ fn main() {
 
     let ast = ast::parser::parse_into_ast(&root, &source_code).unwrap();
 
-    codegen::llvm::codegen::codegen(&ast, &source_code);
+    utilities::utilities::print_ast(&ast, &source_code);
 
-    utilities::utilities::print_ast(&ast);
+    // codegen::llvm::codegen::codegen(&ast, &source_code);
+
 
     // print(&root);
 }

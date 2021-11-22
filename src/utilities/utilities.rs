@@ -1,5 +1,5 @@
 use tree_sitter::Node;
-use crate::ast::ast::{AST};
+use crate::ast::ast::{AST, ExpressionKind};
 use std::io::prelude::*;
 use std::fs::File;
 
@@ -53,7 +53,7 @@ pub fn treesitter_to_enum(root: &Node) {
     }
 }
 
-pub fn print_ast(ast: &Vec<AST>) {
+pub fn print_ast(ast: &Vec<AST>, source: &str) {
     let mut file = File::create("output.html").unwrap();
 
     writeln!(file, "
@@ -79,8 +79,23 @@ pub fn print_ast(ast: &Vec<AST>) {
             },
             AST::Variable(variable) => {
                 writeln!(file, "<div style=\"background-color:#4c566a;\">");
-                writeln!(file, "<h3>Variable Decleration: {} [{}, {}]<h3>", variable.id, variable.span.0, variable.span.1);
+                writeln!(file, "<h3>Variable Decleration: {} [{}, {}]</h3>", variable.id, variable.span.0, variable.span.1);
                 writeln!(file, "<h3>Type: {:?}</h3>", variable.var_type);
+                match &variable.expression {
+                    Some(expression) => {
+                        writeln!(file, "<h3>Is Initialized?: True</h3>");
+
+                        match &*expression.kind {
+                            ExpressionKind::Binary(..) => {},
+                            ExpressionKind::Literal(literal) => {
+                                writeln!(file, "<h3>{:?} Literal Expression: {} [{}, {}]:", literal.kind, expression.id, expression.span.0, expression.span.1);
+                                writeln!(file, "<h4>Value: {}", &source[literal.value.0..literal.value.1]);
+                            }
+
+                        }
+                    },
+                    None => {writeln!(file, "<h3>Is Initialized?: False</h3>");}
+                }
                 writeln!(file, "</div>");
             }
         }
