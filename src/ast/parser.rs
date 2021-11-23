@@ -236,7 +236,7 @@ fn parse_expression(root: &Node) -> Expression {
                 CHAR_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::Char,
-                    value: Span(node.start_byte(), node.end_byte()),
+                    value: Span(node.start_byte() + 1, node.end_byte() -1),
                 }),
                 FLOATING_POINT_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
@@ -246,7 +246,7 @@ fn parse_expression(root: &Node) -> Expression {
                 STRING_LITERAL => ExpressionKind::Literal(Literal {
                     id: node.id(),
                     kind: LiteralKind::String,
-                    value: Span(node.start_byte(), node.end_byte()),
+                    value: Span(node.start_byte() - 1, node.end_byte() + 1),
                 }),
                 _ => ExpressionKind::Literal(Literal {
                     id: node.id(),
