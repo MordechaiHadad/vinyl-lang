@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::ptr::NonNull;
 
-use crate::ast::ast::{AST, Expression, ExpressionKind, LiteralKind, PrimitiveType, Span, Type, Variable};
+use crate::parser::ast::{AST, Expression, ExpressionKind, LiteralKind, PrimitiveType, Span, Type, Variable};
 use super::enums::AnyVariableEnum;
 
 use inkwell::builder::Builder;
@@ -46,13 +46,13 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
             match var_type {
                 AnyTypeEnum::IntType(value) => {
                     let new_var = module.add_global(value, None, &source[variable.name.0..variable.name.1]);                
-                    expression_codegen(&variable.expression, &AnyVariableEnum::GlobalValue(new_var), &builder, &source, &context, &var_type);
+                    expression_codegen(&variable, &AnyVariableEnum::GlobalValue(new_var), &builder, &source, &context);
 
                 }
                 AnyTypeEnum::FloatType(value) => {
 
                     let new_var = module.add_global(value, None, &source[variable.name.0..variable.name.1]);                
-                    expression_codegen(&variable.expression, &AnyVariableEnum::GlobalValue(new_var), &builder, &source, &context, &var_type);
+                    expression_codegen(&variable, &AnyVariableEnum::GlobalValue(new_var), &builder, &source, &context);
 
                 },
                 _ => println!("nothing")
@@ -61,13 +61,12 @@ fn variable_codegen<'a,'b>(variable: &'a Variable, function: &'a Option<Function
     }
 }
 
-fn expression_codegen(expression: &Option<Expression>, llvm_variable: &AnyVariableEnum, builder: &Builder, source: &str, context: &Context, variable_type: &AnyTypeEnum) {
-
+fn expression_codegen(variable: &Variable, llvm_variable: &AnyVariableEnum, builder: &Builder, source: &str, context: &Context) {
 
     match llvm_variable {
         AnyVariableEnum::GlobalValue(llvm_variable) => {
 
-            let value = match parse_expression(&expression, &source, &context, &variable_type) {
+            let value = match parse_expression(&variable, &source, &context) {
                 Some(value) => {
                     match value {
                         AnyValueEnum::IntValue(value) => llvm_variable.set_initializer(&value),
@@ -85,51 +84,8 @@ fn expression_codegen(expression: &Option<Expression>, llvm_variable: &AnyVariab
 
 }
 
-fn parse_expression<'a>(expression: &'a Option<Expression>, source: &'a str, context: &'a Context, variable_type: &'a AnyTypeEnum) -> Option<AnyValueEnum<'a>> {
-    
-    match expression {
-        Some(expression) => {
-            match &*expression.kind {
-                ExpressionKind::Literal(value) => {
-                    match value.kind {
-                        LiteralKind::Bool => {
-                            let int = context.bool_type();
-                            let literal = &source[value.value.0..value.value.1];
-                            match literal {
-                                "true" => Some(AnyValueEnum::IntValue(int.const_int(1, false))),
-                                _ | "false" => Some(AnyValueEnum::IntValue(int.const_int(0, false)))
-                            }
-                        },
-                        LiteralKind::Char => {
-                            let int = context.i32_type();
-                            let literal = &source[value.value.0..value.value.1];
-                            let literal = literal.chars().next().unwrap();
-                            Some(AnyValueEnum::IntValue(int.const_int(u64::from(literal), false)))
-                        },
-                        LiteralKind::Int => {
-                            let int = match variable_type {
-                                AnyTypeEnum::IntType(variable_type) => variable_type,
-                                _ => panic!("Not an int type"),
-                            };
-                            let literal = &source[value.value.0..value.value.1];
-                            Some(AnyValueEnum::IntValue(int.const_int_from_string(literal, StringRadix::Decimal).unwrap()))  
-                        }
-                        LiteralKind::Float => {
-                            let float = match variable_type {
-                                AnyTypeEnum::FloatType(variable_type) => variable_type,
-                                _ => panic!("Not a float type"),
-                            };
-                            let literal = &source[value.value.0..value.value.1];
-                            Some(AnyValueEnum::FloatValue(float.const_float_from_string(literal)))
-                        },
-                        LiteralKind::String => None,
-                    }
-                },
-                ExpressionKind::Binary(..) => None
-            }
-        },
-        None => None
-    }
+fn parse_expression<'a>(variable: &'a Variable, source: &'a str, context: &'a Context) -> Option<AnyValueEnum<'a>> {
+    None
 }
 
 fn type_codegen<'a>(sent_type: &'a Type, context: &'a Context) -> AnyTypeEnum<'a> {

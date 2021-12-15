@@ -1,4 +1,4 @@
-use crate::ast::ast::*;
+use crate::parser::ast::*;
 use tree_sitter::{Language, Node, Parser};
 
 pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {

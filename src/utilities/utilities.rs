@@ -1,5 +1,5 @@
 use tree_sitter::Node;
-use crate::ast::ast::{AST, ExpressionKind};
+use crate::parser::ast::{AST, ExpressionKind};
 use std::io::prelude::*;
 use std::fs::File;
 
