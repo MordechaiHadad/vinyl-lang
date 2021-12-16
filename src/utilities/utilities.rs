@@ -16,7 +16,7 @@ pub fn treesitter_to_enum(root: &Node) {
         "primitive_type" => "PrimitiveType",
         "identifier" => "Identifier",
         "literal" => "Literal",
-        "integer_literal" => "integer_literal",
+        "integer_literal" => "IntegerLiteral",
         "floating_point_literal" => "FloatingPointLiteral",
         "string_literal" => "StringLiteral",
         "char_literal" => "CharLiteral",
@@ -43,6 +43,7 @@ pub fn treesitter_to_enum(root: &Node) {
         "parameters" => "Parameters",
         "parameter" => "Parameter",
         "block" => "Block",
+        "reference" => "Reference",
         _ => "",
     };
     let mut cursor = root.walk();
@@ -91,6 +92,7 @@ pub fn print_ast(ast: &Vec<AST>, source: &str) {
                                 writeln!(file, "<h3>{:?} Literal Expression: {} [{}, {}]:", literal.kind, expression.id, expression.span.0, expression.span.1);
                                 writeln!(file, "<h4>Value: {}", &source[literal.value.0..literal.value.1]);
                             }
+                            _ => {}
 
                         }
                     },

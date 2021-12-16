@@ -1,7 +1,8 @@
+use lasso::Rodeo;
 use crate::parser::ast::*;
 use tree_sitter::{Language, Node, Parser};
 
-pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
+pub fn parse_into_ast(node: &Node, source: &str, rodeo: &mut Rodeo) -> Option<Vec<AST>> {
     let mut cursor = node.walk();
     let mut ast = Vec::new();
 
@@ -11,12 +12,12 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
 
         match child.kind_id() {
             VARIABLE_DECLERATION => {
-                let variable = parse_variable(&child, &source);
+                let variable = parse_variable(&child, &source, rodeo);
 
                 ast.push(AST::Variable(variable));
             }
             FUNCTION_DECLARATION => {
-                let function = parse_function(&child, &source);
+                let function = parse_function(&child, &source, rodeo);
 
                 ast.push(AST::Function(function));
             }
@@ -27,7 +28,7 @@ pub fn parse_into_ast(node: &Node, source: &str) -> Option<Vec<AST>> {
     Some(ast)
 }
 
-fn parse_function(root: &Node, source: &str) -> Function {
+fn parse_function(root: &Node, source: &str, rodeo: &mut Rodeo) -> Function {
     const LEFT_PAREN: u16 = TreeSitter::LeftParen as u16;
     const RIGHT_PAREN: u16 = TreeSitter::RightParen as u16;
     const LEFT_CURLY: u16 = TreeSitter::LeftCurly as u16;
@@ -43,13 +44,13 @@ fn parse_function(root: &Node, source: &str) -> Function {
         parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
 
     subchild = children.next().unwrap();
-    let name = Span(subchild.start_byte(), subchild.end_byte());
+    let name = rodeo.get_or_intern(&source[subchild.start_byte()..subchild.end_byte()]);
 
     subchild = children.next().unwrap();
-    let parameters = parse_parameters(&subchild, &source);
+    let parameters = parse_parameters(&subchild, &source, rodeo);
 
     subchild = children.next().unwrap();
-    let body = parse_function_body(&subchild, source);
+    let body = parse_function_body(&subchild, source, rodeo);
 
     Function {
         return_type,
@@ -61,7 +62,7 @@ fn parse_function(root: &Node, source: &str) -> Function {
     }
 }
 
-fn parse_variable(root: &Node, source: &str) -> Variable {
+fn parse_variable(root: &Node, source: &str, rodeo: &mut Rodeo) -> Variable {
     const EQUAL_SIGN: u16 = TreeSitter::EqualSign as u16;
 
     let mut cursor = root.walk();
@@ -73,7 +74,7 @@ fn parse_variable(root: &Node, source: &str) -> Variable {
     let var_type = parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
 
     subchild = children.next().unwrap();
-    let name = Span(subchild.start_byte(), subchild.end_byte());
+    let name = rodeo.get_or_intern(&source[subchild.start_byte()..subchild.end_byte()]);
 
     subchild = children.next().unwrap();
     if subchild.kind_id() != EQUAL_SIGN {
@@ -98,7 +99,7 @@ fn parse_variable(root: &Node, source: &str) -> Variable {
     }
 }
 
-fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
+fn parse_function_body(root: &Node, source: &str, rodeo: &mut Rodeo) -> Option<Block> {
     const VARIABLE_DECLERATION: u16 = TreeSitter::VariableDeclaration as u16;
     const LITERAL: u16 = TreeSitter::Literal as u16;
     const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
@@ -111,7 +112,7 @@ fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
     for child in root.children(&mut cursor) {
         match child.kind_id() {
             VARIABLE_DECLERATION => {
-                let var = parse_variable(&child, &source);
+                let var = parse_variable(&child, &source, rodeo);
                 statements.push(Statement {
                     kind: StatementKind::Variable(var),
                     span: Span(child.start_byte(), child.end_byte()),
@@ -137,7 +138,7 @@ fn parse_function_body(root: &Node, source: &str) -> Option<Block> {
     })
 }
 
-fn parse_parameters(root: &Node, source: &str) -> Option<Parameters> {
+fn parse_parameters(root: &Node, source: &str, rodeo: &mut Rodeo) -> Option<Parameters> {
     const PARAMETER: u16 = TreeSitter::Parameter as u16;
     if root.child_count() <= 2 {
         return None;
@@ -148,7 +149,7 @@ fn parse_parameters(root: &Node, source: &str) -> Option<Parameters> {
     for child in root.children(&mut cursor) {
         match child.kind_id() {
             PARAMETER => {
-                let parameter = parse_parameter(&child, &source);
+                let parameter = parse_parameter(&child, &source, rodeo);
                 parameters.push(parameter);
             }
             _ => continue,
@@ -162,7 +163,7 @@ fn parse_parameters(root: &Node, source: &str) -> Option<Parameters> {
     })
 }
 
-fn parse_parameter(root: &Node, source: &str) -> Parameter {
+fn parse_parameter(root: &Node, source: &str, rodeo: &mut Rodeo) -> Parameter {
     let mut cursor = root.walk();
 
     let mut children = root.children(&mut cursor);
@@ -171,8 +172,7 @@ fn parse_parameter(root: &Node, source: &str) -> Parameter {
     let param_type = parse_type(Span(subchild.start_byte(), subchild.end_byte()), &source).unwrap();
 
     subchild = children.next().unwrap();
-    let name = Span(subchild.start_byte(), subchild.end_byte());
-
+    let name = rodeo.get_or_intern(&source[subchild.start_byte()..subchild.end_byte()]);
     Parameter {
         param_type,
         name,
@@ -212,6 +212,7 @@ fn parse_type(span: Span, source: &str) -> Option<Type> {
 fn parse_expression(root: &Node) -> Expression {
     const LITERAL: u16 = TreeSitter::Literal as u16;
     const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
+    const REFERENCE: u16 = TreeSitter::Reference as u16;
 
     let mut expression_kind = match root.kind_id() {
         LITERAL => {
@@ -346,7 +347,8 @@ fn parse_expression(root: &Node) -> Expression {
                 Box::new(left_expression),
                 Box::new(right_expression),
             )
-        }
+        },
+        REFERENCE => ExpressionKind::Reference,
         _ => ExpressionKind::Literal(Literal {
             id: root.id(),
             kind: LiteralKind::Int,

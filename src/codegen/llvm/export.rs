@@ -8,5 +8,4 @@ pub fn test_execute(ast: &Vec<AST>, source: &str) {
 
     Target::initialize_native(&InitializationConfig::default()).expect("Failed to initialize native target");
     let context = Context::create();
-    let module = super::codegen::codegen(&ast, &source, &context);
 }

@@ -1,18 +1,21 @@
+use lasso::Spur;
+
 pub enum TreeSitter {
     VariableDeclaration = 42,
-    FunctionDeclaration = 43,
+    FunctionDeclaration = 45,
 
     PrimitiveType = 3,
     Identifier = 6,
 
-    Literal = 49,
+    Literal = 50,
     IntegerLiteral = 26,
     FloatingPointLiteral = 27,
-    StringLiteral = 50,
-    CharLiteral = 51,
-    BoolLiteral = 52,
+    Reference = 51,
+    StringLiteral = 52,
+    CharLiteral = 53,
+    BoolLiteral = 54,
 
-    BinaryExpression = 47,
+    BinaryExpression = 48,
 
     EqualSign = 1,
     SemiColon = 2,
@@ -36,9 +39,9 @@ pub enum TreeSitter {
     Divide = 23,
     Modulus = 24,
 
-    Parameters = 53,
-    Parameter = 54,
-    Block = 55,
+    Parameters = 55,
+    Parameter = 56,
+    Block = 57,
     LeftParen = 34,
     RightParen = 36,
     LeftCurly = 37,
@@ -54,7 +57,7 @@ pub enum AST {
 #[derive(Debug)]
 pub struct Function {
     pub return_type: Type,
-    pub name: Span,
+    pub name: Spur,
     pub parameters: Option<Parameters>,
     pub body: Option<Block>,
     pub span: Span,
@@ -103,7 +106,7 @@ pub struct Parameters {
 #[derive(Debug)]
 pub struct Parameter {
     pub param_type: Type,
-    pub name: Span,
+    pub name: Spur,
     pub span: Span,
     pub id: usize,
 }
@@ -125,7 +128,7 @@ pub enum StatementKind {
 pub struct Variable {
     pub var_type: Type,
     pub expression: Option<Expression>,
-    pub name: Span,
+    pub name: Spur,
     pub span: Span,
     pub id: usize,
 }
@@ -141,6 +144,7 @@ pub struct Expression {
 pub enum ExpressionKind {
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Literal(Literal),
+    Reference,
 }
 
 #[derive(Debug)]

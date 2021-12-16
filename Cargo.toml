@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 tree-sitter = "0.20.0"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"] }
+lasso = "0.6.0"
 
 [build-dependencies]
 cc="*"

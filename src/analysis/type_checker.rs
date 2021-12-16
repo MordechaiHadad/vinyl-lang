@@ -1,4 +1,3 @@
-use std::fmt::format;
 use crate::parser::ast::{AST, Expression, ExpressionKind, Literal, LiteralKind, PrimitiveType, Type};
 
 pub fn check_type(ast: &Vec<AST>) -> Vec<String> {
@@ -41,6 +40,7 @@ fn type_check_variable(variable_type: &Type, expression: &ExpressionKind) -> Res
                 (variable_type, expression_type) => Err(format!("Type mismatch between {:?} and {:?}", variable_type, expression_type))
             }
         },
+        (Type::Primitive(_), ExpressionKind::Reference) => Err(format!("Type checking with reference is not supported")),
         _ => Err(format!("Those arent supported yet"))
     }
 }
