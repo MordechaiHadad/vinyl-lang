@@ -26,7 +26,8 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    let ast = parser::parser::parse_into_ast(&root, &source_code, &mut rodeo).unwrap();
+    let mut parser_engine = crate::parser::parser::ParserEngine{source: &source_code, rodeo: &mut rodeo};
+    let ast = parser_engine.parse_into_ast(&root).unwrap();
 
     let errors = crate::analysis::type_checker::check_type(&ast);
 
@@ -41,9 +42,9 @@ fn main() {
 
    let context = Context::create();
 
-    let codegen = crate::codegen::llvm::codegen::CodegenEngine{rodeo: &mut rodeo, context: &context, source: &source_code, ast: &ast };
+    let codegen_engine = crate::codegen::llvm::codegen::CodegenEngine{rodeo: &mut rodeo, context: &context, source: &source_code, ast: &ast };
 
-    let module = codegen.codegen();
+    let module = codegen_engine.codegen();
 
     // print(&root);
 }
