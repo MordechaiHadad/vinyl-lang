@@ -49,9 +49,16 @@ pub enum TreeSitter {
 }
 
 #[derive(Debug)]
-pub enum AST {
-    Function(Function),
-    Variable(Variable),
+pub struct AST {
+    pub namespaces: Vec<Namespace>
+}
+
+#[derive(Debug)]
+pub struct Namespace {
+    pub name: Spur,
+    pub statements: Vec<Statement>,
+    pub span: Span,
+    pub id: usize,
 }
 
 #[derive(Debug)]
@@ -121,6 +128,7 @@ pub struct Statement {
 #[derive(Debug)]
 pub enum StatementKind {
     Variable(Variable),
+    Function(Function),
     Expression(Expression),
 }
 
@@ -144,13 +152,25 @@ pub struct Expression {
 pub enum ExpressionKind {
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Literal(Literal),
-    Reference,
+    Reference(Mutability, Identifier),
+}
+
+#[derive(Debug)]
+pub struct Identifier {
+    pub symbol: Spur,
+    pub span: Span,
+}
+
+#[derive(Debug)]
+pub enum Mutability {
+    Mutable,
+    Not
 }
 
 #[derive(Debug)]
 pub struct Literal {
     pub kind: LiteralKind,
-    pub value: Span,
+    pub value: Spur,
     pub id: usize,
 }
 

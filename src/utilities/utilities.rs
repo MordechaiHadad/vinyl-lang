@@ -2,6 +2,7 @@ use tree_sitter::Node;
 use crate::parser::ast::{AST, ExpressionKind};
 use std::io::prelude::*;
 use std::fs::File;
+use lasso::Rodeo;
 
 pub fn treesitter_to_enum(root: &Node) {
     let kind = match root.kind() {
@@ -54,7 +55,7 @@ pub fn treesitter_to_enum(root: &Node) {
     }
 }
 
-pub fn print_ast(ast: &Vec<AST>, source: &str) {
+pub fn print_ast(ast: &Vec<AST>, source: &str, rodeo: &Rodeo) {
     let mut file = File::create("output.html").unwrap();
 
     writeln!(file, "
@@ -90,7 +91,7 @@ pub fn print_ast(ast: &Vec<AST>, source: &str) {
                             ExpressionKind::Binary(..) => {},
                             ExpressionKind::Literal(literal) => {
                                 writeln!(file, "<h3>{:?} Literal Expression: {} [{}, {}]:", literal.kind, expression.id, expression.span.0, expression.span.1);
-                                writeln!(file, "<h4>Value: {}", &source[literal.value.0..literal.value.1]);
+                                writeln!(file, "<h4>Value: {}", rodeo.resolve(&literal.value));
                             }
                             _ => {}
 

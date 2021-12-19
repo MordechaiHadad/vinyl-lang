@@ -8,9 +8,12 @@ pub struct ParserEngine<'a> {
 }
 
 impl ParserEngine<'_> {
-    pub fn parse_into_ast(&mut self, node: &Node) -> Option<Vec<AST>> {
+    pub fn parse_into_ast(&mut self, node: &Node) -> Result<AST, Vec<String>> {
+        let mut errors = Vec::new();
         let mut cursor = node.walk();
-        let mut ast = Vec::new();
+        let mut ast = AST {namespaces: Vec::new()};
+        ast.namespaces.push(Namespace { statements: Vec::new(), span: Span(node.start_byte(), node.end_byte()), id: node.id(), name: self.rodeo.get_or_intern("ALOHA") });
+        let mut namespace = ast.namespaces.first_mut().unwrap();
 
         for child in node.children(&mut cursor.clone()) {
             const VARIABLE_DECLERATION: u16 = TreeSitter::VariableDeclaration as u16;
@@ -20,18 +23,22 @@ impl ParserEngine<'_> {
                 VARIABLE_DECLERATION => {
                     let variable = self.parse_variable(&child);
 
-                    ast.push(AST::Variable(variable));
+                    namespace.statements.push(Statement {kind: StatementKind::Variable(variable), span: Span(child.start_byte(), child.end_byte()), id: child.id()} );
                 }
                 FUNCTION_DECLARATION => {
                     let function = self.parse_function(&child);
 
-                    ast.push(AST::Function(function));
+                    namespace.statements.push(Statement {kind: StatementKind::Function(function), span: Span(child.start_byte(), child.end_byte()), id: child.id()} );
                 }
-                _ => continue,
+                _ => errors.push(format!("{} is not a variable/function declaration", &self.source[child.start_byte()..child.end_byte()])),
             }
         }
 
-        Some(ast)
+        if errors.len() > 0 {
+            return Err(errors);
+        }
+
+        Ok(ast)
     }
 
     fn parse_function(&mut self, root: &Node) -> Function {
@@ -187,7 +194,7 @@ impl ParserEngine<'_> {
         }
     }
 
-    fn parse_type(&self, span: Span) -> Option<Type> {
+    fn parse_type(&mut self, span: Span) -> Option<Type> {
         use PrimitiveType::*;
         use Type::*;
         let type_text = &self.source[span.0..span.1];
@@ -215,7 +222,7 @@ impl ParserEngine<'_> {
         new_type
     }
 
-    fn parse_expression(&self, root: &Node) -> Expression {
+    fn parse_expression(&mut self, root: &Node) -> Expression {
         const LITERAL: u16 = TreeSitter::Literal as u16;
         const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
         const REFERENCE: u16 = TreeSitter::Reference as u16;
@@ -233,32 +240,32 @@ impl ParserEngine<'_> {
                     INTEGER_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Int,
-                        value: Span(node.start_byte(), node.end_byte()),
+                        value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
                     }),
                     BOOL_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Bool,
-                        value: Span(node.start_byte(), node.end_byte()),
+                        value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
                     }),
                     CHAR_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Char,
-                        value: Span(node.start_byte() + 1, node.end_byte() - 1),
+                        value: self.rodeo.get_or_intern(&self.source[node.start_byte() + 1..node.end_byte() -1]),
                     }),
                     FLOATING_POINT_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Float,
-                        value: Span(node.start_byte(), node.end_byte()),
+                        value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
                     }),
                     STRING_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::String,
-                        value: Span(node.start_byte() - 1, node.end_byte() + 1),
+                        value: self.rodeo.get_or_intern(&self.source[node.start_byte() + 1..node.end_byte() - 1]),
                     }),
                     _ => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Int,
-                        value: Span(node.start_byte(), node.end_byte()),
+                        value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
                     }),
                 }
             }
@@ -354,11 +361,13 @@ impl ParserEngine<'_> {
                     Box::new(right_expression),
                 )
             },
-            REFERENCE => ExpressionKind::Reference,
+            REFERENCE => ExpressionKind::Reference(Mutability::Not, Identifier {
+                symbol: self.rodeo.get_or_intern(&self.source[root.start_byte()..root.end_byte()]),
+                span: Span(root.start_byte(), root.end_byte())}),
             _ => ExpressionKind::Literal(Literal {
                 id: root.id(),
                 kind: LiteralKind::Int,
-                value: Span(root.start_byte(), root.end_byte()),
+                value: self.rodeo.get_or_intern(&self.source[root.start_byte()..root.end_byte()]),
             }),
         };
 

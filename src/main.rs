@@ -2,7 +2,6 @@
 
 mod parser;
 mod codegen;
-mod utilities;
 mod analysis;
 
 
@@ -10,6 +9,7 @@ use std::process::exit;
 use tree_sitter::{Language, Node, Parser};
 use inkwell::context::Context;
 use lasso::Rodeo;
+use crate::analysis::AnalysisEngine;
 use crate::parser::ast::PrimitiveType;
 use crate::parser::ast::LiteralKind;
 
@@ -27,24 +27,24 @@ fn main() {
     let root = tree.root_node();
 
     let mut parser_engine = crate::parser::parser::ParserEngine{source: &source_code, rodeo: &mut rodeo};
-    let ast = parser_engine.parse_into_ast(&root).unwrap();
-
-    let errors = crate::analysis::type_checker::check_type(&ast);
-
-    let errors_len = errors.len();
-
-    if errors_len > 0 {
-        for error in errors {
-            println!("{}", error);
+    let ast = match parser_engine.parse_into_ast(&root) {
+        Ok(result) => result,
+        Err(errors) => {
+            for error in &errors {
+                println!("{}", error);
+            }
+            exit(errors.len() as i32);
         }
-        exit(errors_len as i32);
+    };
+
+    for var in &ast.namespaces {
+        println!("{:?}", var);
     }
+
+    let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo);
 
    let context = Context::create();
 
-    let codegen_engine = crate::codegen::llvm::codegen::CodegenEngine{rodeo: &mut rodeo, context: &context, source: &source_code, ast: &ast };
-
-    let module = codegen_engine.codegen();
 
     // print(&root);
 }

@@ -1,3 +1,4 @@
+/*
 use std::any::Any;
 use std::ptr::NonNull;
 
@@ -16,7 +17,7 @@ pub struct CodegenEngine<'a> {
     pub rodeo: &'a mut Rodeo,
     pub context: &'a Context,
     pub source: &'a str,
-    pub ast: &'a Vec<AST>,
+    pub ast: &'a AST,
 }
 
 impl CodegenEngine<'_> {
@@ -25,7 +26,7 @@ impl CodegenEngine<'_> {
         let builder = self.context.create_builder();
 
         for node in self.ast {
-            match node {
+            match node.statement {
                 AST::Variable(variable) => {
                     self.variable_codegen(&variable, &None, &module, &builder);
                 },
@@ -104,4 +105,4 @@ impl CodegenEngine<'_> {
 
         sent_type
     }
-}
+} */
