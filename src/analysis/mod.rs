@@ -1,5 +1,9 @@
+pub mod errors;
+
+use ariadne::{Label, Report, ReportKind, Source, sources};
 use lasso::{Rodeo, Spur};
-use crate::parser::ast::{AST, Expression, ExpressionKind, Type, Variable, PrimitiveType, LiteralKind, StatementKind};
+use crate::analysis::errors::{Error, NullReferenceError};
+use crate::parser::ast::{AST, Expression, ExpressionKind, Type, Variable, PrimitiveType, LiteralKind, StatementKind, Identifier};
 
 type TypeId = usize;
 
@@ -16,20 +20,25 @@ pub struct AnalysisEngine<'a, 'b: 'a> {
     pub stack: Vec<(Spur, &'a Type)>,
     pub ast: &'b AST,
     pub rodeo: &'b mut Rodeo,
-    pub vars: Vec<TypeInfo>
+    pub vars: Vec<TypeInfo>,
+    pub source: &'b str,
 }
 
 impl<'a> AnalysisEngine<'a, 'a> {
-    pub fn new(ast: &'a AST, rodeo: &'a mut Rodeo) -> Self {
-        Self {stack: Vec::new(), ast, rodeo, vars: Vec::new()}
+    pub fn new(ast: &'a AST, rodeo: &'a mut Rodeo, source: &'a str) -> Self {
+        Self {stack: Vec::new(), ast, rodeo, vars: Vec::new(), source}
     }
 
     pub fn start(&mut self) {
         self.insert_to_stack();
-        let null_errors = self.check_for_null_reference();
-        if null_errors.len() > 0 {
-            for error in null_errors {
-                println!("{}", error);
+        let null_references_errors = self.check_for_null_reference();
+        for error in &null_references_errors {
+            match error {
+                Error::NullReferenceError(error) => {
+                    Report::build(ReportKind::Error, error.span.file_id, error.span.range.0)
+                        .with_message(format!("Cannot find value {} in scope", self.rodeo.resolve(&error.value)))
+                        .with_label(Label::new(error.span).with_message("Not found in this scope")).finish().print(sources(vec![("test.vnl", &self.source)])).unwrap();
+                }
             }
         }
     }
@@ -48,20 +57,26 @@ impl<'a> AnalysisEngine<'a, 'a> {
         }
     }
 
-    fn check_for_null_reference(&mut self) -> Vec<String> {
-        let mut errors: Vec<String> = Vec::new();
+    fn check_for_null_reference(&mut self) -> Vec<Error> {
+        let mut errors: Vec<Error> = Vec::new();
         for var in &self.ast.namespaces.first().unwrap().statements {
             if let StatementKind::Variable(variable) = &var.kind {
                 if let Variable {expression, ..} = variable {
                     if let ExpressionKind::Reference(mutability, identifier) = &*expression.as_ref().unwrap().kind {
                         if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
-                            errors.push(format!("{} is null reference", self.rodeo.resolve(&identifier.symbol)));
+                            errors.push( Error::NullReferenceError(
+                                NullReferenceError {
+                                    span: identifier.span.clone(),
+                                    value: identifier.symbol.clone()
+                                }
+                            ));
                         }
                     }
                 }
 
             }
         }
+
         errors
     }
 

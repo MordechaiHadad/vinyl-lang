@@ -2,7 +2,7 @@ use lasso::Spur;
 
 pub enum TreeSitter {
     VariableDeclaration = 42,
-    FunctionDeclaration = 45,
+    FunctionDeclaration = 43,
 
     PrimitiveType = 3,
     Identifier = 6,
@@ -211,4 +211,16 @@ pub enum BinaryOperatorKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Span(pub usize, pub usize);
+pub struct Span {
+    pub range: (usize, usize),
+    pub file_id: &'static str,
+}
+
+impl ariadne::Span for Span {
+    type SourceId = &'static str;
+
+    fn source(&self) -> &&'static str { &self.file_id}
+
+    fn start(&self) -> usize { self.range.0 }
+    fn end(&self) -> usize { self.range.1 }
+}

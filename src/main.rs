@@ -3,9 +3,11 @@
 mod parser;
 mod codegen;
 mod analysis;
+mod utilities;
 
 
 use std::process::exit;
+use ariadne::{Label, Report, ReportKind, Source};
 use tree_sitter::{Language, Node, Parser};
 use inkwell::context::Context;
 use lasso::Rodeo;
@@ -22,7 +24,7 @@ fn main() {
     let mut rodeo = Rodeo::default();
     parser.set_language(language).unwrap();
 
-    let source_code = std::fs::read_to_string("vendor/tree-sitter-vinyl/test.vnl").unwrap();
+    let source_code = include_str!("../vendor/tree-sitter-vinyl/test.vnl");
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
@@ -41,7 +43,8 @@ fn main() {
         println!("{:?}", var);
     }
 
-    let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo);
+    let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, &source_code);
+    analyzer.start();
 
    let context = Context::create();
 

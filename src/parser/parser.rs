@@ -12,7 +12,7 @@ impl ParserEngine<'_> {
         let mut errors = Vec::new();
         let mut cursor = node.walk();
         let mut ast = AST {namespaces: Vec::new()};
-        ast.namespaces.push(Namespace { statements: Vec::new(), span: Span(node.start_byte(), node.end_byte()), id: node.id(), name: self.rodeo.get_or_intern("ALOHA") });
+        ast.namespaces.push(Namespace { statements: Vec::new(), span: Span { range: (node.start_byte(), node.end_byte()), file_id: "test.vnl"}, id: node.id(), name: self.rodeo.get_or_intern("ALOHA") });
         let mut namespace = ast.namespaces.first_mut().unwrap();
 
         for child in node.children(&mut cursor.clone()) {
@@ -23,12 +23,12 @@ impl ParserEngine<'_> {
                 VARIABLE_DECLERATION => {
                     let variable = self.parse_variable(&child);
 
-                    namespace.statements.push(Statement {kind: StatementKind::Variable(variable), span: Span(child.start_byte(), child.end_byte()), id: child.id()} );
+                    namespace.statements.push(Statement {kind: StatementKind::Variable(variable), span: Span { range: (child.start_byte(), child.end_byte()), file_id: "test.vnl"}, id: child.id()} );
                 }
                 FUNCTION_DECLARATION => {
                     let function = self.parse_function(&child);
 
-                    namespace.statements.push(Statement {kind: StatementKind::Function(function), span: Span(child.start_byte(), child.end_byte()), id: child.id()} );
+                    namespace.statements.push(Statement {kind: StatementKind::Function(function), span: Span { range: (child.start_byte(), child.end_byte()), file_id: "test.vnl"}, id: child.id()} );
                 }
                 _ => errors.push(format!("{} is not a variable/function declaration", &self.source[child.start_byte()..child.end_byte()])),
             }
@@ -54,7 +54,7 @@ impl ParserEngine<'_> {
         let mut subchild = children.next().unwrap();
 
         let return_type =
-            self.parse_type(Span(subchild.start_byte(), subchild.end_byte())).unwrap();
+            self.parse_type(Span { range: (subchild.start_byte(), subchild.end_byte()), file_id: "test.vnl" }).unwrap();
 
         subchild = children.next().unwrap();
         let name = self.rodeo.get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()]);
@@ -70,7 +70,7 @@ impl ParserEngine<'_> {
             name,
             parameters,
             body,
-            span: Span(root.start_byte(), root.end_byte()),
+            span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
             id: root.id(),
         }
     }
@@ -84,7 +84,7 @@ impl ParserEngine<'_> {
 
         let mut subchild = children.next().unwrap();
 
-        let var_type = self.parse_type(Span(subchild.start_byte(), subchild.end_byte())).unwrap();
+        let var_type = self.parse_type(Span { range: (subchild.start_byte(), subchild.end_byte()), file_id: "test.nvl"}).unwrap();
 
         subchild = children.next().unwrap();
         let name = self.rodeo.get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()]);
@@ -94,7 +94,7 @@ impl ParserEngine<'_> {
             return Variable {
                 var_type,
                 name,
-                span: Span(root.start_byte(), root.end_byte()),
+                span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
                 id: root.id(),
                 expression: None,
             };
@@ -106,7 +106,7 @@ impl ParserEngine<'_> {
         Variable {
             var_type,
             name,
-            span: Span(root.start_byte(), root.end_byte()),
+            span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
             id: root.id(),
             expression: Some(expression),
         }
@@ -128,7 +128,7 @@ impl ParserEngine<'_> {
                     let var = self.parse_variable(&child);
                     statements.push(Statement {
                         kind: StatementKind::Variable(var),
-                        span: Span(child.start_byte(), child.end_byte()),
+                        span: Span { range: (child.start_byte(), child.end_byte()), file_id: "test.vnl"},
                         id: child.id(),
                     });
                 }
@@ -136,7 +136,7 @@ impl ParserEngine<'_> {
                     let expression = self.parse_expression(&child);
                     statements.push(Statement {
                         kind: StatementKind::Expression(expression),
-                        span: Span(child.start_byte(), child.end_byte()),
+                        span: Span { range: (child.start_byte(), child.end_byte()), file_id: "test.vnl"},
                         id: child.id(),
                     })
                 }
@@ -146,7 +146,7 @@ impl ParserEngine<'_> {
 
         Some(Block {
             statements,
-            span: Span(root.start_byte(), root.end_byte()),
+            span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
             id: root.id(),
         })
     }
@@ -171,7 +171,7 @@ impl ParserEngine<'_> {
 
         Some(Parameters {
             parameters,
-            span: Span(root.start_byte(), root.end_byte()),
+            span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
             id: root.id(),
         })
     }
@@ -182,14 +182,14 @@ impl ParserEngine<'_> {
         let mut children = root.children(&mut cursor);
 
         let mut subchild = children.next().unwrap();
-        let param_type = self.parse_type(Span(subchild.start_byte(), subchild.end_byte())).unwrap();
+        let param_type = self.parse_type(Span { range: (subchild.start_byte(), subchild.end_byte()), file_id: "test.vnl"}).unwrap();
 
         subchild = children.next().unwrap();
         let name = self.rodeo.get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()]);
         Parameter {
             param_type,
             name,
-            span: Span(root.start_byte(), root.end_byte()),
+            span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
             id: root.id(),
         }
     }
@@ -197,7 +197,7 @@ impl ParserEngine<'_> {
     fn parse_type(&mut self, span: Span) -> Option<Type> {
         use PrimitiveType::*;
         use Type::*;
-        let type_text = &self.source[span.0..span.1];
+        let type_text = &self.source[span.range.0..span.range.1];
 
         let new_type = match type_text {
             "bool" => Some(Primitive(Bool)),
@@ -363,7 +363,7 @@ impl ParserEngine<'_> {
             },
             REFERENCE => ExpressionKind::Reference(Mutability::Not, Identifier {
                 symbol: self.rodeo.get_or_intern(&self.source[root.start_byte()..root.end_byte()]),
-                span: Span(root.start_byte(), root.end_byte())}),
+                span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"}}),
             _ => ExpressionKind::Literal(Literal {
                 id: root.id(),
                 kind: LiteralKind::Int,
@@ -373,7 +373,7 @@ impl ParserEngine<'_> {
 
         Expression {
             id: root.id(),
-            span: Span(root.start_byte(), root.end_byte()),
+            span: Span { range: (root.start_byte(), root.end_byte()), file_id: "test.vnl"},
             kind: Box::new(expression_kind),
         }
     }
