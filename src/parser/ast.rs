@@ -48,12 +48,12 @@ pub enum TreeSitter {
     RightCurly = 38,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AST {
     pub namespaces: Vec<Namespace>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Namespace {
     pub name: Spur,
     pub statements: Vec<Statement>,
@@ -61,7 +61,7 @@ pub struct Namespace {
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub return_type: Type,
     pub name: Spur,
@@ -71,12 +71,12 @@ pub struct Function {
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Type {
     Primitive(PrimitiveType),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PrimitiveType {
     I8,
     I16,
@@ -96,21 +96,21 @@ pub enum PrimitiveType {
     Var,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Block {
     pub statements: Vec<Statement>,
     pub span: Span,
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parameters {
     pub parameters: Vec<Parameter>,
     pub span: Span,
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parameter {
     pub param_type: Type,
     pub name: Spur,
@@ -118,21 +118,21 @@ pub struct Parameter {
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Statement {
     pub kind: StatementKind,
     pub span: Span,
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum StatementKind {
     Variable(Variable),
     Function(Function),
     Expression(Expression),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     pub var_type: Type,
     pub expression: Option<Expression>,
@@ -141,40 +141,41 @@ pub struct Variable {
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Expression {
     pub id: usize,
     pub span: Span,
     pub kind: Box<ExpressionKind>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpressionKind {
     Binary(BinaryOperator, Box<Expression>, Box<Expression>),
     Literal(Literal),
     Reference(Mutability, Identifier),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     pub symbol: Spur,
     pub span: Span,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Mutability {
     Mutable,
     Not
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Literal {
     pub kind: LiteralKind,
     pub value: Spur,
+    pub span: Span,
     pub id: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LiteralKind {
     String,
     Char,
@@ -183,12 +184,12 @@ pub enum LiteralKind {
     Float,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryOperator {
     pub kind: BinaryOperatorKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOperatorKind {
     Add,
     Subtract,

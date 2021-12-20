@@ -241,31 +241,55 @@ impl ParserEngine<'_> {
                         id: node.id(),
                         kind: LiteralKind::Int,
                         value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
+                        span: Span {
+                            range: (node.start_byte(), node.end_byte()),
+                            file_id: "test.vnl"
+                        }
                     }),
                     BOOL_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Bool,
                         value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
+                        span: Span {
+                            range: (node.start_byte(), node.end_byte()),
+                            file_id: "test.vnl"
+                        }
                     }),
                     CHAR_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Char,
                         value: self.rodeo.get_or_intern(&self.source[node.start_byte() + 1..node.end_byte() -1]),
+                        span: Span {
+                            range: (node.start_byte(), node.end_byte()),
+                            file_id: "test.vnl",
+                        }
                     }),
                     FLOATING_POINT_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Float,
                         value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
+                        span: Span {
+                            range: (node.start_byte(), node.end_byte()),
+                            file_id: "test.vnl",
+                        }
                     }),
                     STRING_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::String,
                         value: self.rodeo.get_or_intern(&self.source[node.start_byte() + 1..node.end_byte() - 1]),
+                        span: Span {
+                            range: (node.start_byte(), node.end_byte()),
+                            file_id: "test.vnl"
+                        }
                     }),
                     _ => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Int,
                         value: self.rodeo.get_or_intern(&self.source[node.start_byte()..node.end_byte()]),
+                        span: Span {
+                            range: (node.start_byte(), node.end_byte()),
+                            file_id: "test.vnl"
+                        }
                     }),
                 }
             }
@@ -368,6 +392,10 @@ impl ParserEngine<'_> {
                 id: root.id(),
                 kind: LiteralKind::Int,
                 value: self.rodeo.get_or_intern(&self.source[root.start_byte()..root.end_byte()]),
+                span: Span {
+                    range: (root.start_byte(), root.end_byte()),
+                    file_id: "test.vnl"
+                }
             }),
         };
 
