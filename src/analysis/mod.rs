@@ -1,6 +1,6 @@
 pub mod errors;
 
-use ariadne::{Label, Report, ReportKind, Source, sources};
+use ariadne::{Color, ColorGenerator, Label, Report, ReportKind, Source, sources};
 use lasso::{Rodeo, Spur};
 use crate::analysis::errors::{Error, NullReferenceError};
 use crate::parser::ast::{AST, Expression, ExpressionKind, Type, Variable, PrimitiveType, LiteralKind, StatementKind, Identifier};
@@ -32,12 +32,15 @@ impl<'a> AnalysisEngine<'a, 'a> {
     pub fn start(&mut self) {
         self.insert_to_stack();
         let null_references_errors = self.check_for_null_reference();
+
+        let red = Color::Red;
+
         for error in &null_references_errors {
             match error {
                 Error::NullReferenceError(error) => {
                     Report::build(ReportKind::Error, error.span.file_id, error.span.range.0)
                         .with_message(format!("Cannot find value {} in scope", self.rodeo.resolve(&error.value)))
-                        .with_label(Label::new(error.span).with_message("Not found in this scope")).finish().print(sources(vec![("test.vnl", &self.source)])).unwrap();
+                        .with_label(Label::new(error.span).with_message("Not found in this scope").with_color(red)).finish().print(sources(vec![("test.vnl", &self.source)])).unwrap();
                 }
             }
         }
