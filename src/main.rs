@@ -48,6 +48,9 @@ fn main() {
 
    let context = Context::create();
 
+    let mut codegen = codegen::llvm::codegen::CodegenEngine { rodeo: &mut rodeo, context: &context, source: &source_code, ast: &ast };
+    let module = codegen.codegen();
+
 
     // print(&root);
 }

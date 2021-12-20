@@ -1,8 +1,7 @@
-/*
 use std::any::Any;
 use std::ptr::NonNull;
 
-use crate::parser::ast::{AST, Expression, ExpressionKind, LiteralKind, PrimitiveType, Span, Type, Variable};
+use crate::parser::ast::{AST, Expression, ExpressionKind, LiteralKind, PrimitiveType, Span, StatementKind, Type, Variable};
 use super::enums::AnyVariableEnum;
 
 use inkwell::builder::Builder;
@@ -25,14 +24,15 @@ impl CodegenEngine<'_> {
         let module = self.context.create_module("test");
         let builder = self.context.create_builder();
 
-        for node in self.ast {
-            match node.statement {
-                AST::Variable(variable) => {
+        for statement in &self.ast.namespaces.first().unwrap().statements {
+            match &statement.kind {
+                StatementKind::Variable(variable) => {
                     self.variable_codegen(&variable, &None, &module, &builder);
                 },
-                AST::Function(function) => {
+                StatementKind::Function(function) => {
                     println!("{:?}", function);
                 }
+                _ => (),
             }
         }
 
@@ -105,4 +105,4 @@ impl CodegenEngine<'_> {
 
         sent_type
     }
-} */
+}
