@@ -43,10 +43,6 @@ impl<'a> AnalysisEngine<'a, 'a> {
         self.print_errors(&type_checker_errors);
 
         let not_infered: Vec<TypeInfo> = self.vars.iter().cloned().filter(|x| x == &TypeInfo::Unknown).collect();
-
-        for hi in &self.vars {
-            println!("{:?}", hi);
-        }
     }
 
     fn insert_to_stack(&mut self) {
@@ -92,37 +88,34 @@ impl<'a> AnalysisEngine<'a, 'a> {
             if let StatementKind::Variable(variable) = &var.kind {
                 let mut a = 0;
                 let mut b = 0;
-                let mut found_literal = Literal {
-                    kind: LiteralKind::Int,
-                    value: Default::default(),
-                    span: Span {
-                        range: (0, 0),
-                        file_id: ""
-                    },
-                    id: 0
-                };
-                if let Type::Primitive(var_type) = &variable.var_type {
+                if let Type::Primitive(primitive) = &variable.var_type {
                     use PrimitiveType::*;
 
-                    a = match var_type {
-                        I8 | I16 | I32 | I64 | I128 | U8 | U16 | U32 | U64 | U128 => self.insert_to_vars(TypeInfo::Integer),
-                        Float32 | Float64 => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
-                        Char => self.insert_to_vars(TypeInfo::Char),
-                        Bool => self.insert_to_vars(TypeInfo::Bool),
-                        Var => self.insert_to_vars(TypeInfo::Unknown),
-                        _ => panic!("what the fuck u are using a fucking VOID ON A FUCKING VAR???")
-                    };
+                    a = self.insert_to_vars(self.primitive_to_typeinfo(primitive));
                 }
-                if let ExpressionKind::Literal(literal) = &*variable.expression.as_ref().unwrap().kind {
-                    use LiteralKind::*;
-                    found_literal = literal.clone();
-                    b = match literal.kind {
-                        Char => self.insert_to_vars(TypeInfo::Char),
-                        Bool => self.insert_to_vars(TypeInfo::Bool),
-                        Int => self.insert_to_vars(TypeInfo::Integer),
-                        Float => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
-                        String => self.insert_to_vars(TypeInfo::String)
-                    };
+                match &*variable.expression.as_ref().unwrap().kind {
+                    ExpressionKind::Literal(literal) => {
+                        use LiteralKind::*;
+                        b = match literal.kind {
+                            Char => self.insert_to_vars(TypeInfo::Char),
+                            Bool => self.insert_to_vars(TypeInfo::Bool),
+                            Int => self.insert_to_vars(TypeInfo::Integer),
+                            Float => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
+                            String => self.insert_to_vars(TypeInfo::String)
+                        };
+                    },
+                    ExpressionKind::Reference(_, identifier) => {
+                        if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
+                            b = self.insert_to_vars(TypeInfo::Unknown);
+                        } else {
+                            b = match self.stack.iter().cloned().find(|(x, _)| x == &identifier.symbol).unwrap().1 {
+                                Type::Primitive(primitive) => {
+                                    self.insert_to_vars(self.primitive_to_typeinfo(primitive))
+                                }
+                            };
+                        }
+                    },
+                    _ => todo!()
                 }
 
                 match self.unify(a, b) {
@@ -130,12 +123,25 @@ impl<'a> AnalysisEngine<'a, 'a> {
                     Err(_) => errors.push(Error::TypeMismatchError(TypeMismatchError {
                         span: variable.span.clone(),
                         expected_type: variable.var_type.clone(),
-                        found_type: found_literal
+                        found_expression: variable.expression.clone().unwrap(),
                     }))
                 }
             }
         }
         errors
+    }
+
+    fn primitive_to_typeinfo(&self, primitive: &PrimitiveType) -> TypeInfo {
+        use PrimitiveType::*;
+        match primitive {
+            I8 | I16 | I32 | I64 | I128 | U8 | U16 | U32 | U64 | U128 => TypeInfo::Integer,
+            Float32 | Float64 => TypeInfo::FloatingPointLiteral,
+            Char => TypeInfo::Char,
+            Bool => TypeInfo::Bool,
+            String => TypeInfo::String,
+            Var => TypeInfo::Unknown,
+            _ => todo!()
+        }
     }
 
     fn insert_to_vars(&mut self, info: TypeInfo) -> TypeId {
@@ -144,7 +150,7 @@ impl<'a> AnalysisEngine<'a, 'a> {
         id
     }
 
-    fn unify(&mut self, a: TypeId, b: TypeId) -> Result<(), String> {
+    fn unify(&mut self, a: TypeId, b: TypeId) -> Result<(), (TypeInfo, TypeInfo)> {
         use TypeInfo::*;
 
         match(self.vars[a].clone(), self.vars[b].clone()) {
@@ -158,8 +164,12 @@ impl<'a> AnalysisEngine<'a, 'a> {
 
             (Integer, Integer) => Ok(()),
             (FloatingPointLiteral, FloatingPointLiteral) => Ok(()),
+            (FloatingPointLiteral, Integer) => Ok(()),
+            (Bool, Bool) => Ok(()),
+            (Char, Char) => Ok(()),
+            (String, String) => Ok(()),
 
-            (a, b) => {Err(format!("Type mismatch between {:?} and {:?}", a, b))}
+            (a, b) => {Err((a, b))}
         }
     }
 
@@ -174,11 +184,62 @@ impl<'a> AnalysisEngine<'a, 'a> {
                         .with_label(Label::new(error.span).with_message("Not found in this scope").with_color(red)).finish().print(sources(vec![("test.vnl", &self.source)])).unwrap();
                 }
                 Error::TypeMismatchError(error) => {
+
+                    let expected_type = self.pretty_print_type(&error.expected_type).unwrap();
+
+                    let found_type = self.pretty_print_expression(&error.found_expression).unwrap();
+
                     Report::build(ReportKind::Error, error.span.file_id, error.span.range.0).with_code(420)
-                        .with_message(format!("Mismatched types")).with_label(Label::new(error.found_type.span).with_message(format!("Expected {:?}, found {:?}", error.expected_type, error.found_type.kind))
+                        .with_message(format!("Mismatched types")).with_label(Label::new(error.found_expression.span).with_message(format!("Expected {}, found {}", expected_type, found_type))
                         .with_color(red)).finish().print(sources(vec![("test.vnl", &self.source)])).unwrap();
                 }
             }
+        }
+    }
+
+    fn pretty_print_type(&self, var_type: &Type) -> Result<&str, &str> {
+        match var_type {
+            Type::Primitive(primitive) => {
+                match primitive {
+                    PrimitiveType::I8 => Ok("int8"),
+                    PrimitiveType::I16 => Ok("int16"),
+                    PrimitiveType::I32 => Ok("int32"),
+                    PrimitiveType::I64 => Ok("int64"),
+                    PrimitiveType::I128 => Ok("int128"),
+                    PrimitiveType::U8 => Ok("uint8"),
+                    PrimitiveType::U16 => Ok("uint16"),
+                    PrimitiveType::U32 => Ok("uint32"),
+                    PrimitiveType::U64 => Ok("uint64"),
+                    PrimitiveType::U128 => Ok("uint128"),
+                    PrimitiveType::Char => Ok("char"),
+                    PrimitiveType::Bool => Ok("bool"),
+                    PrimitiveType::Float32 => Ok("float32"),
+                    PrimitiveType::Float64 => Ok("float64"),
+                    PrimitiveType::String => Ok("string"),
+                    PrimitiveType::Void => Ok("void"),
+                    PrimitiveType::Var => Ok("var")
+                }
+            }
+        }
+    }
+
+    fn pretty_print_expression(&self, expression: &Expression) -> Result<&str, &str> {
+        match &*expression.kind {
+            ExpressionKind::Literal(literal) => {
+                match literal.kind {
+                    LiteralKind::Int => Ok("integer"),
+                    LiteralKind::String => Ok("string"),
+                    LiteralKind::Bool => Ok("boolean"),
+                    LiteralKind::Char => Ok("char"),
+                    LiteralKind::Float => Ok("floating point number")
+                }
+            },
+            ExpressionKind::Reference(_, identifier) => {
+                let reference = self.stack.iter().cloned().find(|(x, _)| x == &identifier.symbol).unwrap();
+
+                Ok(self.pretty_print_type(reference.1).unwrap())
+            },
+            _ => todo!()
         }
     }
 }

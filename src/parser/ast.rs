@@ -92,6 +92,7 @@ pub enum PrimitiveType {
     Char,
     Float32,
     Float64,
+    String,
     Void,
     Var,
 }

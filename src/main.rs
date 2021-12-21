@@ -39,10 +39,6 @@ fn main() {
         }
     };
 
-    for var in &ast.namespaces {
-        println!("{:#?}", var);
-    }
-
     let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, &source_code);
     analyzer.start();
 

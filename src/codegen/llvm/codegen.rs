@@ -57,7 +57,7 @@ impl CodegenEngine<'_> {
                         let new_var = module.add_global(value, None, self.rodeo.resolve(&variable.name));
                         self.expression_codegen(&variable, &AnyVariableEnum::GlobalValue(new_var), &builder);
                     },
-                    _ => println!("nothing")
+                    _ => ()
                 }
             }
         }

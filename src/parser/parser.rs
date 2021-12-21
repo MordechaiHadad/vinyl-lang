@@ -216,6 +216,7 @@ impl ParserEngine<'_> {
             "float64" => Some(Primitive(Float64)),
             "void" => Some(Primitive(Void)),
             "var" => Some(Primitive(Var)),
+            "string" => Some(Primitive(String)),
             _ => None,
         };
 

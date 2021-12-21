@@ -1,18 +1,21 @@
 use lasso::Spur;
-use crate::parser::ast::{Literal, Span, Type};
+use crate::parser::ast::{Expression, Span, Type};
 
+#[derive(Debug)]
 pub enum Error {
     NullReferenceError(NullReferenceError),
     TypeMismatchError(TypeMismatchError)
 }
 
+#[derive(Debug)]
 pub struct NullReferenceError {
     pub value: Spur,
     pub span: Span,
 }
 
+#[derive(Debug)]
 pub struct TypeMismatchError {
     pub expected_type: Type,
-    pub found_type: Literal,
+    pub found_expression: Expression,
     pub span: Span,
 }
