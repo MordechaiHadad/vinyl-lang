@@ -233,7 +233,7 @@ impl<'a> AnalysisEngine<'a> {
                         .with_code(420)
                         .with_message("Mismatched types")
                         .with_label(
-                            Label::new(error.variable.expression.as_ref().unwrap().span.clone())
+                            Label::new(error.variable.expression.as_ref().unwrap().span)
                                 .with_message(format!(
                                     "Expected {}, found {}",
                                     expected_type, found_type
