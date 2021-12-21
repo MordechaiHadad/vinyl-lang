@@ -22,15 +22,15 @@ pub enum TypeInfo {
     String,
 }
 
-pub struct AnalysisEngine<'a, 'b: 'a> {
-    pub stack: Vec<(Spur, &'a Type)>,
+pub struct AnalysisEngine<'b> {
+    pub stack: Vec<(Spur, Type)>,
     pub ast: &'b AST,
     pub rodeo: &'b mut Rodeo,
     pub vars: Vec<TypeInfo>,
     pub source: &'b str,
 }
 
-impl<'a> AnalysisEngine<'a, 'a> {
+impl<'a> AnalysisEngine<'a> {
     pub fn new(ast: &'a AST, rodeo: &'a mut Rodeo, source: &'a str) -> Self {
         Self {
             stack: Vec::new(),
@@ -63,10 +63,10 @@ impl<'a> AnalysisEngine<'a, 'a> {
         for var in &self.ast.namespaces.first().unwrap().statements {
             match &var.kind {
                 StatementKind::Variable(variable) => {
-                    self.stack.push((variable.name, &variable.var_type));
+                    self.stack.push((variable.name, variable.var_type));
                 }
                 StatementKind::Function(function) => {
-                    self.stack.push((function.name, &function.return_type))
+                    self.stack.push((function.name, function.return_type))
                 }
                 _ => (),
             }
@@ -78,14 +78,18 @@ impl<'a> AnalysisEngine<'a, 'a> {
         for var in &self.ast.namespaces.first().unwrap().statements {
             if let StatementKind::Variable(variable) = &var.kind {
                 if let Variable { expression, .. } = variable {
-                    if let ExpressionKind::Reference(mutability, identifier) =
-                        &*expression.as_ref().unwrap().kind
-                    {
-                        if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
-                            errors.push(Error::NullReferenceError(NullReferenceError {
-                                span: identifier.span,
-                                value: identifier.symbol,
-                            }));
+                    match expression {
+                        None => (),
+                        Some(expression) => {
+                            if let ExpressionKind::Reference(mutability, identifier) = &*expression.kind
+                            {
+                                if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
+                                    errors.push(Error::NullReferenceError(NullReferenceError {
+                                        span: identifier.span,
+                                        value: identifier.symbol,
+                                    }));
+                                }
+                            }
                         }
                     }
                 }
@@ -106,44 +110,44 @@ impl<'a> AnalysisEngine<'a, 'a> {
 
                     a = self.insert_to_vars(self.primitive_to_typeinfo(primitive));
                 }
-                match &*variable.expression.as_ref().unwrap().kind {
-                    ExpressionKind::Literal(literal) => {
-                        use LiteralKind::*;
-                        b = match literal.kind {
-                            Char => self.insert_to_vars(TypeInfo::Char),
-                            Bool => self.insert_to_vars(TypeInfo::Bool),
-                            Int => self.insert_to_vars(TypeInfo::Integer),
-                            Float => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
-                            String => self.insert_to_vars(TypeInfo::String),
-                        };
-                    }
-                    ExpressionKind::Reference(_, identifier) => {
-                        if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
-                            b = self.insert_to_vars(TypeInfo::Unknown);
-                        } else {
-                            b = match self
-                                .stack
-                                .iter()
-                                .cloned()
-                                .find(|(x, _)| x == &identifier.symbol)
-                                .unwrap()
-                                .1
-                            {
-                                Type::Primitive(primitive) => {
-                                    self.insert_to_vars(self.primitive_to_typeinfo(primitive))
+                match &variable.expression {
+                    None => (),
+                    Some(expression) => {
+                        match &*expression.kind {
+                            ExpressionKind::Literal(literal) => {
+                                use LiteralKind::*;
+                                b = match literal.kind {
+                                    Char => self.insert_to_vars(TypeInfo::Char),
+                                    Bool => self.insert_to_vars(TypeInfo::Bool),
+                                    Int => self.insert_to_vars(TypeInfo::Integer),
+                                    Float => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
+                                    String => self.insert_to_vars(TypeInfo::String),
+                                };
+                            }
+                            ExpressionKind::Reference(_, identifier) => {
+                                if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
+                                    b = self.insert_to_vars(TypeInfo::Unknown);
+                                } else {
+                                    let current = self.stack.iter().position(|x| x == &(identifier.symbol, variable.var_type)).unwrap();
+                                    b = match self
+                                        .stack
+                                        .iter().nth(current - 1).unwrap().1
+                                    {
+                                        Type::Primitive(primitive) => {
+                                            self.insert_to_vars(self.primitive_to_typeinfo(&primitive))
+                                        }
+                                    };
                                 }
-                            };
+                            }
+                            _ => todo!(),
                         }
                     }
-                    _ => todo!(),
-                }
 
+                }
                 match self.unify(a, b) {
                     Ok(_) => (),
                     Err(_) => errors.push(Error::TypeMismatchError(TypeMismatchError {
-                        span: variable.span,
-                        expected_type: variable.var_type.clone(),
-                        found_expression: variable.expression.clone().unwrap(),
+                        variable: variable.clone()
                     })),
                 }
             }
@@ -219,17 +223,17 @@ impl<'a> AnalysisEngine<'a, 'a> {
                         .unwrap();
                 }
                 Error::TypeMismatchError(error) => {
-                    let expected_type = self.pretty_print_type(&error.expected_type).unwrap();
+                    let expected_type = self.pretty_print_type(&error.variable.var_type).unwrap();
 
                     let found_type = self
-                        .pretty_print_expression(&error.found_expression)
+                        .pretty_print_expression(&error.variable)
                         .unwrap();
 
-                    Report::build(ReportKind::Error, error.span.file_id, error.span.range.0)
+                    Report::build(ReportKind::Error, error.variable.span.file_id, error.variable.span.range.0)
                         .with_code(420)
                         .with_message("Mismatched types")
                         .with_label(
-                            Label::new(error.found_expression.span)
+                            Label::new(error.variable.expression.as_ref().unwrap().span.clone())
                                 .with_message(format!(
                                     "Expected {}, found {}",
                                     expected_type, found_type
@@ -268,8 +272,8 @@ impl<'a> AnalysisEngine<'a, 'a> {
         }
     }
 
-    fn pretty_print_expression(&self, expression: &Expression) -> Result<&str, &str> {
-        match &*expression.kind {
+    fn pretty_print_expression(&self, variable: &Variable) -> Result<&str, &str> {
+        match &*variable.expression.as_ref().unwrap().kind {
             ExpressionKind::Literal(literal) => match literal.kind {
                 LiteralKind::Int => Ok("integer"),
                 LiteralKind::String => Ok("string"),
@@ -278,14 +282,13 @@ impl<'a> AnalysisEngine<'a, 'a> {
                 LiteralKind::Float => Ok("floating point number"),
             },
             ExpressionKind::Reference(_, identifier) => {
+                let current = self.stack.iter().position(|x| x == &(identifier.symbol, variable.var_type)).unwrap();
                 let reference = self
                     .stack
-                    .iter()
-                    .cloned()
-                    .find(|(x, _)| x == &identifier.symbol)
-                    .unwrap();
+                    .iter().nth(current - 1).unwrap();
 
-                Ok(self.pretty_print_type(reference.1).unwrap())
+
+                Ok(self.pretty_print_type(&reference.1).unwrap())
             }
             _ => todo!(),
         }

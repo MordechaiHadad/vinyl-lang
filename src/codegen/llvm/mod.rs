@@ -107,7 +107,7 @@ impl CodegenEngine<'_> {
     }
 
     fn parse_expression(&self, variable: &Variable) -> Option<AnyValueEnum> {
-        match &variable.expression {
+        /* match &variable.expression {
             None => {}
             Some(expression) => match *expression.kind {
                 ExpressionKind::Binary(_, _, _) => todo!(),
@@ -120,7 +120,7 @@ impl CodegenEngine<'_> {
                 },
                 ExpressionKind::Reference(_, _) => todo!(),
             },
-        }
+        } */
         None
     }
 

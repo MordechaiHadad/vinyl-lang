@@ -1,4 +1,4 @@
-use crate::parser::ast::{Expression, Span, Type};
+use crate::parser::ast::{Expression, Span, Type, Variable};
 use lasso::Spur;
 
 #[derive(Debug)]
@@ -15,7 +15,5 @@ pub struct NullReferenceError {
 
 #[derive(Debug)]
 pub struct TypeMismatchError {
-    pub expected_type: Type,
-    pub found_expression: Expression,
-    pub span: Span,
+    pub variable: Variable,
 }
