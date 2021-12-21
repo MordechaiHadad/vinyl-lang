@@ -50,7 +50,7 @@ pub enum TreeSitter {
 
 #[derive(Debug, Clone)]
 pub struct AST {
-    pub namespaces: Vec<Namespace>
+    pub namespaces: Vec<Namespace>,
 }
 
 #[derive(Debug, Clone)]
@@ -165,10 +165,10 @@ pub struct Identifier {
 #[derive(Debug, Clone)]
 pub enum Mutability {
     Mutable,
-    Not
+    Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Literal {
     pub kind: LiteralKind,
     pub value: Spur,
@@ -176,7 +176,7 @@ pub struct Literal {
     pub id: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum LiteralKind {
     String,
     Char,
@@ -221,8 +221,14 @@ pub struct Span {
 impl ariadne::Span for Span {
     type SourceId = &'static str;
 
-    fn source(&self) -> &&'static str { &self.file_id}
+    fn source(&self) -> &&'static str {
+        &self.file_id
+    }
 
-    fn start(&self) -> usize { self.range.0 }
-    fn end(&self) -> usize { self.range.1 }
+    fn start(&self) -> usize {
+        self.range.0
+    }
+    fn end(&self) -> usize {
+        self.range.1
+    }
 }

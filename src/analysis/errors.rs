@@ -1,10 +1,10 @@
-use lasso::Spur;
 use crate::parser::ast::{Expression, Span, Type};
+use lasso::Spur;
 
 #[derive(Debug)]
 pub enum Error {
     NullReferenceError(NullReferenceError),
-    TypeMismatchError(TypeMismatchError)
+    TypeMismatchError(TypeMismatchError),
 }
 
 #[derive(Debug)]

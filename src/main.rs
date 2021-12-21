@@ -1,19 +1,18 @@
 #![allow(unused)]
 
-mod parser;
-mod codegen;
 mod analysis;
+mod codegen;
+mod parser;
 mod utilities;
 
-
-use std::process::exit;
+use analysis::AnalysisEngine;
 use ariadne::{Label, Report, ReportKind, Source};
-use tree_sitter::{Language, Node, Parser};
 use inkwell::context::Context;
 use lasso::Rodeo;
-use crate::analysis::AnalysisEngine;
-use crate::parser::ast::PrimitiveType;
-use crate::parser::ast::LiteralKind;
+use parser::ast::LiteralKind;
+use parser::ast::PrimitiveType;
+use std::process::exit;
+use tree_sitter::{Language, Node, Parser};
 
 extern "C" {
     fn tree_sitter_vinyl() -> Language;}
@@ -28,7 +27,10 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    let mut parser_engine = crate::parser::parser::ParserEngine{source: &source_code, rodeo: &mut rodeo};
+    let mut parser_engine = crate::parser::parser::ParserEngine {
+        source: source_code,
+        rodeo: &mut rodeo,
+    };
     let ast = match parser_engine.parse_into_ast(&root) {
         Ok(result) => result,
         Err(errors) => {
@@ -39,14 +41,18 @@ fn main() {
         }
     };
 
-    let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, &source_code);
+    let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, source_code);
     analyzer.start();
 
-   let context = Context::create();
+    let context = Context::create();
 
-    let mut codegen = codegen::llvm::codegen::CodegenEngine { rodeo: &mut rodeo, context: &context, source: &source_code, ast: &ast };
+    let mut codegen = codegen::llvm::CodegenEngine {
+        rodeo: &mut rodeo,
+        context: &context,
+        source: source_code,
+        ast: &ast,
+    };
     let module = codegen.codegen();
-
 
     // print(&root);
 }
