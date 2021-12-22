@@ -1,7 +1,8 @@
 pub mod errors;
 
 use std::fmt::Display;
-use crate::analysis::errors::{Error, NullReferenceError, TypeMismatchError};
+use std::process::exit;
+use crate::analysis::errors::{AnalyzerError, NullReferenceError, TypeMismatchError};
 use crate::analysis::TypeInfo::Unknown;
 use crate::parser::ast::{
     Expression, ExpressionKind, Identifier, Literal, LiteralKind, PrimitiveType, Span,
@@ -46,11 +47,7 @@ impl<'a> AnalysisEngine<'a> {
         self.insert_to_stack();
         let null_references_errors = self.check_for_null_reference();
 
-        self.print_errors(&null_references_errors);
-
         let type_checker_errors = self.type_checker();
-
-        self.print_errors(&type_checker_errors);
 
         let not_infered: Vec<TypeInfo> = self
             .vars
@@ -58,6 +55,11 @@ impl<'a> AnalysisEngine<'a> {
             .cloned()
             .filter(|x| x == &TypeInfo::Unknown)
             .collect();
+
+        let number_of_errors = null_references_errors.len() + type_checker_errors.len();
+        if number_of_errors > 0 {
+            exit(number_of_errors as i32);
+        }
     }
 
     fn insert_to_stack(&mut self) {
@@ -74,8 +76,8 @@ impl<'a> AnalysisEngine<'a> {
         }
     }
 
-    fn check_for_null_reference(&mut self) -> Vec<Error> {
-        let mut errors: Vec<Error> = Vec::new();
+    fn check_for_null_reference(&mut self) -> Vec<AnalyzerError> {
+        let mut errors: Vec<AnalyzerError> = Vec::new();
         for var in &self.ast.namespaces.first().unwrap().statements {
             if let StatementKind::Variable(variable) = &var.kind {
                 if let Variable { expression, .. } = variable {
@@ -85,7 +87,7 @@ impl<'a> AnalysisEngine<'a> {
                             if let ExpressionKind::Reference(mutability, identifier) = &*expression.kind
                             {
                                 if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
-                                    errors.push(Error::NullReferenceError(NullReferenceError {
+                                    errors.push(AnalyzerError::NullReferenceError(NullReferenceError {
                                         span: identifier.span,
                                         value: identifier.symbol,
                                     }));
@@ -96,11 +98,14 @@ impl<'a> AnalysisEngine<'a> {
                 }
             }
         }
+        if !errors.is_empty() {
+            self.print_errors(&errors);
+        }
         errors
     }
 
-    fn type_checker(&mut self) -> Vec<Error> {
-        let mut errors: Vec<Error> = Vec::new();
+    fn type_checker(&mut self) -> Vec<AnalyzerError> {
+        let mut errors: Vec<AnalyzerError> = Vec::new();
 
         for var in &self.ast.namespaces.first().unwrap().statements {
             if let StatementKind::Variable(variable) = &var.kind {
@@ -147,11 +152,15 @@ impl<'a> AnalysisEngine<'a> {
                 }
                 match self.unify(a, b) {
                     Ok(_) => (),
-                    Err(_) => errors.push(Error::TypeMismatchError(TypeMismatchError {
+                    Err(_) => errors.push(AnalyzerError::TypeMismatchError(TypeMismatchError {
                         variable: variable.clone()
                     })),
                 }
             }
+        }
+
+        if !errors.is_empty() {
+            self.print_errors(&errors);
         }
         errors
     }
@@ -202,12 +211,12 @@ impl<'a> AnalysisEngine<'a> {
         }
     }
 
-    fn print_errors(&self, errors: &[Error]) {
+    fn print_errors(&self, errors: &[AnalyzerError]) {
         let red = Color::Red;
 
         for error in errors {
             match error {
-                Error::NullReferenceError(error) => {
+                AnalyzerError::NullReferenceError(error) => {
                     Report::build(ReportKind::Error, error.span.file_id, error.span.range.0)
                         .with_code(69)
                         .with_message(format!(
@@ -223,7 +232,7 @@ impl<'a> AnalysisEngine<'a> {
                         .print(sources(vec![("test.vnl", &self.source)]))
                         .unwrap();
                 }
-                Error::TypeMismatchError(error) => {
+                AnalyzerError::TypeMismatchError(error) => {
                     let found_type = self
                         .pretty_print_expression(&error.variable)
                         .unwrap();

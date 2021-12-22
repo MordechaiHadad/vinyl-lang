@@ -2,7 +2,7 @@ use crate::parser::ast::{Expression, Span, Type, Variable};
 use lasso::Spur;
 
 #[derive(Debug)]
-pub enum Error {
+pub enum AnalyzerError {
     NullReferenceError(NullReferenceError),
     TypeMismatchError(TypeMismatchError),
 }

@@ -27,19 +27,8 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    let mut parser_engine = crate::parser::parser::ParserEngine {
-        source: source_code,
-        rodeo: &mut rodeo,
-    };
-    let ast = match parser_engine.parse_into_ast(&root) {
-        Ok(result) => result,
-        Err(errors) => {
-            for error in &errors {
-                println!("{}", error);
-            }
-            exit(errors.len() as i32);
-        }
-    };
+    let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
+    let ast = parser_engine.parse_into_ast(&root).ok().unwrap();
 
     let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, source_code);
     analyzer.start();
