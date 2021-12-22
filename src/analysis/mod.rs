@@ -1,5 +1,6 @@
 pub mod errors;
 
+use std::fmt::Display;
 use crate::analysis::errors::{Error, NullReferenceError, TypeMismatchError};
 use crate::analysis::TypeInfo::Unknown;
 use crate::parser::ast::{
@@ -223,8 +224,6 @@ impl<'a> AnalysisEngine<'a> {
                         .unwrap();
                 }
                 Error::TypeMismatchError(error) => {
-                    let expected_type = self.pretty_print_type(&error.variable.var_type).unwrap();
-
                     let found_type = self
                         .pretty_print_expression(&error.variable)
                         .unwrap();
@@ -236,7 +235,7 @@ impl<'a> AnalysisEngine<'a> {
                             Label::new(error.variable.expression.as_ref().unwrap().span)
                                 .with_message(format!(
                                     "Expected {}, found {}",
-                                    expected_type, found_type
+                                    error.variable.var_type, found_type
                                 ))
                                 .with_color(red),
                         )
@@ -248,38 +247,15 @@ impl<'a> AnalysisEngine<'a> {
         }
     }
 
-    fn pretty_print_type(&self, var_type: &Type) -> Result<&str, &str> {
-        match var_type {
-            Type::Primitive(primitive) => match primitive {
-                PrimitiveType::I8 => Ok("int8"),
-                PrimitiveType::I16 => Ok("int16"),
-                PrimitiveType::I32 => Ok("int32"),
-                PrimitiveType::I64 => Ok("int64"),
-                PrimitiveType::I128 => Ok("int128"),
-                PrimitiveType::U8 => Ok("uint8"),
-                PrimitiveType::U16 => Ok("uint16"),
-                PrimitiveType::U32 => Ok("uint32"),
-                PrimitiveType::U64 => Ok("uint64"),
-                PrimitiveType::U128 => Ok("uint128"),
-                PrimitiveType::Char => Ok("char"),
-                PrimitiveType::Bool => Ok("bool"),
-                PrimitiveType::Float32 => Ok("float32"),
-                PrimitiveType::Float64 => Ok("float64"),
-                PrimitiveType::String => Ok("string"),
-                PrimitiveType::Void => Ok("void"),
-                PrimitiveType::Var => Ok("var"),
-            },
-        }
-    }
-
-    fn pretty_print_expression(&self, variable: &Variable) -> Result<&str, &str> {
+    fn pretty_print_expression(&self, variable: &Variable) -> Result<String, &str> {
+        let s = String::from;
         match &*variable.expression.as_ref().unwrap().kind {
             ExpressionKind::Literal(literal) => match literal.kind {
-                LiteralKind::Int => Ok("integer"),
-                LiteralKind::String => Ok("string"),
-                LiteralKind::Bool => Ok("boolean"),
-                LiteralKind::Char => Ok("char"),
-                LiteralKind::Float => Ok("floating point number"),
+                LiteralKind::Int => Ok(s("integer")),
+                LiteralKind::String => Ok(s("string")),
+                LiteralKind::Bool => Ok(s("boolean")),
+                LiteralKind::Char => Ok(s("char")),
+                LiteralKind::Float => Ok(s("floating point number")),
             },
             ExpressionKind::Reference(_, identifier) => {
                 let current = self.stack.iter().position(|x| x == &(identifier.symbol, variable.var_type)).unwrap();
@@ -287,8 +263,7 @@ impl<'a> AnalysisEngine<'a> {
                     .stack
                     .iter().nth(current - 1).unwrap();
 
-
-                Ok(self.pretty_print_type(&reference.1).unwrap())
+                Ok(format!("{}", reference.1))
             }
             _ => todo!(),
         }

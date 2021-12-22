@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::Formatter;
 use lasso::Spur;
 
 pub enum TreeSitter {
@@ -74,6 +76,34 @@ pub struct Function {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Type {
     Primitive(PrimitiveType),
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let result = match self {
+            Type::Primitive(primitive) => match primitive {
+                PrimitiveType::I8 => "int8",
+                PrimitiveType::I16 => "int16",
+                PrimitiveType::I32 => "int32",
+                PrimitiveType::I64 => "int64",
+                PrimitiveType::I128 => "int128",
+                PrimitiveType::U8 => "uint8",
+                PrimitiveType::U16 => "uint16",
+                PrimitiveType::U32 => "uint32",
+                PrimitiveType::U64 => "uint64",
+                PrimitiveType::U128 => "uint128",
+                PrimitiveType::Char => "char",
+                PrimitiveType::Bool => "bool",
+                PrimitiveType::Float32 => "float32",
+                PrimitiveType::Float64 => "float64",
+                PrimitiveType::String => "string",
+                PrimitiveType::Void => "void",
+                PrimitiveType::Var => "var",
+            },
+        };
+
+        write!(f, "{}", result)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
