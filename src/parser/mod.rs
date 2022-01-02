@@ -1,6 +1,7 @@
 pub mod ast;
 mod errors;
 
+use ariadne::{Color, Label, Report, ReportKind, sources};
 use ast::*;
 use lasso::Rodeo;
 use tree_sitter::{Language, Node, Parser};
@@ -68,6 +69,9 @@ impl<'a> ParserEngine<'a> {
             }
         }
 
+        if !self.errors.is_empty() {
+            self.print_errors();
+        }
         ast
     }
 
@@ -129,8 +133,11 @@ impl<'a> ParserEngine<'a> {
             file_id: "test.vnl",
         };
 
-        let var_type = self
-            .parse_type(span).unwrap();
+        let var_type = match self
+            .parse_type(span) {
+            Ok(var_type) => var_type,
+            Err(var_type) =>  var_type
+            };
 
         subchild = children.next().unwrap();
         let name = self
@@ -273,7 +280,7 @@ impl<'a> ParserEngine<'a> {
         }
     }
 
-    fn parse_type(&mut self, span: Span) -> Result<Type, &str> {
+    fn parse_type(&mut self, span: Span) -> Result<Type, Type> {
         use PrimitiveType::*;
         use Type::*;
         let type_text = &self.source[span.range.0..span.range.1];
@@ -281,22 +288,76 @@ impl<'a> ParserEngine<'a> {
         match type_text {
             "bool" => Ok(Primitive(Bool)),
             "char" => Ok(Primitive(Char)),
-            "int8" => Err("int8 type is not supported yet..."),
-            "int16" => Err("int16 type is not supported yet..."),
+            "int8" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "int8 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            }
+            "int16" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "int16 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
             "int32" => Ok(Primitive(I32)),
-            "int64" => Err("int64 type is not supported yet..."),
-            "int128" => Err("int128 type is not supported yet..."),
-            "uint8" => Err("uint8 type is not supported yet..."),
-            "uint16" => Err("uint16 type is not supported yet..."),
+            "int64" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "int64 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
+            "int128" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "int128 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
+            "uint8" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "uint8 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
+            "uint16" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "uint16 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
             "uint32" => Ok(Primitive(U32)),
-            "uint64" => Err("uint64 type is not supported yet..."),
-            "uint128" => Err("uint128 type is not supported yet..."),
-            "float32" => Err("float32 type is not supported yet..."),
+            "uint64" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "uint64 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
+            "uint128" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "uint128 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
+            "float32" => {
+                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
+                    error_message: "float32 is not supported yet..",
+                    span: span.clone()
+                }));
+                Err(Primitive(Var))
+            },
             "float64" => Ok(Primitive(Float64)),
             "void" => Ok(Primitive(Void)),
             "var" => Ok(Primitive(Var)),
             "string" => Ok(Primitive(String)),
-            _ => Err("what?"),
+            _ => Err(Primitive(Var)),
         }
     }
 
@@ -507,6 +568,25 @@ impl<'a> ParserEngine<'a> {
                 file_id: "test.vnl",
             },
             kind: Box::new(expression_kind),
+        }
+    }
+
+    fn print_errors(&self) {
+        use ParserError::*;
+        let red = Color::Red;
+
+        for error in &self.errors {
+            match error {
+                NonSupportedPrimitives(error) => {
+                    Report::build(ReportKind::Error, error.span.file_id, error.span.range.0)
+                        .with_code(1)
+                        .with_message(error.error_message)
+                        .with_label(Label::new(error.span).with_color(red))
+                        .finish()
+                        .print(sources(vec![("test.vnl", &self.source)]))
+                        .unwrap();
+                }
+            }
         }
     }
 }

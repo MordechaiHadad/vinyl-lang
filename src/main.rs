@@ -30,9 +30,7 @@ fn main() {
     let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
     let ast = parser_engine.parse_into_ast(&root);
 
-    for error in parser_engine.errors {
-        println!("{:?}", error);
-    }
+    println!("{:#?}", ast);
 
     let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, source_code);
     analyzer.start();
@@ -46,8 +44,6 @@ fn main() {
         ast: &ast,
     };
     let module = codegen.codegen();
-
-    // print(&root);
 }
 
 fn print(root: &Node) {

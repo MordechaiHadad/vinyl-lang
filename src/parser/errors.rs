@@ -8,5 +8,5 @@ pub enum ParserError {
 #[derive(Debug)]
 pub struct NonSupportedPrimitives {
     pub error_message: &'static str,
-    //pub span: Span
+    pub span: Span
 }
