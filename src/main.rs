@@ -28,7 +28,11 @@ fn main() {
     let root = tree.root_node();
 
     let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
-    let ast = parser_engine.parse_into_ast(&root).ok().unwrap();
+    let ast = parser_engine.parse_into_ast(&root);
+
+    for error in parser_engine.errors {
+        println!("{:?}", error);
+    }
 
     let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, source_code);
     analyzer.start();

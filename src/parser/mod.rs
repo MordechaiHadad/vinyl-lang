@@ -9,17 +9,16 @@ use crate::parser::errors::{NonSupportedPrimitives, ParserError};
 pub struct ParserEngine<'a> {
     pub source: &'a str,
     pub rodeo: &'a mut Rodeo,
-    errors: Vec<ParserError>
+    pub errors: Vec<ParserError>
 }
 
-impl ParserEngine<'_> {
-    pub fn new(rodeo: &mut Rodeo, source: &str) -> Self {
-        let errors: Vec<ParserError> = Vec::new();
-        ParserEngine { errors, source, rodeo}
+impl<'a> ParserEngine<'a> {
+    pub fn new(rodeo: &'a mut Rodeo, source: &'a str) -> Self {
+        let mut errors: Vec<ParserError> = Vec::new();
+        ParserEngine { source, rodeo, errors }
     }
 
-    pub fn parse_into_ast(&mut self, node: &Node) -> Result<AST, Vec<ParserError>> {
-        let mut errors: Vec<ParserError> = Vec::new();
+    pub fn parse_into_ast(&mut self, node: &Node) -> AST {
         let mut cursor = node.walk();
         let mut ast = AST {
             namespaces: Vec::new(),
@@ -50,7 +49,7 @@ impl ParserEngine<'_> {
                                 },
                                 id: child.id(),
                             }),
-                        Err(error) => errors.push(error),
+                        Err(error) => self.errors.push(error),
                     }
                 }
                 FUNCTION_DECLARATION => {
@@ -69,8 +68,7 @@ impl ParserEngine<'_> {
             }
         }
 
-        if !self.errors.is_empty() { Err(&self.errors)}
-        Ok(ast)
+        ast
     }
 
     fn parse_function(&mut self, root: &Node) -> Function {
