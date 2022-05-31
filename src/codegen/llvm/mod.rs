@@ -4,11 +4,11 @@ pub mod export;
 use std::any::Any;
 use std::ptr::NonNull;
 
-use enums::AnyVariableEnum;
 use crate::parser::ast::{
     Expression, ExpressionKind, LiteralKind, PrimitiveType, Span, StatementKind, Type, Variable,
     AST,
 };
+use enums::AnyVariableEnum;
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -95,9 +95,7 @@ impl CodegenEngine<'_> {
                     println!("hello?");
                     match value {
                         AnyValueEnum::IntValue(value) => llvm_variable.set_initializer(&value),
-                        AnyValueEnum::FloatValue(value) => {
-                            llvm_variable.set_initializer(&value)
-                        }
+                        AnyValueEnum::FloatValue(value) => llvm_variable.set_initializer(&value),
                         _ => (),
                     }
                 };

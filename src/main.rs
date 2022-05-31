@@ -15,7 +15,8 @@ use std::process::exit;
 use tree_sitter::{Language, Node, Parser};
 
 extern "C" {
-    fn tree_sitter_vinyl() -> Language;}
+    fn tree_sitter_vinyl() -> Language;
+}
 
 fn main() {
     let language = unsafe { tree_sitter_vinyl() };
@@ -27,7 +28,9 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
+    utilities::treesitter_to_enum(&language);
+
+    /* let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
     let ast = parser_engine.parse_into_ast(&root);
 
     println!("{:#?}", ast);
@@ -43,7 +46,7 @@ fn main() {
         source: source_code,
         ast: &ast,
     };
-    let module = codegen.codegen();
+    let module = codegen.codegen(); */
 }
 
 fn print(root: &Node) {

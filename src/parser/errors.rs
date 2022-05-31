@@ -2,11 +2,11 @@ use crate::parser::ast::Span;
 
 #[derive(Debug)]
 pub enum ParserError {
-    NonSupportedPrimitives(NonSupportedPrimitives)
+    NonSupportedPrimitives(NonSupportedPrimitives),
 }
 
 #[derive(Debug)]
 pub struct NonSupportedPrimitives {
     pub error_message: &'static str,
-    pub span: Span
+    pub span: Span,
 }

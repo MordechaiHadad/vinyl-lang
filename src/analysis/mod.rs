@@ -1,7 +1,5 @@
 pub mod errors;
 
-use std::fmt::Display;
-use std::process::exit;
 use crate::analysis::errors::{AnalyzerError, NullReferenceError, TypeMismatchError};
 use crate::analysis::TypeInfo::Unknown;
 use crate::parser::ast::{
@@ -10,6 +8,8 @@ use crate::parser::ast::{
 };
 use ariadne::{sources, Color, ColorGenerator, Label, Report, ReportKind, Source};
 use lasso::{Rodeo, Spur};
+use std::fmt::Display;
+use std::process::exit;
 
 type TypeId = usize;
 
@@ -84,13 +84,16 @@ impl<'a> AnalysisEngine<'a> {
                     match expression {
                         None => (),
                         Some(expression) => {
-                            if let ExpressionKind::Reference(mutability, identifier) = &*expression.kind
+                            if let ExpressionKind::Reference(mutability, identifier) =
+                                &*expression.kind
                             {
                                 if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
-                                    errors.push(AnalyzerError::NullReferenceError(NullReferenceError {
-                                        span: identifier.span,
-                                        value: identifier.symbol,
-                                    }));
+                                    errors.push(AnalyzerError::NullReferenceError(
+                                        NullReferenceError {
+                                            span: identifier.span,
+                                            value: identifier.symbol,
+                                        },
+                                    ));
                                 }
                             }
                         }
@@ -118,42 +121,40 @@ impl<'a> AnalysisEngine<'a> {
                 }
                 match &variable.expression {
                     None => (),
-                    Some(expression) => {
-                        match &*expression.kind {
-                            ExpressionKind::Literal(literal) => {
-                                use LiteralKind::*;
-                                b = match literal.kind {
-                                    Char => self.insert_to_vars(TypeInfo::Char),
-                                    Bool => self.insert_to_vars(TypeInfo::Bool),
-                                    Int => self.insert_to_vars(TypeInfo::Integer),
-                                    Float => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
-                                    String => self.insert_to_vars(TypeInfo::String),
+                    Some(expression) => match &*expression.kind {
+                        ExpressionKind::Literal(literal) => {
+                            use LiteralKind::*;
+                            b = match literal.kind {
+                                Char => self.insert_to_vars(TypeInfo::Char),
+                                Bool => self.insert_to_vars(TypeInfo::Bool),
+                                Int => self.insert_to_vars(TypeInfo::Integer),
+                                Float => self.insert_to_vars(TypeInfo::FloatingPointLiteral),
+                                String => self.insert_to_vars(TypeInfo::String),
+                            };
+                        }
+                        ExpressionKind::Reference(_, identifier) => {
+                            if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
+                                b = self.insert_to_vars(TypeInfo::Unknown);
+                            } else {
+                                let current = self
+                                    .stack
+                                    .iter()
+                                    .position(|x| x == &(identifier.symbol, variable.var_type))
+                                    .unwrap();
+                                b = match self.stack.iter().nth(current - 1).unwrap().1 {
+                                    Type::Primitive(primitive) => {
+                                        self.insert_to_vars(self.primitive_to_typeinfo(&primitive))
+                                    }
                                 };
                             }
-                            ExpressionKind::Reference(_, identifier) => {
-                                if self.stack.iter().all(|(x, _)| x != &identifier.symbol) {
-                                    b = self.insert_to_vars(TypeInfo::Unknown);
-                                } else {
-                                    let current = self.stack.iter().position(|x| x == &(identifier.symbol, variable.var_type)).unwrap();
-                                    b = match self
-                                        .stack
-                                        .iter().nth(current - 1).unwrap().1
-                                    {
-                                        Type::Primitive(primitive) => {
-                                            self.insert_to_vars(self.primitive_to_typeinfo(&primitive))
-                                        }
-                                    };
-                                }
-                            }
-                            _ => todo!(),
                         }
-                    }
-
+                        _ => todo!(),
+                    },
                 }
                 match self.unify(a, b) {
                     Ok(_) => (),
                     Err(_) => errors.push(AnalyzerError::TypeMismatchError(TypeMismatchError {
-                        variable: variable.clone()
+                        variable: variable.clone(),
                     })),
                 }
             }
@@ -233,24 +234,26 @@ impl<'a> AnalysisEngine<'a> {
                         .unwrap();
                 }
                 AnalyzerError::TypeMismatchError(error) => {
-                    let found_type = self
-                        .pretty_print_expression(&error.variable)
-                        .unwrap();
+                    let found_type = self.pretty_print_expression(&error.variable).unwrap();
 
-                    Report::build(ReportKind::Error, error.variable.span.file_id, error.variable.span.range.0)
-                        .with_code(420)
-                        .with_message("Mismatched types")
-                        .with_label(
-                            Label::new(error.variable.expression.as_ref().unwrap().span)
-                                .with_message(format!(
-                                    "Expected {}, found {}",
-                                    error.variable.var_type, found_type
-                                ))
-                                .with_color(red),
-                        )
-                        .finish()
-                        .print(sources(vec![("test.vnl", &self.source)]))
-                        .unwrap();
+                    Report::build(
+                        ReportKind::Error,
+                        error.variable.span.file_id,
+                        error.variable.span.range.0,
+                    )
+                    .with_code(420)
+                    .with_message("Mismatched types")
+                    .with_label(
+                        Label::new(error.variable.expression.as_ref().unwrap().span)
+                            .with_message(format!(
+                                "Expected {}, found {}",
+                                error.variable.var_type, found_type
+                            ))
+                            .with_color(red),
+                    )
+                    .finish()
+                    .print(sources(vec![("test.vnl", &self.source)]))
+                    .unwrap();
                 }
             }
         }
@@ -267,10 +270,12 @@ impl<'a> AnalysisEngine<'a> {
                 LiteralKind::Float => Ok(s("floating point number")),
             },
             ExpressionKind::Reference(_, identifier) => {
-                let current = self.stack.iter().position(|x| x == &(identifier.symbol, variable.var_type)).unwrap();
-                let reference = self
+                let current = self
                     .stack
-                    .iter().nth(current - 1).unwrap();
+                    .iter()
+                    .position(|x| x == &(identifier.symbol, variable.var_type))
+                    .unwrap();
+                let reference = self.stack.iter().nth(current - 1).unwrap();
 
                 Ok(format!("{}", reference.1))
             }

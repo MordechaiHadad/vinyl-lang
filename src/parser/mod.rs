@@ -1,22 +1,26 @@
 pub mod ast;
 mod errors;
 
-use ariadne::{Color, Label, Report, ReportKind, sources};
+use crate::parser::errors::{NonSupportedPrimitives, ParserError};
+use ariadne::{sources, Color, Label, Report, ReportKind};
 use ast::*;
 use lasso::Rodeo;
 use tree_sitter::{Language, Node, Parser};
-use crate::parser::errors::{NonSupportedPrimitives, ParserError};
 
 pub struct ParserEngine<'a> {
     pub source: &'a str,
     pub rodeo: &'a mut Rodeo,
-    pub errors: Vec<ParserError>
+    pub errors: Vec<ParserError>,
 }
 
 impl<'a> ParserEngine<'a> {
     pub fn new(rodeo: &'a mut Rodeo, source: &'a str) -> Self {
         let mut errors: Vec<ParserError> = Vec::new();
-        ParserEngine { source, rodeo, errors }
+        ParserEngine {
+            source,
+            rodeo,
+            errors,
+        }
     }
 
     pub fn parse_into_ast(&mut self, node: &Node) -> AST {
@@ -40,19 +44,17 @@ impl<'a> ParserEngine<'a> {
             const FUNCTION_DECLARATION: u16 = TreeSitter::FunctionDeclaration as u16;
 
             match child.kind_id() {
-                VARIABLE_DECLERATION => {
-                    match self.parse_variable(&child) {
-                        Ok(variable) => namespace.statements.push(Statement {
-                                kind: StatementKind::Variable(variable),
-                                span: Span {
-                                    range: (child.start_byte(), child.end_byte()),
-                                    file_id: "test.vnl",
-                                },
-                                id: child.id(),
-                            }),
-                        Err(error) => self.errors.push(error),
-                    }
-                }
+                VARIABLE_DECLERATION => match self.parse_variable(&child) {
+                    Ok(variable) => namespace.statements.push(Statement {
+                        kind: StatementKind::Variable(variable),
+                        span: Span {
+                            range: (child.start_byte(), child.end_byte()),
+                            file_id: "test.vnl",
+                        },
+                        id: child.id(),
+                    }),
+                    Err(error) => self.errors.push(error),
+                },
                 FUNCTION_DECLARATION => {
                     let function = self.parse_function(&child);
 
@@ -119,7 +121,6 @@ impl<'a> ParserEngine<'a> {
     }
 
     fn parse_variable(&mut self, root: &Node) -> Result<Variable, ParserError> {
-
         const EQUAL_SIGN: u16 = TreeSitter::EqualSign as u16;
 
         let mut cursor = root.walk();
@@ -129,15 +130,14 @@ impl<'a> ParserEngine<'a> {
         let mut subchild = children.next().unwrap();
 
         let span = Span {
-          range: (subchild.start_byte(), subchild.end_byte()),
+            range: (subchild.start_byte(), subchild.end_byte()),
             file_id: "test.vnl",
         };
 
-        let var_type = match self
-            .parse_type(span) {
+        let var_type = match self.parse_type(span) {
             Ok(var_type) => var_type,
-            Err(var_type) =>  var_type
-            };
+            Err(var_type) => var_type,
+        };
 
         subchild = children.next().unwrap();
         let name = self
@@ -185,20 +185,17 @@ impl<'a> ParserEngine<'a> {
         let mut cursor = root.walk();
         for child in root.children(&mut cursor) {
             match child.kind_id() {
-                VARIABLE_DECLERATION => {
-                    match self.parse_variable(&child) {
-                        Ok(var) => statements.push(Statement {
-                            kind: StatementKind::Variable(var),
-                            span: Span {
-                                range: (child.start_byte(), child.end_byte()),
-                                file_id: "test.vnl",
-                            },
-                            id: child.id(),
-                        }),
-                        Err(error) => todo!()
-                    }
-
-                }
+                VARIABLE_DECLERATION => match self.parse_variable(&child) {
+                    Ok(var) => statements.push(Statement {
+                        kind: StatementKind::Variable(var),
+                        span: Span {
+                            range: (child.start_byte(), child.end_byte()),
+                            file_id: "test.vnl",
+                        },
+                        id: child.id(),
+                    }),
+                    Err(error) => todo!(),
+                },
                 LITERAL | BINARY_EXPRESSION => {
                     let expression = self.parse_expression(&child);
                     statements.push(Statement {
@@ -289,70 +286,88 @@ impl<'a> ParserEngine<'a> {
             "bool" => Ok(Primitive(Bool)),
             "char" => Ok(Primitive(Char)),
             "int8" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "int8 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "int8 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
             }
             "int16" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "int16 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "int16 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "int32" => Ok(Primitive(I32)),
             "int64" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "int64 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "int64 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "int128" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "int128 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "int128 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "uint8" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "uint8 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "uint8 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "uint16" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "uint16 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "uint16 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "uint32" => Ok(Primitive(U32)),
             "uint64" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "uint64 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "uint64 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "uint128" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "uint128 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "uint128 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "float32" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(NonSupportedPrimitives {
-                    error_message: "float32 is not supported yet..",
-                    span: span.clone()
-                }));
+                self.errors.push(ParserError::NonSupportedPrimitives(
+                    NonSupportedPrimitives {
+                        error_message: "float32 is not supported yet..",
+                        span: span.clone(),
+                    },
+                ));
                 Err(Primitive(Var))
-            },
+            }
             "float64" => Ok(Primitive(Float64)),
             "void" => Ok(Primitive(Void)),
             "var" => Ok(Primitive(Var)),
@@ -371,7 +386,7 @@ impl<'a> ParserEngine<'a> {
                 const INTEGER_LITERAL: u16 = TreeSitter::IntegerLiteral as u16;
                 const BOOL_LITERAL: u16 = TreeSitter::BoolLiteral as u16;
                 const CHAR_LITERAL: u16 = TreeSitter::CharLiteral as u16;
-                const FLOATING_POINT_LITERAL: u16 = TreeSitter::FloatingPointLiteral as u16;
+                const FLOATING_POINT_LITERAL: u16 = TreeSitter::RealLiteral as u16;
                 const STRING_LITERAL: u16 = TreeSitter::StringLiteral as u16;
 
                 let node = root.child(0).unwrap();
