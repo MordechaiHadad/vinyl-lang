@@ -285,89 +285,17 @@ impl<'a> ParserEngine<'a> {
         match type_text {
             "bool" => Ok(Primitive(Bool)),
             "char" => Ok(Primitive(Char)),
-            "int8" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "int8 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
-            "int16" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "int16 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
+            "int8" => Ok(Primitive((I8))),
+            "int16" => Ok(Primitive((I16))),
             "int32" => Ok(Primitive(I32)),
-            "int64" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "int64 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
-            "int128" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "int128 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
-            "uint8" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "uint8 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
-            "uint16" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "uint16 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
+            "int64" => Ok(Primitive((I64))),
+            "int128" => Ok(Primitive((I128))),
+            "uint8" => Ok(Primitive((U8))),
+            "uint16" => Ok(Primitive((U16))),
             "uint32" => Ok(Primitive(U32)),
-            "uint64" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "uint64 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
-            "uint128" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "uint128 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
-            "float32" => {
-                self.errors.push(ParserError::NonSupportedPrimitives(
-                    NonSupportedPrimitives {
-                        error_message: "float32 is not supported yet..",
-                        span: span.clone(),
-                    },
-                ));
-                Err(Primitive(Var))
-            }
+            "uint64" => Ok(Primitive((U64))),
+            "uint128" => Ok(Primitive((U128))),
+            "float32" => Ok(Primitive((Float32))),
             "float64" => Ok(Primitive(Float64)),
             "void" => Ok(Primitive(Void)),
             "var" => Ok(Primitive(Var)),
@@ -386,7 +314,7 @@ impl<'a> ParserEngine<'a> {
                 const INTEGER_LITERAL: u16 = TreeSitter::IntegerLiteral as u16;
                 const BOOL_LITERAL: u16 = TreeSitter::BoolLiteral as u16;
                 const CHAR_LITERAL: u16 = TreeSitter::CharLiteral as u16;
-                const FLOATING_POINT_LITERAL: u16 = TreeSitter::RealLiteral as u16;
+                const REAL_LITERAL: u16 = TreeSitter::RealLiteral as u16;
                 const STRING_LITERAL: u16 = TreeSitter::StringLiteral as u16;
 
                 let node = root.child(0).unwrap();
@@ -424,7 +352,7 @@ impl<'a> ParserEngine<'a> {
                             file_id: "test.vnl",
                         },
                     }),
-                    FLOATING_POINT_LITERAL => ExpressionKind::Literal(Literal {
+                    REAL_LITERAL => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Float,
                         value: self

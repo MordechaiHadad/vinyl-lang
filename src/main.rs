@@ -28,32 +28,8 @@ fn main() {
     let tree = parser.parse(&source_code, None).unwrap();
     let root = tree.root_node();
 
-    utilities::treesitter_to_enum(&language);
-
-    /* let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
+    let mut parser_engine = parser::ParserEngine::new(&mut rodeo, source_code);
     let ast = parser_engine.parse_into_ast(&root);
 
     println!("{:#?}", ast);
-
-    let mut analyzer = AnalysisEngine::new(&ast, &mut rodeo, source_code);
-    analyzer.start();
-
-    let context = Context::create();
-
-    let mut codegen = codegen::llvm::CodegenEngine {
-        rodeo: &mut rodeo,
-        context: &context,
-        source: source_code,
-        ast: &ast,
-    };
-    let module = codegen.codegen(); */
-}
-
-fn print(root: &Node) {
-    println!("{} {}", root.kind(), root.kind_id());
-
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
-        print(&child);
-    }
 }
