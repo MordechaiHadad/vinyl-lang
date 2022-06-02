@@ -5,12 +5,18 @@ use std::fs::File;
 use std::io::prelude::*;
 use tree_sitter::Language;
 
-pub fn treesitter_to_enum(lang: &Language) {
+pub fn convert_treesitter_nodes(lang: &Language) {
     for i in 0..lang.node_kind_count() {
-        let new_case = lang
-            .node_kind_for_id(i as u16)
-            .unwrap()
-            .to_case(Case::UpperCamel);
+        if !lang.node_kind_is_visible(i as u16) {
+            continue;
+        }
+        let node_kind = lang.node_kind_for_id(i as u16).unwrap();
+
+        let new_case = if node_kind != "-" {
+            node_kind.to_case(Case::UpperCamel)
+        } else {
+            String::from(node_kind)
+        };
 
         let new_name = match new_case.as_str() {
             "(" => "LeftParen",
@@ -37,7 +43,6 @@ pub fn treesitter_to_enum(lang: &Language) {
             "*" => "Multiply",
             "/" => "Divide",
             "%" => "Modulus",
-            "End" => "EOF",
             "[" => "LeftBracket",
             "]" => "RightBracket",
             name => name,

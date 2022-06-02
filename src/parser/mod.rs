@@ -5,6 +5,9 @@ use crate::parser::errors::{NonSupportedPrimitives, ParserError};
 use ariadne::{sources, Color, Label, Report, ReportKind};
 use ast::*;
 use lasso::Rodeo;
+use num_traits::FromPrimitive;
+use std::convert::TryInto;
+use std::ops::Range;
 use tree_sitter::{Language, Node, Parser};
 
 pub struct ParserEngine<'a> {
@@ -40,11 +43,8 @@ impl<'a> ParserEngine<'a> {
         let mut namespace = ast.namespaces.first_mut().unwrap();
 
         for child in node.children(&mut cursor.clone()) {
-            const VARIABLE_DECLERATION: u16 = TreeSitter::VariableDeclaration as u16;
-            const FUNCTION_DECLARATION: u16 = TreeSitter::FunctionDeclaration as u16;
-
-            match child.kind_id() {
-                VARIABLE_DECLERATION => match self.parse_variable(&child) {
+            match FromPrimitive::from_u16(child.kind_id()) {
+                Some(TreesitterNodeID::VariableDeclaration) => match self.parse_variable(&child) {
                     Ok(variable) => namespace.statements.push(Statement {
                         kind: StatementKind::Variable(variable),
                         span: Span {
@@ -53,9 +53,9 @@ impl<'a> ParserEngine<'a> {
                         },
                         id: child.id(),
                     }),
-                    Err(error) => self.errors.push(error),
+                    Err(_) => (),
                 },
-                FUNCTION_DECLARATION => {
+                Some(TreesitterNodeID::FunctionDeclaration) => {
                     let function = self.parse_function(&child);
 
                     namespace.statements.push(Statement {
@@ -78,105 +78,87 @@ impl<'a> ParserEngine<'a> {
     }
 
     fn parse_function(&mut self, root: &Node) -> Function {
-        const LEFT_PAREN: u16 = TreeSitter::LeftParen as u16;
-        const RIGHT_PAREN: u16 = TreeSitter::RightParen as u16;
-        const LEFT_CURLY: u16 = TreeSitter::LeftCurly as u16;
-        const RIGHT_CURLY: u16 = TreeSitter::RightCurly as u16;
-
         let mut cursor = root.walk();
 
         let mut children = root.children(&mut cursor);
 
-        let mut subchild = children.next().unwrap();
-
-        let return_type = self
-            .parse_type(Span {
-                range: (subchild.start_byte(), subchild.end_byte()),
-                file_id: "test.vnl",
-            })
-            .unwrap();
-
-        subchild = children.next().unwrap();
-        let name = self
-            .rodeo
-            .get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()]);
-
-        subchild = children.next().unwrap();
-        let parameters = self.parse_parameters(&subchild);
-
-        subchild = children.next().unwrap();
-        let body = self.parse_function_body(&subchild);
-
-        Function {
-            return_type,
-            name,
-            parameters,
-            body,
+        let mut function = Function {
+            return_type: Type::Primitive(PrimitiveType::Void),
+            name: self.rodeo.get_or_intern("NULL"),
+            parameters: None,
+            body: None,
             span: Span {
                 range: (root.start_byte(), root.end_byte()),
                 file_id: "test.vnl",
             },
             id: root.id(),
+        };
+
+        for subchild in children {
+            match FromPrimitive::from_u16(subchild.kind_id()) {
+                Some(TreesitterNodeID::PrimitiveType) => {
+                    function.return_type =
+                        self.parse_type(subchild.start_byte()..subchild.end_byte())
+                }
+                Some(TreesitterNodeID::Identifier) => {
+                    function.name = self
+                        .rodeo
+                        .get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()])
+                }
+                Some(TreesitterNodeID::Parameters) => {
+                    function.parameters = self.parse_parameters(&subchild)
+                }
+                Some(TreesitterNodeID::Block) => {
+                    function.body = self.parse_function_body(&subchild)
+                }
+                _ => continue,
+            }
         }
+
+        function
     }
 
-    fn parse_variable(&mut self, root: &Node) -> Result<Variable, ParserError> {
-        const EQUAL_SIGN: u16 = TreeSitter::EqualSign as u16;
-
+    fn parse_variable(&mut self, root: &Node) -> Result<Variable, ()> {
         let mut cursor = root.walk();
 
         let mut children = root.children(&mut cursor);
 
-        let mut subchild = children.next().unwrap();
-
-        let span = Span {
-            range: (subchild.start_byte(), subchild.end_byte()),
-            file_id: "test.vnl",
-        };
-
-        let var_type = match self.parse_type(span) {
-            Ok(var_type) => var_type,
-            Err(var_type) => var_type,
-        };
-
-        subchild = children.next().unwrap();
-        let name = self
-            .rodeo
-            .get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()]);
-
-        subchild = children.next().unwrap();
-        if subchild.kind_id() != EQUAL_SIGN {
-            return Ok(Variable {
-                var_type,
-                name,
-                span: Span {
-                    range: (root.start_byte(), root.end_byte()),
-                    file_id: "test.vnl",
-                },
-                id: root.id(),
-                expression: None,
-            });
-        }
-
-        let node = children.next().unwrap();
-        let expression = self.parse_expression(&node);
-
-        Ok(Variable {
-            var_type,
-            name,
+        let mut var = Variable {
+            mutability: Mutability::Immutable,
+            var_type: Type::Primitive(PrimitiveType::Void),
+            expression: None,
+            name: self.rodeo.get_or_intern("NULL"),
             span: Span {
                 range: (root.start_byte(), root.end_byte()),
                 file_id: "test.vnl",
             },
             id: root.id(),
-            expression: Some(expression),
-        })
+        };
+
+        for subchild in children {
+            match FromPrimitive::from_u16(subchild.kind_id()) {
+                Some(TreesitterNodeID::MutabilitySpecifier) => var.mutability = Mutability::Mutable,
+                Some(TreesitterNodeID::Identifier) => {
+                    var.name = self
+                        .rodeo
+                        .get_or_intern(&self.source[subchild.start_byte()..subchild.end_byte()])
+                }
+                Some(TreesitterNodeID::PrimitiveType) => {
+                    var.var_type = self.parse_type(subchild.start_byte()..subchild.end_byte())
+                }
+                Some(TreesitterNodeID::BinaryExpression)
+                | Some(TreesitterNodeID::ArrayCreationExpression)
+                | Some(TreesitterNodeID::Literal) => {
+                    var.expression = Some(self.parse_expression(&subchild))
+                }
+                _ => continue,
+            }
+        }
+
+        Ok(var)
     }
 
     fn parse_function_body(&mut self, root: &Node) -> Option<Block> {
-        const VARIABLE_DECLERATION: u16 = TreeSitter::VariableDeclaration as u16;
-        const LITERAL: u16 = TreeSitter::Literal as u16;
-        const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
         if root.child_count() <= 2 {
             return None;
         }
@@ -184,8 +166,8 @@ impl<'a> ParserEngine<'a> {
         let mut statements = Vec::new();
         let mut cursor = root.walk();
         for child in root.children(&mut cursor) {
-            match child.kind_id() {
-                VARIABLE_DECLERATION => match self.parse_variable(&child) {
+            match FromPrimitive::from_u16(child.kind_id()) {
+                Some(TreesitterNodeID::VariableDeclaration) => match self.parse_variable(&child) {
                     Ok(var) => statements.push(Statement {
                         kind: StatementKind::Variable(var),
                         span: Span {
@@ -196,7 +178,9 @@ impl<'a> ParserEngine<'a> {
                     }),
                     Err(error) => todo!(),
                 },
-                LITERAL | BINARY_EXPRESSION => {
+                Some(TreesitterNodeID::Literal)
+                | Some(TreesitterNodeID::BinaryExpression)
+                | Some(TreesitterNodeID::ArrayCreationExpression) => {
                     let expression = self.parse_expression(&child);
                     statements.push(Statement {
                         kind: StatementKind::Expression(expression),
@@ -222,7 +206,6 @@ impl<'a> ParserEngine<'a> {
     }
 
     fn parse_parameters(&mut self, root: &Node) -> Option<Parameters> {
-        const PARAMETER: u16 = TreeSitter::Parameter as u16;
         if root.child_count() <= 2 {
             return None;
         }
@@ -230,8 +213,8 @@ impl<'a> ParserEngine<'a> {
         let mut parameters = Vec::new();
         let mut cursor = root.walk();
         for child in root.children(&mut cursor) {
-            match child.kind_id() {
-                PARAMETER => {
+            match FromPrimitive::from_u16(child.kind_id()) {
+                Some(TreesitterNodeID::Parameter) => {
                     let parameter = self.parse_parameter(&child);
                     parameters.push(parameter);
                 }
@@ -255,12 +238,7 @@ impl<'a> ParserEngine<'a> {
         let mut children = root.children(&mut cursor);
 
         let mut subchild = children.next().unwrap();
-        let param_type = self
-            .parse_type(Span {
-                range: (subchild.start_byte(), subchild.end_byte()),
-                file_id: "test.vnl",
-            })
-            .unwrap();
+        let param_type = self.parse_type(subchild.start_byte()..subchild.end_byte());
 
         subchild = children.next().unwrap();
         let name = self
@@ -277,49 +255,39 @@ impl<'a> ParserEngine<'a> {
         }
     }
 
-    fn parse_type(&mut self, span: Span) -> Result<Type, Type> {
+    fn parse_type(&mut self, range: Range<usize>) -> Type {
         use PrimitiveType::*;
         use Type::*;
-        let type_text = &self.source[span.range.0..span.range.1];
+        let type_text = &self.source[range];
 
         match type_text {
-            "bool" => Ok(Primitive(Bool)),
-            "char" => Ok(Primitive(Char)),
-            "int8" => Ok(Primitive((I8))),
-            "int16" => Ok(Primitive((I16))),
-            "int32" => Ok(Primitive(I32)),
-            "int64" => Ok(Primitive((I64))),
-            "int128" => Ok(Primitive((I128))),
-            "uint8" => Ok(Primitive((U8))),
-            "uint16" => Ok(Primitive((U16))),
-            "uint32" => Ok(Primitive(U32)),
-            "uint64" => Ok(Primitive((U64))),
-            "uint128" => Ok(Primitive((U128))),
-            "float32" => Ok(Primitive((Float32))),
-            "float64" => Ok(Primitive(Float64)),
-            "void" => Ok(Primitive(Void)),
-            "var" => Ok(Primitive(Var)),
-            "string" => Ok(Primitive(String)),
-            _ => Err(Primitive(Var)),
+            "bool" => Primitive(Bool),
+            "char" => Primitive(Char),
+            "int8" => Primitive(I8),
+            "int16" => Primitive(I16),
+            "int32" => Primitive(I32),
+            "int64" => Primitive(I64),
+            "int128" => Primitive(I128),
+            "uint8" => Primitive(U8),
+            "uint16" => Primitive(U16),
+            "uint32" => Primitive(U32),
+            "uint64" => Primitive(U64),
+            "uint128" => Primitive(U128),
+            "float32" => Primitive(Float32),
+            "float64" => Primitive(Float64),
+            "void" => Primitive(Void),
+            "var" => Primitive(Var),
+            "string" => Primitive(String),
+            _ => Primitive(Var),
         }
     }
 
     fn parse_expression(&mut self, root: &Node) -> Expression {
-        const LITERAL: u16 = TreeSitter::Literal as u16;
-        const BINARY_EXPRESSION: u16 = TreeSitter::BinaryExpression as u16;
-        const REFERENCE: u16 = TreeSitter::Reference as u16;
-
-        let mut expression_kind = match root.kind_id() {
-            LITERAL => {
-                const INTEGER_LITERAL: u16 = TreeSitter::IntegerLiteral as u16;
-                const BOOL_LITERAL: u16 = TreeSitter::BoolLiteral as u16;
-                const CHAR_LITERAL: u16 = TreeSitter::CharLiteral as u16;
-                const REAL_LITERAL: u16 = TreeSitter::RealLiteral as u16;
-                const STRING_LITERAL: u16 = TreeSitter::StringLiteral as u16;
-
+        let mut expression_kind = match FromPrimitive::from_u16(root.kind_id()) {
+            Some(TreesitterNodeID::Literal) => {
                 let node = root.child(0).unwrap();
-                match node.kind_id() {
-                    INTEGER_LITERAL => ExpressionKind::Literal(Literal {
+                match FromPrimitive::from_u16(node.kind_id()) {
+                    Some(TreesitterNodeID::IntegerLiteral) => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Int,
                         value: self
@@ -330,7 +298,7 @@ impl<'a> ParserEngine<'a> {
                             file_id: "test.vnl",
                         },
                     }),
-                    BOOL_LITERAL => ExpressionKind::Literal(Literal {
+                    Some(TreesitterNodeID::BoolLiteral) => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Bool,
                         value: self
@@ -341,7 +309,7 @@ impl<'a> ParserEngine<'a> {
                             file_id: "test.vnl",
                         },
                     }),
-                    CHAR_LITERAL => ExpressionKind::Literal(Literal {
+                    Some(TreesitterNodeID::CharLiteral) => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Char,
                         value: self.rodeo.get_or_intern(
@@ -352,7 +320,7 @@ impl<'a> ParserEngine<'a> {
                             file_id: "test.vnl",
                         },
                     }),
-                    REAL_LITERAL => ExpressionKind::Literal(Literal {
+                    Some(TreesitterNodeID::RealLiteral) => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::Float,
                         value: self
@@ -363,7 +331,7 @@ impl<'a> ParserEngine<'a> {
                             file_id: "test.vnl",
                         },
                     }),
-                    STRING_LITERAL => ExpressionKind::Literal(Literal {
+                    Some(TreesitterNodeID::StringLiteral) => ExpressionKind::Literal(Literal {
                         id: node.id(),
                         kind: LiteralKind::String,
                         value: self.rodeo.get_or_intern(
@@ -387,83 +355,64 @@ impl<'a> ParserEngine<'a> {
                     }),
                 }
             }
-            BINARY_EXPRESSION => {
-                const ADD_SIGN: u16 = TreeSitter::PlusSign as u16;
-                const MINUS_SIGN: u16 = TreeSitter::MinusSign as u16;
-                const MULTIPLY: u16 = TreeSitter::Multiply as u16;
-                const DIVIDE: u16 = TreeSitter::Divide as u16;
-                const SHIFT_LEFT: u16 = TreeSitter::ShiftLeft as u16;
-                const SHIFT_RIGHT: u16 = TreeSitter::ShiftRight as u16;
-                const AND: u16 = TreeSitter::And as u16;
-                const OR: u16 = TreeSitter::Or as u16;
-                const BIT_AND: u16 = TreeSitter::BitAnd as u16;
-                const BIT_OR: u16 = TreeSitter::BitOr as u16;
-                const BIT_XOR: u16 = TreeSitter::BitXor as u16;
-                const EQUAL: u16 = TreeSitter::Equal as u16;
-                const NOT_EQUAL: u16 = TreeSitter::NotEqual as u16;
-                const LESS_THAN: u16 = TreeSitter::LessThan as u16;
-                const LESS_THAN_OR_EQUAL: u16 = TreeSitter::LessThanOrEqual as u16;
-                const GREATER_THAN: u16 = TreeSitter::GreaterThan as u16;
-                const GREATER_THAN_OR_EQUAL: u16 = TreeSitter::GreaterThanOrEqual as u16;
-                const MODULUS: u16 = TreeSitter::Modulus as u16;
-
+            Some(TreesitterNodeID::BinaryExpression) => {
                 let mut cursor = root.walk();
                 let mut children = root.children(&mut cursor);
                 let left_expression = self.parse_expression(&children.next().unwrap());
 
-                let operator = match children.next().unwrap().kind_id() {
-                    ADD_SIGN => BinaryOperator {
+                let operator = match FromPrimitive::from_u16(children.next().unwrap().kind_id()) {
+                    Some(TreesitterNodeID::PlusSign) => BinaryOperator {
                         kind: BinaryOperatorKind::Add,
                     },
-                    MINUS_SIGN => BinaryOperator {
+                    Some(TreesitterNodeID::MinusSign) => BinaryOperator {
                         kind: BinaryOperatorKind::Subtract,
                     },
-                    MULTIPLY => BinaryOperator {
+                    Some(TreesitterNodeID::Multiply) => BinaryOperator {
                         kind: BinaryOperatorKind::Multiply,
                     },
-                    DIVIDE => BinaryOperator {
+                    Some(TreesitterNodeID::Divide) => BinaryOperator {
                         kind: BinaryOperatorKind::Divide,
                     },
-                    SHIFT_LEFT => BinaryOperator {
+                    Some(TreesitterNodeID::ShiftLeft) => BinaryOperator {
                         kind: BinaryOperatorKind::ShiftLeft,
                     },
-                    SHIFT_RIGHT => BinaryOperator {
+                    Some(TreesitterNodeID::ShiftRight) => BinaryOperator {
                         kind: BinaryOperatorKind::ShiftRight,
                     },
-                    AND => BinaryOperator {
+                    Some(TreesitterNodeID::And) => BinaryOperator {
                         kind: BinaryOperatorKind::And,
                     },
-                    OR => BinaryOperator {
+                    Some(TreesitterNodeID::Or) => BinaryOperator {
                         kind: BinaryOperatorKind::Or,
                     },
-                    BIT_AND => BinaryOperator {
+                    Some(TreesitterNodeID::BitAnd) => BinaryOperator {
                         kind: BinaryOperatorKind::BitAnd,
                     },
-                    BIT_OR => BinaryOperator {
+                    Some(TreesitterNodeID::BitOr) => BinaryOperator {
                         kind: BinaryOperatorKind::BitOr,
                     },
-                    BIT_XOR => BinaryOperator {
+                    Some(TreesitterNodeID::BitXor) => BinaryOperator {
                         kind: BinaryOperatorKind::BitXor,
                     },
-                    EQUAL => BinaryOperator {
+                    Some(TreesitterNodeID::EqualSign) => BinaryOperator {
                         kind: BinaryOperatorKind::Equal,
                     },
-                    NOT_EQUAL => BinaryOperator {
+                    Some(TreesitterNodeID::NotEqual) => BinaryOperator {
                         kind: BinaryOperatorKind::NotEqual,
                     },
-                    LESS_THAN => BinaryOperator {
+                    Some(TreesitterNodeID::LessThan) => BinaryOperator {
                         kind: BinaryOperatorKind::LessThan,
                     },
-                    LESS_THAN_OR_EQUAL => BinaryOperator {
+                    Some(TreesitterNodeID::LessThanOrEqual) => BinaryOperator {
                         kind: BinaryOperatorKind::LessThanOrEqual,
                     },
-                    GREATER_THAN => BinaryOperator {
+                    Some(TreesitterNodeID::GreaterThan) => BinaryOperator {
                         kind: BinaryOperatorKind::GreaterThan,
                     },
-                    GREATER_THAN_OR_EQUAL => BinaryOperator {
+                    Some(TreesitterNodeID::GreaterThanOrEqual) => BinaryOperator {
                         kind: BinaryOperatorKind::GreaterThanOrEqual,
                     },
-                    MODULUS => BinaryOperator {
+                    Some(TreesitterNodeID::Modulus) => BinaryOperator {
                         kind: BinaryOperatorKind::Modulus,
                     },
                     _ => BinaryOperator {
@@ -479,8 +428,8 @@ impl<'a> ParserEngine<'a> {
                     Box::new(right_expression),
                 )
             }
-            REFERENCE => ExpressionKind::Reference(
-                Mutability::Not,
+            Some(TreesitterNodeID::Reference) => ExpressionKind::Reference(
+                Mutability::Immutable,
                 Identifier {
                     symbol: self
                         .rodeo

@@ -1,9 +1,11 @@
 use lasso::Spur;
+use num_derive::FromPrimitive;
+use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Formatter;
 
-pub enum TreeSitter {
-    EOF = 0,
+#[derive(Clone, Copy, FromPrimitive)]
+pub enum TreesitterNodeID {
     EqualSign = 1,
     SemiColon = 2,
     MutabilitySpecifier = 3,
@@ -11,7 +13,6 @@ pub enum TreeSitter {
     PrimitiveType = 5,
     LeftBracket = 6,
     RightBracket = 7,
-    IdentifierToken1 = 8,
     And = 9,
     Or = 10,
     BitAnd = 11,
@@ -33,22 +34,17 @@ pub enum TreeSitter {
     New = 27,
     IntegerLiteral = 28,
     RealLiteral = 29,
-    StringLiteralToken1 = 31,
-    CharLiteralToken1 = 33,
     True = 34,
     False = 35,
     LeftParen = 36,
     RightParen = 38,
     LeftCurly = 39,
     RightCurly = 40,
-    Statement = 42,
-    Declaration = 43,
+    SourceFile = 41,
     VariableDeclaration = 44,
     FunctionDeclaration = 45,
-    Type = 46,
     ArrayType = 47,
     Identifier = 48,
-    Expression = 49,
     BinaryExpression = 50,
     ArrayCreationExpression = 51,
     Literal = 52,
@@ -176,6 +172,7 @@ pub enum StatementKind {
 
 #[derive(Debug, Clone)]
 pub struct Variable {
+    pub mutability: Mutability,
     pub var_type: Type,
     pub expression: Option<Expression>,
     pub name: Spur,
@@ -206,7 +203,7 @@ pub struct Identifier {
 #[derive(Debug, Clone)]
 pub enum Mutability {
     Mutable,
-    Not,
+    Immutable,
 }
 
 #[derive(Debug, Clone, Copy)]
