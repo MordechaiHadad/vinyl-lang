@@ -1,0 +1,42 @@
+{
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/config.schema.json",
+  "grammars": [
+    {
+      "name": "vinyl",
+      "camelcase": "Vinyl",
+      "title": "Vinyl",
+      "scope": "source.vinyl",
+      "file-types": [
+        ".vnl"
+      ],
+      "injection-regex": "^vinyl$",
+      "class-name": "TreeSitterVinyl"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Vinyl programming language grammar",
+    "authors": [
+      {
+        "name": "Mordechai Hadad",
+        "email": "mordechai.hadad01@gmail.com",
+        "url": "https://github.com/MordechaiHadad"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/vinyl-lang/vinyl",
+      "funding": ""
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "java": false,
+    "node": false,
+    "python": false,
+    "rust": true,
+    "swift": false,
+    "zig": false
+  }
+}
