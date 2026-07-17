@@ -55,9 +55,10 @@ fn init_tracing() -> eyre::Result<()> {
 
 fn setup_tracing(verbose: u8) -> eyre::Result<()> {
     let env_filter = if verbose > 0 {
+        let crate_name = env!("CARGO_CRATE_NAME");
         match verbose {
-            1 => EnvFilter::new("vinyl=debug"),
-            2 => EnvFilter::new("vinyl=trace"),
+            1 => EnvFilter::new(format!("{crate_name}=debug")),
+            2 => EnvFilter::new(format!("{crate_name}=trace")),
             _ => EnvFilter::new("trace"),
         }
     } else {
