@@ -8,9 +8,12 @@
 
 ## Architecture
 
+File extension: `.vnl`
+
 ### Memory
 - Automatic GC heap, no borrow checker, no manual memory management
 - Structs/enums as value types (stack by default), GC-allocated when assigned to a reference type field or returned from a GC-tracked context
+
 
 ### Modes
 - `vinyl run` - Cranelift JIT
@@ -46,7 +49,21 @@ This is the same mechanism Rust uses for FFI. Vinyl's compiler links the object 
 Core std types (`Vec`, `HashMap`, etc.) are implemented in **Rust** as a native crate (`vinyl-std`). Higher-level Vinyl-specific APIs can later be written in Vinyl itself.
 
 ### Pipeline
-- Source -> Lexer -> Parser -> HIR -> Type Checker -> MIR -> Cranelift JIT / LLVM AOT
+- Source -> Tree-sitter (CST) -> CST Lowering (AST) -> HIR -> Type Checker -> MIR -> Cranelift JIT / LLVM AOT
+
+### Type Inference
+
+Vinyl uses **Hindley-Milner** type inference with unification-based constraint solving.
+
+The current implementation uses a non-generic HM variant (no `let`-polymorphism yet). Each top-level function is checked against its declared or inferred types:
+
+- **Unification**: Terms are unified via standard Robinson's algorithm with an occurs check to prevent recursive types.
+- **Scope**: Lexical scoping with push/pop scope management. Each `if` branch and block body gets its own scope.
+- **Literals**: Default types are assigned — `int` literals default to `int32`, `float` to `float64`, `bool` to `bool`, `string` to `string`.
+- **Binary ops**: Both operands must unify. Comparison and logical operators (`==`, `<`, `&&`, `||`, etc.) return `bool`. Arithmetic operators return the operand type.
+- **Calls**: Function call arguments are unified against the callee's parameter types. Return type is determined from the callee's signature.
+- **Annotations**: Type annotations are unified against inferred types — a mismatch produces a type error.
+- **Unresolved type variables**: `Var` types that remain unresolved after checking are kept as-is rather than being silently defaulted.
 
 ## Syntax
 
@@ -67,6 +84,7 @@ Core std types (`Vec`, `HashMap`, etc.) are implemented in **Rust** as a native 
 ### Literals
 ```
 "string literal"
+r"raw string with no \escape sequences"
 f"interpolation {expr}"
 'a'
 42       // int
@@ -90,12 +108,13 @@ No null. No exceptions. Fallible functions return `Result`. Optional values use 
 ```
 Arithmetic: +  -  *  /  %  **  //
 Comparison: ==  !=  <  >  <=  >=
-Logical:    &&  ||  !
+Logical:    &&  ||  !        (also `and`, `or`)
 Bitwise:    &  |  ^  ~  <<  >>
 Assignment: =  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 Range:      ..  ..=  (exclusive/inclusive)
 Access:     .  ?.  (optional chaining on Option)
 Error prop: ?  (unwraps Result/Option, propagates error/None)
+Unwrap:     ??  (unwrap `Option`/`Result` with a fallback or early return)
 ```
 
 No `++` or `--`. Use `+= 1` / `-= 1`.
@@ -108,11 +127,22 @@ let name = value;        // inferred
 let mut name: Type = value;
 ```
 
+Variables declared at module scope (outside functions) are always **immutable** — the `mut` keyword is not permitted on globals.
+
 ### Comments
 ```
-// line comment
+# line comment
 /* block comment */
 ```
+
+### Attributes
+```
+@inline
+@doc("documentation text")
+@derive(Debug, Clone)
+```
+
+Attributes are metadata annotations placed before definitions. Syntax: `@name` or `@name(expr, ...)`. They have no effect on runtime semantics — the compiler uses them for code generation hints, documentation, or derive macros.
 
 ### Control Flow
 ```
@@ -134,7 +164,18 @@ fn name(param: Type): ReturnType {
 }
 ```
 
-No return type = unit return. Parameters are immutable by default (`mut` keyword to allow mutation).
+Parameters are immutable by default (`mut` keyword to allow mutation). No return type = unit return.
+
+**Default arguments**: parameters can have default values.
+
+```
+fn greet(name: string, greeting: string = "Hello"): string {
+    return f"{greeting}, {name}";
+}
+
+greet("World");                         // "Hello, World"
+greet("World", "Hey");                  // "Hey, World"
+```
 
 ### Structs
 ```
@@ -145,6 +186,14 @@ struct Name {
 ```
 
 Field access with `.`. Struct update syntax like Rust: `Name { field: new_value, ..other }`.
+
+**Field puns**: when a variable name matches a struct field name, you can omit the value.
+
+```
+let name = "vinyl";
+let age = 1;
+let user = User { name, age };  // equivalent to User { name: name, age: age }
+```
 
 ### Enums
 ```
@@ -184,20 +233,47 @@ fn fallible(): Result<int, Error> {
 
 `?.` is optional chaining on `Option`: `option?.field` returns `None` if `option` is `None`, otherwise `Some(value.field)`.
 
-### Entry Point
+The **`??` operator** provides syntax sugar for `unwrap_or_else`:
+
 ```
-fn main() { }
+let value = optional_value ?? "default";          // unwrap or default
+let value = fallible_result ?? return Err("fail"); // unwrap or early return
+let value = fallible_result ?? break;              // unwrap or break out of loop
 ```
 
-For script mode (`vinyl run`), top-level statements execute directly without `fn main`, like Python.
+`??` is a binary operator. The left operand is the `Option`/`Result`. The right operand is a value of the inner type (for defaults) or a control-flow expression (`return`, `break`, `continue`). When the right operand is a control-flow expression, the compiler rewrites it to an early exit from the enclosing function/loop.
 
-### Arrays
+### Implicit Main
+
+Top-level statements are automatically bundled into a synthetic execution block. No `fn main` wrapper required — like Python.
+
+If a `fn main()` is also present, the compiler treats top-level statements as setup/initialization code and appends a call to `main()` at the end of the execution block. No boilerplate `if __name__ == "__main__"` check.
+
 ```
-let arr: [Type; length] = [value, value, value];
-let first = arr[0];
+// entry.vnl
+print("hello world");            // runs in synthetic main
+
+fn main() {                      // called at the end of synthetic main
+    println("done");
+}
+```
+Output:
+```
+hello world
+done
 ```
 
-Fixed-size on stack. Dynamic lists via `Vec<T>` in std crate.
+### Arrays & Vectors
+
+`[value, value, ...]` creates a **Vec<T>** (heap-allocated, growable). To create a fixed-size array, provide an explicit size in the type annotation:
+
+```
+let vec = [1, 2, 3];                // Vec<int32>
+let arr: [int32; 3] = [1, 2, 3];   // array (fixed-size, stack)
+let arr = [1, 2, 3] as [int32; 3]; // array via cast
+```
+
+Access with `arr[index]`. Arrays are fixed-size on stack. Vectors are heap-allocated dynamic lists (from std crate).
 
 ### Built-in Functions
 ```
@@ -218,3 +294,13 @@ impl Type {
 
 instance.method();
 ```
+
+## Editions
+
+Vinyl uses an edition system (like Rust's) to allow syntax and semantics to evolve without breaking existing code.
+
+- Single-file scripts use the latest stable edition automatically.
+- Projects with a `vinyl.toml` config file declare the edition in that file (e.g. `edition = "2025"`). The package manager or user sets this; no default fallback.
+- The default edition is the latest stable edition.
+- Editions can change grammar rules, keywords, operator precedence, and standard library behavior.
+- The compiler always supports at least the two most recent editions.

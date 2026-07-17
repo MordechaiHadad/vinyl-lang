@@ -23,7 +23,9 @@ pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParseEr
         .set_language(&language())
         .expect("vinyl language should be valid");
 
-    let tree = parser.parse(source, None).expect("tree-sitter parse should not fail");
+    let tree = parser
+        .parse(source, None)
+        .expect("tree-sitter parse should not fail");
 
     let errors = error::validate_with_name(filename, &tree, source);
     if errors.is_empty() {

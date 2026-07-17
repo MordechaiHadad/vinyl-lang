@@ -8,12 +8,15 @@ export default grammar({
   rules: {
     source_file: $ => repeat($._definition),
 
-    _definition: $ => choice(
-      $.function_definition,
+    _definition: $ => seq(
+      repeat($.attribute),
+      choice(
+        $.function_definition,
+      ),
     ),
 
     comment: $ => token(choice(
-      seq("//", /.*/),
+      seq("#", /.*/),
       seq("/*", /[^*]*\*+([^/*][^*]*\*+)*/, "/"),
     )),
 
@@ -96,6 +99,8 @@ export default grammar({
     _expression: $ => choice(
       $.identifier,
       $.string_literal,
+      $.raw_string_literal,
+      $.char_literal,
       $.integer_literal,
       $.float_literal,
       $.bool_literal,
@@ -107,11 +112,34 @@ export default grammar({
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
 
+    char_literal: $ => seq(
+      "'",
+      choice(/[^'\\]/, /\\./),
+      "'",
+    ),
+
     string_literal: $ => seq(
       optional("f"),
       '"',
       repeat(/[^"\\]|\\"/),
       '"',
+    ),
+
+    raw_string_literal: $ => token(seq(
+      "r",
+      '"',
+      repeat(/[^"]/),
+      '"',
+    )),
+
+    attribute: $ => seq(
+      "@",
+      field("name", $.identifier),
+      optional(seq(
+        "(",
+        commaSep($._expression),
+        ")",
+      )),
     ),
 
     integer_literal: $ => token(choice(
@@ -137,20 +165,32 @@ export default grammar({
     ),
 
     binary_expression: $ => {
-      const table = [
-        [choice("||"), "||"],
-        [choice("&&"), "&&"],
-        [choice("==", "!=", "<", ">", "<=", ">="), "=="],
-        [choice("+", "-"), "+"],
-        [choice("*", "/", "%"), "*"],
-      ];
-      return choice(...table.map(([op, name]) =>
-        prec.left(seq(
-          $._expression,
-          field("operator", op),
-          $._expression,
-        ))
-      ));
+      const PREC = {
+        POWER: 11,
+        MULTIPLICATIVE: 10,
+        ADDITIVE: 9,
+        SHIFT: 8,
+        BITAND: 7,
+        BITXOR: 6,
+        BITOR: 5,
+        RANGE: 4,
+        COMPARISON: 3,
+        AND: 2,
+        OR: 1,
+      };
+      return choice(
+        prec.right(PREC.POWER, seq($._expression, field("operator", "**"), $._expression)),
+        prec.left(PREC.MULTIPLICATIVE, seq($._expression, field("operator", choice("*", "/", "%", "//")), $._expression)),
+        prec.left(PREC.ADDITIVE, seq($._expression, field("operator", choice("+", "-")), $._expression)),
+        prec.left(PREC.SHIFT, seq($._expression, field("operator", choice("<<", ">>")), $._expression)),
+        prec.left(PREC.BITAND, seq($._expression, field("operator", "&"), $._expression)),
+        prec.left(PREC.BITXOR, seq($._expression, field("operator", "^"), $._expression)),
+        prec.left(PREC.BITOR, seq($._expression, field("operator", "|"), $._expression)),
+        prec.left(PREC.RANGE, seq($._expression, field("operator", choice("..", "..=")), $._expression)),
+        prec.left(PREC.COMPARISON, seq($._expression, field("operator", choice("==", "!=", "<", ">", "<=", ">=")), $._expression)),
+        prec.left(PREC.AND, seq($._expression, field("operator", choice("&&", "and")), $._expression)),
+        prec.left(PREC.OR, seq($._expression, field("operator", choice("||", "or")), $._expression)),
+      );
     },
 
     parenthesized_expression: $ => seq("(", $._expression, ")"),

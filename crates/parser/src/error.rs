@@ -43,7 +43,10 @@ pub(crate) fn validate_with_name(filename: &str, tree: &Tree, source: &str) -> V
 
             let (message, help) = if node.is_missing() {
                 let expected = node.kind();
-                (format!("expected `{expected}`"), Some(format!("add `{expected}` here")))
+                (
+                    format!("expected `{expected}`"),
+                    Some(format!("add `{expected}` here")),
+                )
             } else {
                 let snippet = &source[start..end];
                 let context = snippet.chars().take(40).collect::<String>();

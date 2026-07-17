@@ -1,9 +1,8 @@
 [package]
-name = "vinyl-compiler"
+name = "vinyl-typecheck"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 vinyl-parser = { path = "../parser" }
-vinyl-typecheck = { path = "../typecheck" }
 miette = { version = "7", features = ["derive"] }

@@ -6,4 +6,6 @@ members = [
     "crates/compiler",
     "crates/runtime",
     "crates/std",
+    "crates/typecheck",
+    "crates/codegen",
 ]
