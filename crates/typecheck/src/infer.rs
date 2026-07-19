@@ -74,8 +74,8 @@ struct InferState {
     scopes: Vec<HashMap<String, TypeScheme>>,
     errors: Vec<TypeError>,
     subs: HashMap<usize, Type>,
-    next_var: usize,
     current_return_type: Option<Type>,
+    next_var: usize,
 }
 
 impl InferState {
@@ -86,15 +86,9 @@ impl InferState {
             scopes: vec![HashMap::new()],
             errors: Vec::new(),
             subs: HashMap::new(),
-            next_var: 0,
             current_return_type: None,
+            next_var: 0,
         }
-    }
-
-    fn fresh_var(&mut self) -> Type {
-        let id = self.next_var;
-        self.next_var += 1;
-        Type::Var(id)
     }
 
     fn resolve(&self, t: &Type) -> Type {
@@ -186,7 +180,7 @@ impl InferState {
                     size: s2,
                 },
             ) if s1 == s2 => self.unify(e1, e2, span),
-            _ => Err(self.error(span, format!("expected type `{}`, got `{}`", a, b))),
+            _ => Err(self.error(span, format!("type mismatch: expected `{}`, found `{}`", b, a))),
         }
     }
 
@@ -243,7 +237,7 @@ impl InferState {
 
         let return_type = match &func.return_type {
             Some(t) => t.clone(),
-            None => self.fresh_var(),
+            None => Type::Primitive(Primitive::Unit),
         };
 
         let prev_return = self.current_return_type.replace(return_type.clone());
@@ -253,10 +247,6 @@ impl InferState {
         self.current_return_type = prev_return;
 
         let body = self.resolve_hir_stmts(body);
-        let mut return_type = self.apply(&return_type);
-        if matches!(return_type, Type::Var(_)) {
-            return_type = Type::Primitive(Primitive::Unit);
-        }
 
         Ok(HirFunction {
             name: func.name.clone(),
@@ -414,7 +404,7 @@ impl InferState {
         match expr {
             Expr::Int(v, _) => Ok(HirExpr {
                 kind: HirExprKind::Int(*v),
-                type_: Type::Primitive(Primitive::Int32),
+                type_: self.fresh_var(),
             }),
             Expr::Float(v, _) => Ok(HirExpr {
                 kind: HirExprKind::Float(*v),
@@ -548,13 +538,19 @@ impl InferState {
         }
     }
 
+    fn fresh_var(&mut self) -> Type {
+        let id = self.next_var;
+        self.next_var += 1;
+        Type::Var(id)
+    }
+
     fn resolve_hir_type(&self, t: &Type) -> Type {
         match t {
             Type::Var(id) => {
                 if let Some(resolved) = self.subs.get(id) {
                     self.resolve_hir_type(resolved)
                 } else {
-                    Type::Primitive(Primitive::Unit)
+                    Type::Primitive(Primitive::Int32)
                 }
             }
             Type::Ref(inner) => Type::Ref(Box::new(self.resolve_hir_type(inner))),

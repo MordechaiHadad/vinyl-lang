@@ -72,11 +72,12 @@ impl CodegenBackend for CraneliftBackend {
     type Error = CraneliftError;
 
     fn compile(&mut self, items: &[HirItem]) -> Result<(), Self::Error> {
+        let pointer_type = self.module.isa().pointer_type();
         for item in items {
             let HirItem {
                 kind: HirItemKind::Function(f),
             } = item;
-            let sig = hir_sig_to_clif(f);
+            let sig = hir_sig_to_clif(f, pointer_type);
             let func_id = self
                 .module
                 .declare_function(&f.name, Linkage::Export, &sig)
@@ -96,7 +97,7 @@ impl CodegenBackend for CraneliftBackend {
                 .ok_or_else(|| CraneliftError::Msg(format!("function {name} not found")))?;
 
             self.ctx.clear();
-            self.ctx.func.signature = hir_sig_to_clif(func);
+            self.ctx.func.signature = hir_sig_to_clif(func, pointer_type);
 
             {
                 let mut builder_ctx = FunctionBuilderContext::new();
@@ -108,7 +109,7 @@ impl CodegenBackend for CraneliftBackend {
                 let mut terminated = false;
 
                 for param in params.iter() {
-                    let ty = param_type_to_clif(&param.type_);
+                    let ty = param_type_to_clif(&param.type_, pointer_type);
                     let val = builder.append_block_param(entry, ty);
                     vars.insert(param.name.clone(), val);
                 }
@@ -118,7 +119,7 @@ impl CodegenBackend for CraneliftBackend {
                     decls: &self.decls,
                 };
                 for stmt in &func.body {
-                    compile_stmt(stmt, &mut builder, &mut vars, &mut terminated, &mut ctx)?;
+                    compile_stmt(stmt, &mut builder, &mut vars, &mut terminated, &mut ctx, pointer_type)?;
                 }
 
                 if !terminated {
@@ -142,12 +143,14 @@ impl CodegenBackend for CraneliftBackend {
     }
 
     fn run(&self) -> Result<i64, Self::Error> {
-        let main_id = self
+        let Some(main_id) = self
             .decls
             .iter()
             .find(|(n, _, _)| n == "main")
             .map(|(_, id, _)| *id)
-            .ok_or_else(|| CraneliftError::Msg("no main function".to_string()))?;
+        else {
+            return Ok(0);
+        };
 
         let main_ptr = self.module.get_finalized_function(main_id);
 
@@ -163,6 +166,7 @@ fn compile_stmt(
     vars: &mut HashMap<String, ir::Value>,
     terminated: &mut bool,
     ctx: &mut CodegenCtx,
+    pointer_type: ir::Type,
 ) -> Result<(), CraneliftError> {
     if *terminated {
         return Ok(());
@@ -175,18 +179,18 @@ fn compile_stmt(
             value,
             ..
         } => {
-            let val = compile_expr(value, builder, vars, ctx)?;
+            let val = compile_expr(value, builder, vars, ctx, pointer_type)?;
             vars.insert(name.clone(), val);
             Ok(())
         }
         HirStmtKind::Expr(expr) => {
-            compile_expr(expr, builder, vars, ctx)?;
+            compile_expr(expr, builder, vars, ctx, pointer_type)?;
             Ok(())
         }
         HirStmtKind::Return(expr) => {
             match expr {
                 Some(e) => {
-                    let val = compile_expr(e, builder, vars, ctx)?;
+                    let val = compile_expr(e, builder, vars, ctx, pointer_type)?;
                     builder.ins().return_(&[val]);
                 }
                 None => {
@@ -208,7 +212,7 @@ fn compile_stmt(
                 else_if,
                 else_block,
             };
-            compile_if(branches, builder, vars, terminated, ctx)
+            compile_if(branches, builder, vars, terminated, ctx, pointer_type)
         }
     }
 }
@@ -219,8 +223,9 @@ fn compile_if(
     vars: &mut HashMap<String, ir::Value>,
     terminated: &mut bool,
     ctx: &mut CodegenCtx,
+    pointer_type: ir::Type,
 ) -> Result<(), CraneliftError> {
-    let cond_val = compile_expr(branches.condition, builder, vars, ctx)?;
+    let cond_val = compile_expr(branches.condition, builder, vars, ctx, pointer_type)?;
 
     let then_block_id = builder.create_block();
     let else_block_id = builder.create_block();
@@ -233,7 +238,7 @@ fn compile_if(
     builder.switch_to_block(then_block_id);
     let mut then_terminated = false;
     for stmt in branches.then_block {
-        compile_stmt(stmt, builder, vars, &mut then_terminated, ctx)?;
+        compile_stmt(stmt, builder, vars, &mut then_terminated, ctx, pointer_type)?;
     }
     if !then_terminated {
         builder.ins().jump(merge_block_id, &[]);
@@ -242,7 +247,7 @@ fn compile_if(
     builder.switch_to_block(else_block_id);
 
     for (cond, block) in branches.else_if {
-        let else_cond = compile_expr(cond, builder, vars, ctx)?;
+        let else_cond = compile_expr(cond, builder, vars, ctx, pointer_type)?;
         let inner_then = builder.create_block();
         let inner_else = builder.create_block();
 
@@ -253,7 +258,7 @@ fn compile_if(
         builder.switch_to_block(inner_then);
         let mut inner_terminated = false;
         for stmt in block {
-            compile_stmt(stmt, builder, vars, &mut inner_terminated, ctx)?;
+            compile_stmt(stmt, builder, vars, &mut inner_terminated, ctx, pointer_type)?;
         }
         if !inner_terminated {
             builder.ins().jump(merge_block_id, &[]);
@@ -265,7 +270,7 @@ fn compile_if(
     let mut else_terminated = false;
     if let Some(else_stmts) = branches.else_block {
         for stmt in else_stmts {
-            compile_stmt(stmt, builder, vars, &mut else_terminated, ctx)?;
+            compile_stmt(stmt, builder, vars, &mut else_terminated, ctx, pointer_type)?;
         }
     }
     if !else_terminated {
@@ -285,10 +290,11 @@ fn compile_expr(
     builder: &mut FunctionBuilder,
     vars: &mut HashMap<String, ir::Value>,
     ctx: &mut CodegenCtx,
+    pointer_type: ir::Type,
 ) -> Result<ir::Value, CraneliftError> {
     match &expr.kind {
         HirExprKind::Int(v) => {
-            let ty = ir_type_from_primitive(&expr.type_);
+            let ty = ir_type_from_primitive(&expr.type_, pointer_type);
             Ok(builder.ins().iconst(ty, *v as i64))
         }
         HirExprKind::Float(v) => Ok(builder.ins().f64const(*v)),
@@ -301,8 +307,8 @@ fn compile_expr(
             .copied()
             .ok_or_else(|| CraneliftError::Msg(format!("undefined variable `{name}`"))),
         HirExprKind::Binary { left, op, right } => {
-            let left_val = compile_expr(left, builder, vars, ctx)?;
-            let right_val = compile_expr(right, builder, vars, ctx)?;
+            let left_val = compile_expr(left, builder, vars, ctx, pointer_type)?;
+            let right_val = compile_expr(right, builder, vars, ctx, pointer_type)?;
             Ok(match op {
                 BinaryOp::Add => builder.ins().iadd(left_val, right_val),
                 BinaryOp::Sub => builder.ins().isub(left_val, right_val),
@@ -344,8 +350,19 @@ fn compile_expr(
                 BinaryOp::BitXor => builder.ins().bxor(left_val, right_val),
                 BinaryOp::Shl => builder.ins().ishl(left_val, right_val),
                 BinaryOp::Shr => builder.ins().sshr(left_val, right_val),
-                // ponytail: FloorDiv uses sdiv (trunc toward zero, not -inf). Fix when needed.
-                BinaryOp::FloorDiv => builder.ins().sdiv(left_val, right_val),
+                BinaryOp::FloorDiv => {
+                    let ty = builder.func.dfg.value_type(left_val);
+                    let zero = builder.ins().iconst(ty, 0);
+                    let one = builder.ins().iconst(ty, 1);
+                    let q = builder.ins().sdiv(left_val, right_val);
+                    let r = builder.ins().srem(left_val, right_val);
+                    let r_ne_zero = builder.ins().icmp(IntCC::NotEqual, r, zero);
+                    let sign_xor = builder.ins().bxor(left_val, right_val);
+                    let signs_differ = builder.ins().icmp(IntCC::SignedLessThan, sign_xor, zero);
+                    let adjust = builder.ins().band(r_ne_zero, signs_differ);
+                    let q_minus_1 = builder.ins().isub(q, one);
+                    builder.ins().select(adjust, q_minus_1, q)
+                }
                 BinaryOp::Pow => {
                     return Err(CraneliftError::Msg(
                         "power operator not supported in codegen yet".to_string(),
@@ -368,7 +385,7 @@ fn compile_expr(
                 if let Some(callee_id) = callee_id {
                     let mut call_args = Vec::new();
                     for arg in args {
-                        let val = compile_expr(arg, builder, vars, ctx)?;
+                        let val = compile_expr(arg, builder, vars, ctx, pointer_type)?;
                         call_args.push(val);
                     }
                     let sig = ctx.module.declare_func_in_func(callee_id, builder.func);
@@ -392,7 +409,7 @@ fn compile_expr(
         }
         HirExprKind::Block(stmts) => {
             for stmt in stmts {
-                compile_stmt(stmt, builder, vars, &mut false, ctx)?;
+                compile_stmt(stmt, builder, vars, &mut false, ctx, pointer_type)?;
             }
             Err(CraneliftError::Msg(
                 "blocks as expressions not supported in codegen".to_string(),
@@ -401,38 +418,42 @@ fn compile_expr(
     }
 }
 
-fn param_type_to_clif(t: &Type) -> types::Type {
+fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> types::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
         Type::Primitive(Primitive::Int64) => types::I64,
+        Type::Primitive(Primitive::ISize) => pointer_type,
+        Type::Primitive(Primitive::USize) => pointer_type,
         Type::Primitive(Primitive::Float64) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
         _ => types::I64,
     }
 }
 
-fn ir_type_from_primitive(t: &Type) -> ir::Type {
+fn ir_type_from_primitive(t: &Type, pointer_type: ir::Type) -> ir::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
         Type::Primitive(Primitive::Int64) => types::I64,
+        Type::Primitive(Primitive::ISize) => pointer_type,
+        Type::Primitive(Primitive::USize) => pointer_type,
         Type::Primitive(Primitive::Float64) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
         _ => types::I64,
     }
 }
 
-fn hir_sig_to_clif(func: &HirFunction) -> Signature {
+fn hir_sig_to_clif(func: &HirFunction, pointer_type: ir::Type) -> Signature {
     let mut sig = Signature::new(CallConv::SystemV);
 
     for param in &func.params {
         sig.params
-            .push(AbiParam::new(param_type_to_clif(&param.type_)));
+            .push(AbiParam::new(param_type_to_clif(&param.type_, pointer_type)));
     }
 
     match &func.return_type {
         Type::Primitive(Primitive::Unit) => {}
         other => {
-            sig.returns.push(AbiParam::new(param_type_to_clif(other)));
+            sig.returns.push(AbiParam::new(param_type_to_clif(other, pointer_type)));
         }
     }
 

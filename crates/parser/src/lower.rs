@@ -176,16 +176,19 @@ fn lower_simple_type(node: &Node, source: &str, source_name: &str) -> Result<Typ
                 "int32" => Type::Primitive(Primitive::Int32),
                 "int64" => Type::Primitive(Primitive::Int64),
                 "int128" => Type::Primitive(Primitive::Int128),
+                "isize" => Type::Primitive(Primitive::ISize),
                 "uint8" => Type::Primitive(Primitive::UInt8),
                 "uint16" => Type::Primitive(Primitive::UInt16),
                 "uint32" => Type::Primitive(Primitive::UInt32),
                 "uint64" => Type::Primitive(Primitive::UInt64),
                 "uint128" => Type::Primitive(Primitive::UInt128),
+                "usize" => Type::Primitive(Primitive::USize),
                 "float32" => Type::Primitive(Primitive::Float32),
                 "float64" => Type::Primitive(Primitive::Float64),
                 "bool" => Type::Primitive(Primitive::Bool),
                 "char" => Type::Primitive(Primitive::Char),
                 "string" => Type::Primitive(Primitive::String),
+                "unit" => Type::Primitive(Primitive::Unit),
                 _ => {
                     return Err(span_error(
                         node,
@@ -227,7 +230,12 @@ fn lower_block(node: &Node, source: &str, source_name: &str) -> Result<Vec<Stmt>
         if let Some(child) = node.named_child(i as u32) {
             match lower_statement(&child, source, source_name) {
                 Ok(Some(stmt)) => stmts.push(stmt),
-                Ok(None) => {}
+                Ok(None) => {
+                    if let Ok(expr) = lower_expression(&child, source, source_name) {
+                        let span = SourceSpan::from(child.start_byte()..child.end_byte());
+                        stmts.push(Stmt::Return(Some(expr), span));
+                    }
+                }
                 Err(e) => return Err(e),
             }
         }

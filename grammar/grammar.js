@@ -36,10 +36,10 @@ export default grammar({
     ),
 
     primitive_type: $ => choice(
-      'int8', 'int16', 'int32', 'int64', 'int128',
-      'uint8', 'uint16', 'uint32', 'uint64', 'uint128',
+      'int8', 'int16', 'int32', 'int64', 'int128', 'isize',
+      'uint8', 'uint16', 'uint32', 'uint64', 'uint128', 'usize',
       'float32', 'float64',
-      'bool', 'char', 'string',
+      'bool', 'char', 'string', 'unit',
     ),
     simple_type: $ => choice($.primitive_type, $.identifier),
 
@@ -65,6 +65,7 @@ export default grammar({
     block: $ => seq(
       "{",
       repeat($._statement),
+      optional($._expression),
       "}",
     ),
 
@@ -154,7 +155,7 @@ export default grammar({
     bool_literal: $ => choice("true", "false"),
 
     call_expression: $ => seq(
-      field("function", $._expression),
+      field("function", $.identifier),
       field("arguments", $.arguments),
     ),
 

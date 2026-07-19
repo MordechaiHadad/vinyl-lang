@@ -71,15 +71,26 @@ The current implementation uses a non-generic HM variant (no `let`-polymorphism 
 
 | Type | Description |
 |------|-------------|
-| `int8` .. `int128` | Signed integers |
-| `uint8` .. `uint128` | Unsigned integers |
+| `unit` | Unit type (no value) |
+| `int8` | 8-bit signed integer |
+| `int16` | 16-bit signed integer |
+| `int32` | 32-bit signed integer |
+| `int64` | 64-bit signed integer |
+| `int128` | 128-bit signed integer |
+| `isize` | Pointer-sized signed integer |
+| `uint8` | 8-bit unsigned integer |
+| `uint16` | 16-bit unsigned integer |
+| `uint32` | 32-bit unsigned integer |
+| `uint64` | 64-bit unsigned integer |
+| `uint128` | 128-bit unsigned integer |
+| `usize` | Pointer-sized unsigned integer |
 | `float32` | 32-bit floating point |
 | `float64` | 64-bit floating point |
 | `bool` | Boolean |
 | `char` | Unicode scalar value |
 | `string` | Heap-allocated string primitive (like C#, not Rust's `String`/`&str` split) |
 
-`string` is a reference type (GC-tracked).
+`string` is a reference type (GC-tracked). `unit` is also the default return type when no return type is specified on a function.
 
 ### Literals
 ```
@@ -166,6 +177,31 @@ fn name(param: Type): ReturnType {
 
 Parameters are immutable by default (`mut` keyword to allow mutation). No return type = unit return.
 
+The last expression in a function body is returned implicitly (like Rust). Explicit `return` is also allowed.
+
+```vinyl
+fn add(a: int32, b: int32): int32 {
+    a + b                          # implicit return
+}
+
+fn add_explicit(a: int32, b: int32): int32 {
+    return a + b;                  # explicit return (also valid)
+}
+
+fn greet(name: string): string {
+    let greeting = f"Hello, {name}";
+    greeting                       # implicit return of greeting value
+}
+
+fn log(message: string): unit {
+    print(message);                # no return value needed for unit
+}
+
+fn log_short(message: string) {
+    print(message);                # return type defaults to unit
+}
+```
+
 **Default arguments**: parameters can have default values.
 
 ```
@@ -242,26 +278,6 @@ let value = fallible_result ?? break;              // unwrap or break out of loo
 ```
 
 `??` is a binary operator. The left operand is the `Option`/`Result`. The right operand is a value of the inner type (for defaults) or a control-flow expression (`return`, `break`, `continue`). When the right operand is a control-flow expression, the compiler rewrites it to an early exit from the enclosing function/loop.
-
-### Implicit Main
-
-Top-level statements are automatically bundled into a synthetic execution block. No `fn main` wrapper required — like Python.
-
-If a `fn main()` is also present, the compiler treats top-level statements as setup/initialization code and appends a call to `main()` at the end of the execution block. No boilerplate `if __name__ == "__main__"` check.
-
-```
-// entry.vnl
-print("hello world");            // runs in synthetic main
-
-fn main() {                      // called at the end of synthetic main
-    println("done");
-}
-```
-Output:
-```
-hello world
-done
-```
 
 ### Arrays & Vectors
 

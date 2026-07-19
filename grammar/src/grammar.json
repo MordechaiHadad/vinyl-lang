@@ -168,6 +168,10 @@
         },
         {
           "type": "STRING",
+          "value": "isize"
+        },
+        {
+          "type": "STRING",
           "value": "uint8"
         },
         {
@@ -188,6 +192,10 @@
         },
         {
           "type": "STRING",
+          "value": "usize"
+        },
+        {
+          "type": "STRING",
           "value": "float32"
         },
         {
@@ -205,6 +213,10 @@
         {
           "type": "STRING",
           "value": "string"
+        },
+        {
+          "type": "STRING",
+          "value": "unit"
         }
       ]
     },
@@ -355,6 +367,18 @@
             "type": "SYMBOL",
             "name": "_statement"
           }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_expression"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "STRING",
@@ -840,7 +864,7 @@
           "name": "function",
           "content": {
             "type": "SYMBOL",
-            "name": "_expression"
+            "name": "identifier"
           }
         },
         {

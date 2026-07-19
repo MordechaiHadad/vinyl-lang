@@ -1,16 +1,12 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use clap::{ArgAction, Parser, Subcommand};
 use miette::Report;
+use tracing::warn;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::reload;
 use vinyl_codegen::CodegenBackend;
 use vinyl_compiler::CompileError;
-
-static FILTER_RELOAD_HANDLE: OnceLock<reload::Handle<EnvFilter, tracing_subscriber::Registry>> =
-    OnceLock::new();
 
 #[derive(Parser)]
 #[command(name = "vinyl", version, about = "Vinyl language compiler")]
@@ -37,23 +33,7 @@ enum Command {
     },
 }
 
-fn init_tracing() -> eyre::Result<()> {
-    let env_filter = EnvFilter::new("info");
-    let (filter_layer, reload_handle) = reload::Layer::new(env_filter);
-
-    tracing_subscriber::registry()
-        .with(filter_layer)
-        .with(tracing_subscriber::fmt::layer().with_target(false))
-        .init();
-
-    FILTER_RELOAD_HANDLE
-        .set(reload_handle)
-        .map_err(|_| eyre::eyre!("Tracing reload handle already initialised"))?;
-
-    Ok(())
-}
-
-fn setup_tracing(verbose: u8) -> eyre::Result<()> {
+fn init_tracing(verbose: u8) -> eyre::Result<()> {
     let env_filter = if verbose > 0 {
         let crate_name = env!("CARGO_CRATE_NAME");
         match verbose {
@@ -62,17 +42,13 @@ fn setup_tracing(verbose: u8) -> eyre::Result<()> {
             _ => EnvFilter::new("trace"),
         }
     } else {
-        match EnvFilter::try_from_default_env() {
-            Ok(filter) => filter,
-            Err(_) => return Ok(()),
-        }
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
     };
 
-    let handle = FILTER_RELOAD_HANDLE
-        .get()
-        .ok_or_else(|| eyre::eyre!("Tracing not initialised — call init_tracing first"))?;
-
-    handle.reload(env_filter)?;
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer().with_target(false))
+        .init();
 
     Ok(())
 }
@@ -97,21 +73,31 @@ fn compile_and_report(
 }
 
 fn jit_and_run(items: &[vinyl_typecheck::hir::HirItem]) -> eyre::Result<()> {
+    let has_main = items.iter().any(|item| {
+        matches!(
+            &item.kind,
+            vinyl_typecheck::hir::HirItemKind::Function(f) if f.name == "main"
+        )
+    });
+    if !has_main {
+        warn!("no main function found");
+    }
+
     let mut backend =
         vinyl_codegen::CraneliftBackend::new().map_err(|e| eyre::eyre!("jit init: {e}"))?;
     backend
         .compile(items)
         .map_err(|e| eyre::eyre!("jit compile: {e}"))?;
     let result = backend.run().map_err(|e| eyre::eyre!("jit run: {e}"))?;
-    println!("{}", result);
+    if has_main {
+        println!("{}", result);
+    }
     Ok(())
 }
 
 fn main() -> eyre::Result<()> {
-    init_tracing()?;
-
     let cli = Cli::parse();
-    setup_tracing(cli.verbose)?;
+    init_tracing(cli.verbose)?;
 
     match cli.command {
         Command::Check { file } => {

@@ -1,42 +1,23 @@
-# Returns 1 for positive numbers, -1 for negative numbers, and 0 for zero
-# (Rewritten to use flat early returns, avoiding the broken else-if logic)
 fn signum(val: int32): int32 {
-    if val > 0 {
-        return 1;
-    }
-    if val < 0 {
-        return 0 - 1;
-    }
-    return 0;
+    if val > 0 { return 1; }
+    if val < 0 { return 0 - 1; }
+    0
 }
 
-# Returns the minimum of two signed integers
-fn min(a: int32, b: int32): int32 {
-    if a < b {
-        return a;
-    }
-    return b;
-}
-
-# Computes the square of an integer without conditions
 fn square(n: int32): int32 {
-    return n * n;
+    n * n
 }
 
-# Computes the mathematical average of two values
 fn average(a: int32, b: int32): int32 {
-    return (a + b) / 2;
+    (a + b) / 2
 }
 
-# Checks if a number is a multiple of another
-# Returns 1 for true, 0 for false to avoid un-suffixed bool conversions
-fn is_multiple(val: int32, divisor: int32): int32 {
-    if val % divisor == 0 {
-        return 1;
-    }
-    return 0;
+fn floor_divide(a: int32, b: int32): int32 {
+    a // b
 }
 
-fn main() {
-    return min(average(5, 10), square(3));
+fn main(): int32 {
+    let seq = 1 + 2 * square(average(10, 20));
+
+    seq + floor_divide(-7, 3) + signum(3) + signum(0) + signum(-5)
 }
