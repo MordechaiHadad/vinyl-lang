@@ -521,7 +521,12 @@ fn ir_type_from_primitive(t: &Type, pointer_type: ir::Type) -> ir::Type {
 }
 
 fn hir_sig_to_clif(func: &HirFunction, pointer_type: ir::Type) -> Signature {
-    let mut sig = Signature::new(CallConv::SystemV);
+    #[cfg(windows)]
+    let call_conv = CallConv::WindowsFastcall;
+    #[cfg(not(windows))]
+    let call_conv = CallConv::SystemV;
+
+    let mut sig = Signature::new(call_conv);
 
     for param in &func.params {
         sig.params.push(AbiParam::new(param_type_to_clif(
