@@ -1,0 +1,27 @@
+# Array examples
+# Run: vinyl run examples/arrays.vnl
+
+fn sum5(arr: [int32; 5]): int32 {
+    arr[0] + arr[1] + arr[2] + arr[3] + arr[4]
+}
+
+fn first_char(arr: [char; 3]): char {
+    arr[0]
+}
+
+fn any_true(arr: [bool; 3]): int32 {
+    if arr[0] || arr[1] || arr[2] { 1 } else { 0 }
+}
+
+fn main(): int32 {
+    let nums = [10, 20, 30, 40, 50];
+    let s = sum5(nums);
+
+    let chars = ['x', 'y', 'z'];
+    let fc = first_char(chars);
+
+    let bools = [false, true, false];
+    let at = any_true(bools);
+
+    s + at
+}
