@@ -1,8 +1,20 @@
+# Vinyl language examples
+# Run: vinyl run examples/basic.vnl
+
+# --- Functions with explicit return ---
+
+fn abs(n: int32): int32 {
+    if n < 0 { return 0 - n; }
+    n
+}
+
 fn signum(val: int32): int32 {
     if val > 0 { return 1; }
     if val < 0 { return 0 - 1; }
     0
 }
+
+# --- Functions with implicit return (trailing expression, no ;) ---
 
 fn square(n: int32): int32 {
     n * n
@@ -12,12 +24,71 @@ fn average(a: int32, b: int32): int32 {
     (a + b) / 2
 }
 
+# --- Floor division (//) truncates toward negative infinity ---
+
 fn floor_divide(a: int32, b: int32): int32 {
     a // b
 }
 
-fn main(): int32 {
-    let seq = 1 + 2 * square(average(10, 20));
+fn floor_sum(): int32 {
+    7 // 3 + (-7) // 3 + 7 // (-3) + (-7) // (-3)
+}
 
-    seq + floor_divide(-7, 3) + signum(3) + signum(0) + signum(-5)
+# --- Type inference: integer literals adapt to the return type ---
+
+fn four(): int32 {
+    4
+}
+
+fn eight(): int32 {
+    8
+}
+
+# --- If / else control flow ---
+
+fn max(a: int32, b: int32): int32 {
+    if a > b { return a; }
+    b
+}
+
+# --- Nested if ---
+
+fn classify(n: int32): int32 {
+    if n > 0 {
+        if n > 100 { return 2; }
+        return 1;
+    }
+    if n < 0 { return 0 - 1; }
+    0
+}
+
+# --- Bitwise and shift operators ---
+
+fn bitwise_demo(x: int32, y: int32): int32 {
+    (x & y) + (x | y) + (x ^ y) + (x << 1) + (y >> 1)
+}
+
+# --- Logical operators ---
+
+fn both_nonzero(a: int32, b: int32): int32 {
+    if a != 0 && b != 0 { return 1; }
+    0
+}
+
+# --- Main: ties everything together ---
+
+fn main(): int32 {
+    let a = abs(-5);
+    let s = signum(-3) + signum(0) + signum(7);
+    let sq = square(average(10, 20));
+    let fd = floor_divide(7, 3);
+    let fs = floor_sum();
+    let ft = four();
+    let et = eight();
+    let m = max(100, 200);
+    let c = classify(150) + classify(50) + classify(-10);
+    let bx = bitwise_demo(6, 3);
+    let lo = both_nonzero(3, 0);
+
+    a + s + sq + fd + fs + ft + et + m + c + bx + lo
 }
