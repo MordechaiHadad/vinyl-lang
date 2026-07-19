@@ -477,7 +477,7 @@ fn compile_expr(
 }
 
 fn element_byte_size(t: &Type, pointer_type: ir::Type) -> u32 {
-    let ptr_size = pointer_type.bytes() as u32; // ponytail: assumes 64-bit
+    let ptr_size = pointer_type.bytes();
     match t {
         Type::Primitive(p) => match p {
             Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,

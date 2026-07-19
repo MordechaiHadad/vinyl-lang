@@ -735,10 +735,7 @@ impl InferState {
     fn validate_literal_types_expr(&self, expr: &HirExpr, errors: &mut Vec<TypeError>) {
         match &expr.kind {
             HirExprKind::Int(_, span) => match &expr.type_ {
-                Type::Primitive(p)
-                    if matches!(
-                        p,
-                        Primitive::Int8
+                Type::Primitive(Primitive::Int8
                             | Primitive::Int16
                             | Primitive::Int32
                             | Primitive::Int64
@@ -751,15 +748,14 @@ impl InferState {
                             | Primitive::UInt128
                             | Primitive::USize
                             | Primitive::Float32
-                            | Primitive::Float64
-                    ) => {}
+                            | Primitive::Float64) => {}
                 _ => errors.push(self.error(
                     *span,
                     format!("integer literal must be a numeric type, found `{}`", expr.type_),
                 )),
             },
             HirExprKind::Float(_, span) => match &expr.type_ {
-                Type::Primitive(p) if matches!(p, Primitive::Float32 | Primitive::Float64) => {}
+                Type::Primitive(Primitive::Float32 | Primitive::Float64) => {}
                 _ => errors.push(self.error(
                     *span,
                     format!("float literal must be a float type, found `{}`", expr.type_),
