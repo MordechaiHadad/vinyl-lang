@@ -33,6 +33,7 @@ export default grammar({
     _type: $ => choice(
       $.simple_type,
       $.generic_type,
+      $.array_type,
     ),
 
     primitive_type: $ => choice(
@@ -48,6 +49,14 @@ export default grammar({
       "<",
       commaSep1($._type),
       ">",
+    ),
+
+    array_type: $ => seq(
+      "[",
+      $._type,
+      ";",
+      $.integer_literal,
+      "]",
     ),
 
     parameters: $ => seq(
@@ -107,6 +116,8 @@ export default grammar({
       $.bool_literal,
       $.call_expression,
       $.binary_expression,
+      $.index_expression,
+      $.array_expression,
       $.parenthesized_expression,
       $.block,
     ),
@@ -193,6 +204,19 @@ export default grammar({
         prec.left(PREC.OR, seq($._expression, field("operator", choice("||", "or")), $._expression)),
       );
     },
+
+    index_expression: $ => prec(12, seq(
+      $._expression,
+      "[",
+      $._expression,
+      "]",
+    )),
+
+    array_expression: $ => seq(
+      "[",
+      commaSep($._expression),
+      "]",
+    ),
 
     parenthesized_expression: $ => seq("(", $._expression, ")"),
 

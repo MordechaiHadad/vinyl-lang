@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use cranelift_codegen::ir::{self, AbiParam, InstBuilder, Signature, condcodes::IntCC, types};
+use cranelift_codegen::ir::{
+    self, AbiParam, InstBuilder, Signature, StackSlotData, StackSlotKind, condcodes::IntCC, types,
+};
 use cranelift_codegen::isa::{self, CallConv};
 use cranelift_codegen::settings;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
@@ -119,7 +121,14 @@ impl CodegenBackend for CraneliftBackend {
                     decls: &self.decls,
                 };
                 for stmt in &func.body {
-                    compile_stmt(stmt, &mut builder, &mut vars, &mut terminated, &mut ctx, pointer_type)?;
+                    compile_stmt(
+                        stmt,
+                        &mut builder,
+                        &mut vars,
+                        &mut terminated,
+                        &mut ctx,
+                        pointer_type,
+                    )?;
                 }
 
                 if !terminated {
@@ -258,7 +267,14 @@ fn compile_if(
         builder.switch_to_block(inner_then);
         let mut inner_terminated = false;
         for stmt in block {
-            compile_stmt(stmt, builder, vars, &mut inner_terminated, ctx, pointer_type)?;
+            compile_stmt(
+                stmt,
+                builder,
+                vars,
+                &mut inner_terminated,
+                ctx,
+                pointer_type,
+            )?;
         }
         if !inner_terminated {
             builder.ins().jump(merge_block_id, &[]);
@@ -293,12 +309,13 @@ fn compile_expr(
     pointer_type: ir::Type,
 ) -> Result<ir::Value, CraneliftError> {
     match &expr.kind {
-        HirExprKind::Int(v) => {
+        HirExprKind::Int(v, _) => {
             let ty = ir_type_from_primitive(&expr.type_, pointer_type);
             Ok(builder.ins().iconst(ty, *v as i64))
         }
-        HirExprKind::Float(v) => Ok(builder.ins().f64const(*v)),
+        HirExprKind::Float(v, _) => Ok(builder.ins().f64const(*v)),
         HirExprKind::Bool(b) => Ok(builder.ins().iconst(types::I8, *b as i64)),
+        HirExprKind::Char(c) => Ok(builder.ins().iconst(types::I32, *c as i64)),
         HirExprKind::String(_) => Err(CraneliftError::Msg(
             "string expressions not supported in codegen yet".to_string(),
         )),
@@ -415,6 +432,65 @@ fn compile_expr(
                 "blocks as expressions not supported in codegen".to_string(),
             ))
         }
+        HirExprKind::Array(elements) => {
+            let element_type = match &expr.type_ {
+                Type::Array { element, .. } => element.as_ref(),
+                _ => &Type::Primitive(Primitive::Int32),
+            };
+            let elem_size = element_byte_size(element_type, pointer_type);
+            let num_elements = elements.len() as u32;
+            let slot = builder.create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                elem_size * num_elements,
+                0,
+            ));
+            let base = builder.ins().stack_addr(pointer_type, slot, 0);
+            for (i, element) in elements.iter().enumerate() {
+                let val = compile_expr(element, builder, vars, ctx, pointer_type)?;
+                let offset = builder
+                    .ins()
+                    .iconst(pointer_type, (i as i64) * (elem_size as i64));
+                let addr = builder.ins().iadd(base, offset);
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                builder.ins().store(mflags, val, addr, 0);
+            }
+            Ok(base)
+        }
+        HirExprKind::Index { array, index } => {
+            let array_ptr = compile_expr(array, builder, vars, ctx, pointer_type)?;
+            let index_val = compile_expr(index, builder, vars, ctx, pointer_type)?;
+            let index_ty = builder.func.dfg.value_type(index_val);
+            let index_wide = if index_ty != pointer_type {
+                builder.ins().uextend(pointer_type, index_val)
+            } else {
+                index_val
+            };
+            let elem_size = element_byte_size(&expr.type_, pointer_type);
+            let size_val = builder.ins().iconst(pointer_type, elem_size as i64);
+            let offset = builder.ins().imul(index_wide, size_val);
+            let addr = builder.ins().iadd(array_ptr, offset);
+            let result_ty = ir_type_from_primitive(&expr.type_, pointer_type);
+            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+            Ok(builder.ins().load(result_ty, mflags, addr, 0))
+        }
+    }
+}
+
+fn element_byte_size(t: &Type, pointer_type: ir::Type) -> u32 {
+    let ptr_size = pointer_type.bytes() as u32; // ponytail: assumes 64-bit
+    match t {
+        Type::Primitive(p) => match p {
+            Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,
+            Primitive::Int16 | Primitive::UInt16 => 2,
+            Primitive::Int32 | Primitive::UInt32 | Primitive::Float32 | Primitive::Char => 4,
+            Primitive::Int64 | Primitive::UInt64 | Primitive::Float64 => 8,
+            Primitive::Int128 | Primitive::UInt128 => 16,
+            Primitive::ISize | Primitive::USize | Primitive::String => ptr_size,
+            Primitive::Unit => 0,
+        },
+        Type::Ref(_) => ptr_size,
+        Type::Array { element, size } => element_byte_size(element, pointer_type) * (*size as u32),
+        _ => ptr_size,
     }
 }
 
@@ -426,6 +502,7 @@ fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> types::Type {
         Type::Primitive(Primitive::USize) => pointer_type,
         Type::Primitive(Primitive::Float64) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
+        Type::Primitive(Primitive::Char) => types::I32,
         _ => types::I64,
     }
 }
@@ -438,6 +515,7 @@ fn ir_type_from_primitive(t: &Type, pointer_type: ir::Type) -> ir::Type {
         Type::Primitive(Primitive::USize) => pointer_type,
         Type::Primitive(Primitive::Float64) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
+        Type::Primitive(Primitive::Char) => types::I32,
         _ => types::I64,
     }
 }
@@ -446,14 +524,17 @@ fn hir_sig_to_clif(func: &HirFunction, pointer_type: ir::Type) -> Signature {
     let mut sig = Signature::new(CallConv::SystemV);
 
     for param in &func.params {
-        sig.params
-            .push(AbiParam::new(param_type_to_clif(&param.type_, pointer_type)));
+        sig.params.push(AbiParam::new(param_type_to_clif(
+            &param.type_,
+            pointer_type,
+        )));
     }
 
     match &func.return_type {
         Type::Primitive(Primitive::Unit) => {}
         other => {
-            sig.returns.push(AbiParam::new(param_type_to_clif(other, pointer_type)));
+            sig.returns
+                .push(AbiParam::new(param_type_to_clif(other, pointer_type)));
         }
     }
 

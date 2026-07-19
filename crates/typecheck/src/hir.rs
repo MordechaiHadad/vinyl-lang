@@ -1,3 +1,4 @@
+use miette::SourceSpan;
 use vinyl_parser::ast::BinaryOp;
 
 #[derive(Debug, Clone)]
@@ -56,10 +57,11 @@ pub struct HirExpr {
 
 #[derive(Debug, Clone)]
 pub enum HirExprKind {
-    Int(i128),
-    Float(f64),
+    Int(i128, SourceSpan),
+    Float(f64, SourceSpan),
     String(String),
     Bool(bool),
+    Char(char),
     Ident(String),
     Binary {
         left: Box<HirExpr>,
@@ -71,6 +73,11 @@ pub enum HirExprKind {
         args: Vec<HirExpr>,
     },
     Block(Vec<HirStmt>),
+    Index {
+        array: Box<HirExpr>,
+        index: Box<HirExpr>,
+    },
+    Array(Vec<HirExpr>),
 }
 
 pub type Type = vinyl_parser::ast::Type;

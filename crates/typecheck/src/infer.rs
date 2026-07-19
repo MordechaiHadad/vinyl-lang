@@ -180,7 +180,10 @@ impl InferState {
                     size: s2,
                 },
             ) if s1 == s2 => self.unify(e1, e2, span),
-            _ => Err(self.error(span, format!("type mismatch: expected `{}`, found `{}`", b, a))),
+            _ => Err(self.error(
+                span,
+                format!("type mismatch: expected `{}`, found `{}`", b, a),
+            )),
         }
     }
 
@@ -237,7 +240,7 @@ impl InferState {
 
         let return_type = match &func.return_type {
             Some(t) => t.clone(),
-            None => Type::Primitive(Primitive::Unit),
+            None => self.fresh_var(),
         };
 
         let prev_return = self.current_return_type.replace(return_type.clone());
@@ -247,6 +250,9 @@ impl InferState {
         self.current_return_type = prev_return;
 
         let body = self.resolve_hir_stmts(body);
+        let return_type = self.resolve_hir_type(&return_type);
+
+        self.errors.extend(self.collect_literal_type_errors(&body));
 
         Ok(HirFunction {
             name: func.name.clone(),
@@ -402,13 +408,13 @@ impl InferState {
         signatures: &HashMap<&str, &FunctionDef>,
     ) -> Result<HirExpr, TypeError> {
         match expr {
-            Expr::Int(v, _) => Ok(HirExpr {
-                kind: HirExprKind::Int(*v),
+            Expr::Int(v, span) => Ok(HirExpr {
+                kind: HirExprKind::Int(*v, *span),
                 type_: self.fresh_var(),
             }),
-            Expr::Float(v, _) => Ok(HirExpr {
-                kind: HirExprKind::Float(*v),
-                type_: Type::Primitive(Primitive::Float64),
+            Expr::Float(v, span) => Ok(HirExpr {
+                kind: HirExprKind::Float(*v, *span),
+                type_: self.fresh_var(),
             }),
             Expr::String(s, _) => Ok(HirExpr {
                 kind: HirExprKind::String(s.clone()),
@@ -417,6 +423,10 @@ impl InferState {
             Expr::Bool(b, _) => Ok(HirExpr {
                 kind: HirExprKind::Bool(*b),
                 type_: Type::Primitive(Primitive::Bool),
+            }),
+            Expr::Char(c, _) => Ok(HirExpr {
+                kind: HirExprKind::Char(*c),
+                type_: Type::Primitive(Primitive::Char),
             }),
             Expr::Ident(name, span) => {
                 let scheme = self.lookup(name).cloned();
@@ -533,6 +543,56 @@ impl InferState {
                     type_: Type::Primitive(Primitive::Unit),
                 })
             }
+            Expr::Array(elements, _) => {
+                let mut hir_elements = Vec::new();
+                let element_var = self.fresh_var();
+                for element in elements {
+                    let hir = self.infer_expr(element, signatures)?;
+                    let resolved = self.apply(&hir.type_);
+                    if let Err(e) = self.unify(&resolved, &element_var, element.span()) {
+                        self.errors.push(e);
+                    }
+                    hir_elements.push(hir);
+                }
+                let element_type = self.apply(&element_var);
+                Ok(HirExpr {
+                    kind: HirExprKind::Array(hir_elements),
+                    type_: Type::Array {
+                        element: Box::new(element_type),
+                        size: elements.len(),
+                    },
+                })
+            }
+            Expr::Index { array, index, .. } => {
+                let hir_array = self.infer_expr(array, signatures)?;
+                let hir_index = self.infer_expr(index, signatures)?;
+                let array_type = self.apply(&hir_array.type_);
+                let index_type = self.apply(&hir_index.type_);
+                if let Err(e) = self.unify(
+                    &index_type,
+                    &Type::Primitive(Primitive::Int32),
+                    index.span(),
+                ) {
+                    self.errors.push(e);
+                }
+                let element_type = match &array_type {
+                    Type::Array { element, .. } => *element.clone(),
+                    Type::Primitive(Primitive::String) => Type::Primitive(Primitive::Char),
+                    _ => {
+                        self.errors.push(
+                            self.error(expr.span(), format!("cannot index type `{}`", array_type)),
+                        );
+                        self.fresh_var()
+                    }
+                };
+                Ok(HirExpr {
+                    kind: HirExprKind::Index {
+                        array: Box::new(hir_array),
+                        index: Box::new(hir_index),
+                    },
+                    type_: element_type,
+                })
+            }
             Expr::Paren(inner, _) => self.infer_expr(inner, signatures),
             expr => Err(self.error(expr.span(), format!("unsupported expression: `{:?}`", expr))),
         }
@@ -580,6 +640,13 @@ impl InferState {
                 },
                 HirExprKind::Block(stmts) => {
                     HirExprKind::Block(stmts.iter().map(|s| self.resolve_hir_stmt(s)).collect())
+                }
+                HirExprKind::Index { array, index } => HirExprKind::Index {
+                    array: Box::new(self.resolve_hir_expr(array)),
+                    index: Box::new(self.resolve_hir_expr(index)),
+                },
+                HirExprKind::Array(elements) => {
+                    HirExprKind::Array(elements.iter().map(|e| self.resolve_hir_expr(e)).collect())
                 }
                 other => other.clone(),
             },
@@ -635,5 +702,102 @@ impl InferState {
 
     fn resolve_hir_stmts(&self, stmts: Vec<HirStmt>) -> Vec<HirStmt> {
         stmts.iter().map(|s| self.resolve_hir_stmt(s)).collect()
+    }
+
+    fn validate_literal_types_stmt(&self, stmt: &HirStmt, errors: &mut Vec<TypeError>) {
+        match &stmt.kind {
+            HirStmtKind::Let { value, .. } => self.validate_literal_types_expr(value, errors),
+            HirStmtKind::Expr(expr) => self.validate_literal_types_expr(expr, errors),
+            HirStmtKind::Return(expr) => {
+                if let Some(e) = expr {
+                    self.validate_literal_types_expr(e, errors);
+                }
+            }
+            HirStmtKind::If {
+                condition,
+                then_block,
+                else_if,
+                else_block,
+            } => {
+                self.validate_literal_types_expr(condition, errors);
+                self.validate_literal_types(then_block, errors);
+                for (c, b) in else_if {
+                    self.validate_literal_types_expr(c, errors);
+                    self.validate_literal_types(b, errors);
+                }
+                if let Some(b) = else_block {
+                    self.validate_literal_types(b, errors);
+                }
+            }
+        }
+    }
+
+    fn validate_literal_types_expr(&self, expr: &HirExpr, errors: &mut Vec<TypeError>) {
+        match &expr.kind {
+            HirExprKind::Int(_, span) => match &expr.type_ {
+                Type::Primitive(p)
+                    if matches!(
+                        p,
+                        Primitive::Int8
+                            | Primitive::Int16
+                            | Primitive::Int32
+                            | Primitive::Int64
+                            | Primitive::Int128
+                            | Primitive::ISize
+                            | Primitive::UInt8
+                            | Primitive::UInt16
+                            | Primitive::UInt32
+                            | Primitive::UInt64
+                            | Primitive::UInt128
+                            | Primitive::USize
+                            | Primitive::Float32
+                            | Primitive::Float64
+                    ) => {}
+                _ => errors.push(self.error(
+                    *span,
+                    format!("integer literal must be a numeric type, found `{}`", expr.type_),
+                )),
+            },
+            HirExprKind::Float(_, span) => match &expr.type_ {
+                Type::Primitive(p) if matches!(p, Primitive::Float32 | Primitive::Float64) => {}
+                _ => errors.push(self.error(
+                    *span,
+                    format!("float literal must be a float type, found `{}`", expr.type_),
+                )),
+            },
+            HirExprKind::Binary { left, right, .. } => {
+                self.validate_literal_types_expr(left, errors);
+                self.validate_literal_types_expr(right, errors);
+            }
+            HirExprKind::Call { function, args } => {
+                self.validate_literal_types_expr(function, errors);
+                for arg in args {
+                    self.validate_literal_types_expr(arg, errors);
+                }
+            }
+            HirExprKind::Block(stmts) => self.validate_literal_types(stmts, errors),
+            HirExprKind::Index { array, index } => {
+                self.validate_literal_types_expr(array, errors);
+                self.validate_literal_types_expr(index, errors);
+            }
+            HirExprKind::Array(elements) => {
+                for e in elements {
+                    self.validate_literal_types_expr(e, errors);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn collect_literal_type_errors(&self, stmts: &[HirStmt]) -> Vec<TypeError> {
+        let mut errors = Vec::new();
+        self.validate_literal_types(stmts, &mut errors);
+        errors
+    }
+
+    fn validate_literal_types(&self, stmts: &[HirStmt], errors: &mut Vec<TypeError>) {
+        for stmt in stmts {
+            self.validate_literal_types_stmt(stmt, errors);
+        }
     }
 }

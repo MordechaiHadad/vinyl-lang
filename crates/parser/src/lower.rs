@@ -151,11 +151,18 @@ fn lower_param(node: &Node, source: &str, source_name: &str) -> Result<Param, Lo
 }
 
 fn lower_type(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
+    match node.kind() {
+        "simple_type" => return lower_simple_type(node, source, source_name),
+        "generic_type" => return lower_generic_type(node, source, source_name),
+        "array_type" => return lower_array_type(node, source, source_name),
+        _ => {}
+    }
     for i in 0..node.named_child_count() {
         if let Some(child) = node.named_child(i as u32) {
             return match child.kind() {
                 "simple_type" => lower_simple_type(&child, source, source_name),
                 "generic_type" => lower_generic_type(&child, source, source_name),
+                "array_type" => lower_array_type(&child, source, source_name),
                 kind => Err(invalid_kind(node, source, source_name, kind, "type")),
             };
         }
@@ -222,6 +229,32 @@ fn lower_generic_type(node: &Node, source: &str, source_name: &str) -> Result<Ty
         }
     }
     Ok(Type::Generic { name, args })
+}
+
+fn lower_array_type(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
+    let children = children(node);
+    if children.len() < 2 {
+        return Err(span_error(
+            node,
+            source,
+            source_name,
+            "incomplete array type",
+        ));
+    }
+    let element = lower_type(&children[0], source, source_name)?;
+    let size_text = node_text(&children[1], source);
+    let size: usize = size_text.parse().map_err(|_| {
+        span_error(
+            &children[1],
+            source,
+            source_name,
+            &format!("invalid array size `{size_text}`"),
+        )
+    })?;
+    Ok(Type::Array {
+        element: Box::new(element),
+        size,
+    })
 }
 
 fn lower_block(node: &Node, source: &str, source_name: &str) -> Result<Vec<Stmt>, LowerError> {
@@ -402,6 +435,32 @@ fn lower_expression(node: &Node, source: &str, source_name: &str) -> Result<Expr
             ))
         }
         "block" => lower_block(node, source, source_name).map(|s| Expr::Block(s, span())),
+        "array_expression" => {
+            let children = children(node);
+            let elements: Result<Vec<Expr>, _> = children
+                .iter()
+                .map(|c| lower_expression(c, source, source_name))
+                .collect();
+            elements.map(|e| Expr::Array(e, span()))
+        }
+        "index_expression" => {
+            let children = children(node);
+            if children.len() < 2 {
+                return Err(span_error(
+                    node,
+                    source,
+                    source_name,
+                    "incomplete index expression",
+                ));
+            }
+            let array = lower_expression(&children[0], source, source_name)?;
+            let index = lower_expression(&children[1], source, source_name)?;
+            Ok(Expr::Index {
+                span: span(),
+                array: Box::new(array),
+                index: Box::new(index),
+            })
+        }
         kind => Err(invalid_kind(node, source, source_name, kind, "expression")),
     }
 }
