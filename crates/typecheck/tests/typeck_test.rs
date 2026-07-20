@@ -170,21 +170,30 @@ fn typeck_int_literal_infers_float64() {
 fn typeck_int_literal_rejects_bool() {
     let source = "fn main(): bool { 42 }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: int literal cannot be bool");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int literal cannot be bool"
+    );
 }
 
 #[test]
 fn typeck_int_literal_rejects_string() {
     let source = "fn main(): string { 42 }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: int literal cannot be string");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int literal cannot be string"
+    );
 }
 
 #[test]
 fn typeck_int_literal_rejects_char() {
     let source = "fn main(): char { 42 }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: int literal cannot be char");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int literal cannot be char"
+    );
 }
 
 #[test]
@@ -205,21 +214,30 @@ fn typeck_float_literal_infers_float32() {
 fn typeck_float_literal_rejects_int32() {
     let source = "fn main(): int32 { 3.14 }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: float literal cannot be int32");
+    assert!(
+        items.is_err(),
+        "typeck should fail: float literal cannot be int32"
+    );
 }
 
 #[test]
 fn typeck_float_literal_rejects_uint32() {
     let source = "fn main(): uint32 { 3.14 }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: float literal cannot be uint32");
+    assert!(
+        items.is_err(),
+        "typeck should fail: float literal cannot be uint32"
+    );
 }
 
 #[test]
 fn typeck_float_literal_rejects_bool() {
     let source = "fn main(): bool { 3.14 }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: float literal cannot be bool");
+    assert!(
+        items.is_err(),
+        "typeck should fail: float literal cannot be bool"
+    );
 }
 
 #[test]
@@ -464,14 +482,20 @@ fn typeck_char_let_infer() {
 fn typeck_char_return_type_mismatch() {
     let source = "fn main(): int32 { 'a' }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: char return type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: char return type mismatch"
+    );
 }
 
 #[test]
 fn typeck_char_annotation_mismatch() {
     let source = "fn main() { let c: int32 = 'a'; }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: char annotation mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: char annotation mismatch"
+    );
 }
 
 #[test]
@@ -485,7 +509,10 @@ fn typeck_char_in_array() {
 fn typeck_char_array_type_mismatch() {
     let source = "fn main() { let arr: [int32; 2] = ['a', 'b']; }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: char array type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: char array type mismatch"
+    );
 }
 
 #[test]
@@ -534,7 +561,10 @@ fn typeck_array_index_non_int32() {
 fn typeck_array_element_type_mismatch() {
     let source = "fn main() { let arr = [1, true]; }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: array element type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: array element type mismatch"
+    );
 }
 
 #[test]
@@ -555,7 +585,10 @@ fn typeck_array_of_arrays() {
 fn typeck_array_nested_type_mismatch() {
     let source = "fn main() { let arr = [[1, 2], [true, false]]; }";
     let items = compile(source);
-    assert!(items.is_err(), "typeck should fail: nested array type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: nested array type mismatch"
+    );
 }
 
 fn compile(

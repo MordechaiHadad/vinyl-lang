@@ -76,6 +76,7 @@ struct InferState {
     subs: HashMap<usize, Type>,
     current_return_type: Option<Type>,
     next_var: usize,
+    loop_depth: usize,
 }
 
 impl InferState {
@@ -88,6 +89,7 @@ impl InferState {
             subs: HashMap::new(),
             current_return_type: None,
             next_var: 0,
+            loop_depth: 0,
         }
     }
 
@@ -249,6 +251,18 @@ impl InferState {
         self.pop_scope();
         self.current_return_type = prev_return;
 
+        if let Some(HirStmt {
+            kind: HirStmtKind::Value(expr),
+            ..
+        }) = body.last()
+        {
+            let value_type = self.apply(&expr.type_);
+            let ret_type = self.apply(&return_type);
+            if let Err(e) = self.unify(&value_type, &ret_type, func.span) {
+                self.errors.push(e);
+            }
+        }
+
         let body = self.resolve_hir_stmts(body);
         let return_type = self.resolve_hir_type(&return_type);
 
@@ -344,59 +358,42 @@ impl InferState {
                     kind: HirStmtKind::Return(hir_expr),
                 })
             }
-            Stmt::If {
-                condition,
-                then_block,
-                else_if,
-                else_block,
-                ..
-            } => {
-                let hir_condition = self.infer_expr(condition, signatures)?;
-                let cond_type = self.apply(&hir_condition.type_);
-                if let Err(e) = self.unify(
-                    &cond_type,
-                    &Type::Primitive(Primitive::Bool),
-                    condition.span(),
-                ) {
-                    self.errors.push(e);
-                }
-
-                self.push_scope();
-                let hir_then = self.infer_block(then_block, signatures)?;
-                self.pop_scope();
-
-                let mut hir_else_if = Vec::new();
-                for (cond, block) in else_if {
-                    let c = self.infer_expr(cond, signatures)?;
-                    let c_type = self.apply(&c.type_);
-                    if let Err(e) =
-                        self.unify(&c_type, &Type::Primitive(Primitive::Bool), cond.span())
-                    {
-                        self.errors.push(e);
-                    }
-                    self.push_scope();
-                    let b = self.infer_block(block, signatures)?;
-                    self.pop_scope();
-                    hir_else_if.push((c, b));
-                }
-
-                let hir_else = else_block
-                    .as_ref()
-                    .map(|block| {
-                        self.push_scope();
-                        let result = self.infer_block(block, signatures);
-                        self.pop_scope();
-                        result
-                    })
-                    .transpose()?;
-
+            Stmt::Value(expr, _span) => {
+                let hir_expr = self.infer_expr(expr, signatures)?;
                 Ok(HirStmt {
-                    kind: HirStmtKind::If {
-                        condition: hir_condition,
-                        then_block: hir_then,
-                        else_if: hir_else_if,
-                        else_block: hir_else,
-                    },
+                    kind: HirStmtKind::Value(hir_expr),
+                })
+            }
+            Stmt::If { .. } => {
+                panic!("Stmt::If should not appear after lowering; use Expr::If");
+            }
+            Stmt::While { .. } => {
+                panic!("Stmt::While should not appear after lowering; lowered to Stmt::Loop");
+            }
+            Stmt::Loop { span: _, body } => {
+                self.loop_depth += 1;
+                self.push_scope();
+                let hir_body = self.infer_block(body, signatures)?;
+                self.pop_scope();
+                self.loop_depth -= 1;
+                Ok(HirStmt {
+                    kind: HirStmtKind::Loop { body: hir_body },
+                })
+            }
+            Stmt::Break(span) => {
+                if self.loop_depth == 0 {
+                    return Err(self.error(*span, "break outside of loop".to_string()));
+                }
+                Ok(HirStmt {
+                    kind: HirStmtKind::Break,
+                })
+            }
+            Stmt::Continue(span) => {
+                if self.loop_depth == 0 {
+                    return Err(self.error(*span, "continue outside of loop".to_string()));
+                }
+                Ok(HirStmt {
+                    kind: HirStmtKind::Continue,
                 })
             }
         }
@@ -594,6 +591,69 @@ impl InferState {
                 })
             }
             Expr::Paren(inner, _) => self.infer_expr(inner, signatures),
+            Expr::If {
+                condition,
+                then_block,
+                else_if,
+                else_block,
+                span,
+            } => {
+                let hir_condition = self.infer_expr(condition, signatures)?;
+                let cond_type = self.apply(&hir_condition.type_);
+                if let Err(e) = self.unify(
+                    &cond_type,
+                    &Type::Primitive(Primitive::Bool),
+                    condition.span(),
+                ) {
+                    self.errors.push(e);
+                }
+
+                let prev_return = self.current_return_type.take();
+
+                self.push_scope();
+                let hir_then = self.infer_block(then_block, signatures)?;
+                self.pop_scope();
+
+                let mut hir_else_if = Vec::new();
+                for (cond, block) in else_if {
+                    let c = self.infer_expr(cond, signatures)?;
+                    let c_type = self.apply(&c.type_);
+                    if let Err(e) =
+                        self.unify(&c_type, &Type::Primitive(Primitive::Bool), cond.span())
+                    {
+                        self.errors.push(e);
+                    }
+                    self.push_scope();
+                    let b = self.infer_block(block, signatures)?;
+                    self.pop_scope();
+                    hir_else_if.push((c, b));
+                }
+
+                let hir_else = else_block
+                    .as_ref()
+                    .map(|block| {
+                        self.push_scope();
+                        let result = self.infer_block(block, signatures);
+                        self.pop_scope();
+                        result
+                    })
+                    .transpose()?;
+
+                self.current_return_type = prev_return;
+
+                let result_type =
+                    self.infer_if_result_type(&hir_then, &hir_else_if, &hir_else, *span)?;
+
+                Ok(HirExpr {
+                    kind: HirExprKind::If {
+                        condition: Box::new(hir_condition),
+                        then_block: hir_then,
+                        else_if: hir_else_if,
+                        else_block: hir_else,
+                    },
+                    type_: result_type,
+                })
+            }
             expr => Err(self.error(expr.span(), format!("unsupported expression: `{:?}`", expr))),
         }
     }
@@ -602,6 +662,46 @@ impl InferState {
         let id = self.next_var;
         self.next_var += 1;
         Type::Var(id)
+    }
+
+    fn infer_if_result_type(
+        &mut self,
+        then: &[HirStmt],
+        else_if: &[(HirExpr, Vec<HirStmt>)],
+        else_: &Option<Vec<HirStmt>>,
+        span: SourceSpan,
+    ) -> Result<Type, TypeError> {
+        let then_type = self.block_result_type(then);
+        let mut types = vec![then_type];
+        for (_, block) in else_if {
+            types.push(self.block_result_type(block));
+        }
+        match else_ {
+            Some(block) => types.push(self.block_result_type(block)),
+            None => return Ok(Type::Primitive(Primitive::Unit)),
+        }
+
+        let result = self.fresh_var();
+        for t in &types {
+            if let Err(e) = self.unify(&result, t, span) {
+                self.errors.push(e);
+            }
+        }
+        Ok(self.apply(&result))
+    }
+
+    fn block_result_type(&self, stmts: &[HirStmt]) -> Type {
+        match stmts.last() {
+            Some(HirStmt {
+                kind: HirStmtKind::Value(expr),
+                ..
+            }) => expr.type_.clone(),
+            Some(HirStmt {
+                kind: HirStmtKind::Return(Some(expr)),
+                ..
+            }) => expr.type_.clone(),
+            _ => Type::Primitive(Primitive::Unit),
+        }
     }
 
     fn resolve_hir_type(&self, t: &Type) -> Type {
@@ -648,6 +748,30 @@ impl InferState {
                 HirExprKind::Array(elements) => {
                     HirExprKind::Array(elements.iter().map(|e| self.resolve_hir_expr(e)).collect())
                 }
+                HirExprKind::If {
+                    condition,
+                    then_block,
+                    else_if,
+                    else_block,
+                } => HirExprKind::If {
+                    condition: Box::new(self.resolve_hir_expr(condition)),
+                    then_block: then_block
+                        .iter()
+                        .map(|s| self.resolve_hir_stmt(s))
+                        .collect(),
+                    else_if: else_if
+                        .iter()
+                        .map(|(c, b)| {
+                            (
+                                self.resolve_hir_expr(c),
+                                b.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
+                            )
+                        })
+                        .collect(),
+                    else_block: else_block
+                        .as_ref()
+                        .map(|b| b.iter().map(|s| self.resolve_hir_stmt(s)).collect()),
+                },
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),
@@ -672,30 +796,12 @@ impl InferState {
                 HirStmtKind::Return(expr) => {
                     HirStmtKind::Return(expr.as_ref().map(|e| self.resolve_hir_expr(e)))
                 }
-                HirStmtKind::If {
-                    condition,
-                    then_block,
-                    else_if,
-                    else_block,
-                } => HirStmtKind::If {
-                    condition: self.resolve_hir_expr(condition),
-                    then_block: then_block
-                        .iter()
-                        .map(|s| self.resolve_hir_stmt(s))
-                        .collect(),
-                    else_if: else_if
-                        .iter()
-                        .map(|(c, b)| {
-                            (
-                                self.resolve_hir_expr(c),
-                                b.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
-                            )
-                        })
-                        .collect(),
-                    else_block: else_block
-                        .as_ref()
-                        .map(|b| b.iter().map(|s| self.resolve_hir_stmt(s)).collect()),
+                HirStmtKind::Value(expr) => HirStmtKind::Value(self.resolve_hir_expr(expr)),
+                HirStmtKind::Loop { body } => HirStmtKind::Loop {
+                    body: body.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
                 },
+                HirStmtKind::Break => HirStmtKind::Break,
+                HirStmtKind::Continue => HirStmtKind::Continue,
             },
         }
     }
@@ -713,45 +819,39 @@ impl InferState {
                     self.validate_literal_types_expr(e, errors);
                 }
             }
-            HirStmtKind::If {
-                condition,
-                then_block,
-                else_if,
-                else_block,
-            } => {
-                self.validate_literal_types_expr(condition, errors);
-                self.validate_literal_types(then_block, errors);
-                for (c, b) in else_if {
-                    self.validate_literal_types_expr(c, errors);
-                    self.validate_literal_types(b, errors);
-                }
-                if let Some(b) = else_block {
-                    self.validate_literal_types(b, errors);
-                }
+            HirStmtKind::Value(expr) => self.validate_literal_types_expr(expr, errors),
+            HirStmtKind::Loop { body } => {
+                self.validate_literal_types(body, errors);
             }
+            HirStmtKind::Break | HirStmtKind::Continue => {}
         }
     }
 
     fn validate_literal_types_expr(&self, expr: &HirExpr, errors: &mut Vec<TypeError>) {
         match &expr.kind {
             HirExprKind::Int(_, span) => match &expr.type_ {
-                Type::Primitive(Primitive::Int8
-                            | Primitive::Int16
-                            | Primitive::Int32
-                            | Primitive::Int64
-                            | Primitive::Int128
-                            | Primitive::ISize
-                            | Primitive::UInt8
-                            | Primitive::UInt16
-                            | Primitive::UInt32
-                            | Primitive::UInt64
-                            | Primitive::UInt128
-                            | Primitive::USize
-                            | Primitive::Float32
-                            | Primitive::Float64) => {}
+                Type::Primitive(
+                    Primitive::Int8
+                    | Primitive::Int16
+                    | Primitive::Int32
+                    | Primitive::Int64
+                    | Primitive::Int128
+                    | Primitive::ISize
+                    | Primitive::UInt8
+                    | Primitive::UInt16
+                    | Primitive::UInt32
+                    | Primitive::UInt64
+                    | Primitive::UInt128
+                    | Primitive::USize
+                    | Primitive::Float32
+                    | Primitive::Float64,
+                ) => {}
                 _ => errors.push(self.error(
                     *span,
-                    format!("integer literal must be a numeric type, found `{}`", expr.type_),
+                    format!(
+                        "integer literal must be a numeric type, found `{}`",
+                        expr.type_
+                    ),
                 )),
             },
             HirExprKind::Float(_, span) => match &expr.type_ {
@@ -779,6 +879,22 @@ impl InferState {
             HirExprKind::Array(elements) => {
                 for e in elements {
                     self.validate_literal_types_expr(e, errors);
+                }
+            }
+            HirExprKind::If {
+                condition,
+                then_block,
+                else_if,
+                else_block,
+            } => {
+                self.validate_literal_types_expr(condition, errors);
+                self.validate_literal_types(then_block, errors);
+                for (c, b) in else_if {
+                    self.validate_literal_types_expr(c, errors);
+                    self.validate_literal_types(b, errors);
+                }
+                if let Some(b) = else_block {
+                    self.validate_literal_types(b, errors);
                 }
             }
             _ => {}

@@ -36,13 +36,10 @@ impl std::error::Error for CraneliftError {}
 struct CodegenCtx<'a> {
     module: &'a mut JITModule,
     decls: &'a [(String, cranelift_module::FuncId, Vec<HirParam>)],
-}
-
-struct IfBranches<'a> {
-    condition: &'a HirExpr,
-    then_block: &'a [HirStmt],
-    else_if: &'a [(HirExpr, Vec<HirStmt>)],
-    else_block: &'a Option<Vec<HirStmt>>,
+    break_target: Option<ir::Block>,
+    continue_target: Option<ir::Block>,
+    vars: &'a mut HashMap<String, ir::Value>,
+    pointer_type: ir::Type,
 }
 
 pub struct CraneliftBackend {
@@ -119,15 +116,17 @@ impl CodegenBackend for CraneliftBackend {
                 let mut ctx = CodegenCtx {
                     module: &mut self.module,
                     decls: &self.decls,
+                    break_target: None,
+                    continue_target: None,
+                    vars: &mut vars,
+                    pointer_type,
                 };
                 for stmt in &func.body {
                     compile_stmt(
                         stmt,
                         &mut builder,
-                        &mut vars,
                         &mut terminated,
                         &mut ctx,
-                        pointer_type,
                     )?;
                 }
 
@@ -138,9 +137,13 @@ impl CodegenBackend for CraneliftBackend {
                 builder.seal_all_blocks();
             }
 
+            let ir_string = self.ctx.func.display().to_string();
+            eprintln!("IR for {}:\n{}", name, ir_string);
             self.module
                 .define_function(*func_id, &mut self.ctx)
-                .map_err(|e| CraneliftError::Msg(format!("define {name}: {e}")))?;
+                .map_err(|e| {
+                    CraneliftError::Msg(format!("define {name}: {e}\nIR:\n{ir_string}"))
+                })?;
             self.module.clear_context(&mut self.ctx);
         }
 
@@ -172,10 +175,8 @@ impl CodegenBackend for CraneliftBackend {
 fn compile_stmt(
     stmt: &HirStmt,
     builder: &mut FunctionBuilder,
-    vars: &mut HashMap<String, ir::Value>,
     terminated: &mut bool,
     ctx: &mut CodegenCtx,
-    pointer_type: ir::Type,
 ) -> Result<(), CraneliftError> {
     if *terminated {
         return Ok(());
@@ -188,18 +189,18 @@ fn compile_stmt(
             value,
             ..
         } => {
-            let val = compile_expr(value, builder, vars, ctx, pointer_type)?;
-            vars.insert(name.clone(), val);
+            let val = compile_expr(value, builder, ctx)?;
+            ctx.vars.insert(name.clone(), val);
             Ok(())
         }
         HirStmtKind::Expr(expr) => {
-            compile_expr(expr, builder, vars, ctx, pointer_type)?;
+            compile_expr(expr, builder, ctx)?;
             Ok(())
         }
         HirStmtKind::Return(expr) => {
             match expr {
                 Some(e) => {
-                    let val = compile_expr(e, builder, vars, ctx, pointer_type)?;
+                    let val = compile_expr(e, builder, ctx)?;
                     builder.ins().return_(&[val]);
                 }
                 None => {
@@ -209,108 +210,87 @@ fn compile_stmt(
             *terminated = true;
             Ok(())
         }
-        HirStmtKind::If {
-            condition,
-            then_block,
-            else_if,
-            else_block,
-        } => {
-            let branches = IfBranches {
-                condition,
-                then_block,
-                else_if,
-                else_block,
-            };
-            compile_if(branches, builder, vars, terminated, ctx, pointer_type)
+        HirStmtKind::Value(expr) => {
+            let val = compile_expr(expr, builder, ctx)?;
+            builder.ins().return_(&[val]);
+            *terminated = true;
+            Ok(())
+        }
+        HirStmtKind::Loop { body } => {
+            let saved_break = ctx.break_target;
+            let saved_continue = ctx.continue_target;
+
+            let header = builder.create_block();
+            let exit = builder.create_block();
+
+            builder.ins().jump(header, &[]);
+
+            builder.switch_to_block(header);
+
+            ctx.break_target = Some(exit);
+            ctx.continue_target = Some(header);
+
+            let mut body_terminated = false;
+            for stmt in body {
+                if let HirStmt {
+                    kind: HirStmtKind::Value(expr),
+                    ..
+                } = stmt
+                {
+                    compile_expr(expr, builder, ctx)?;
+                } else {
+                    compile_stmt(stmt, builder, &mut body_terminated, ctx)?;
+                }
+            }
+            if !body_terminated {
+                builder.ins().jump(header, &[]);
+            }
+
+            builder.seal_block(header);
+            builder.switch_to_block(exit);
+            builder.seal_block(exit);
+
+            ctx.break_target = saved_break;
+            ctx.continue_target = saved_continue;
+
+            *terminated = false;
+            Ok(())
+        }
+        HirStmtKind::Break => {
+            match ctx.break_target {
+                Some(target) => {
+                    builder.ins().jump(target, &[]);
+                }
+                None => {
+                    return Err(CraneliftError::Msg("break outside loop".to_string()));
+                }
+            }
+            *terminated = true;
+            Ok(())
+        }
+        HirStmtKind::Continue => {
+            match ctx.continue_target {
+                Some(target) => {
+                    builder.ins().jump(target, &[]);
+                }
+                None => {
+                    return Err(CraneliftError::Msg("continue outside loop".to_string()));
+                }
+            }
+            *terminated = true;
+            Ok(())
         }
     }
-}
-
-fn compile_if(
-    branches: IfBranches,
-    builder: &mut FunctionBuilder,
-    vars: &mut HashMap<String, ir::Value>,
-    terminated: &mut bool,
-    ctx: &mut CodegenCtx,
-    pointer_type: ir::Type,
-) -> Result<(), CraneliftError> {
-    let cond_val = compile_expr(branches.condition, builder, vars, ctx, pointer_type)?;
-
-    let then_block_id = builder.create_block();
-    let else_block_id = builder.create_block();
-    let merge_block_id = builder.create_block();
-
-    builder
-        .ins()
-        .brif(cond_val, then_block_id, &[], else_block_id, &[]);
-
-    builder.switch_to_block(then_block_id);
-    let mut then_terminated = false;
-    for stmt in branches.then_block {
-        compile_stmt(stmt, builder, vars, &mut then_terminated, ctx, pointer_type)?;
-    }
-    if !then_terminated {
-        builder.ins().jump(merge_block_id, &[]);
-    }
-
-    builder.switch_to_block(else_block_id);
-
-    for (cond, block) in branches.else_if {
-        let else_cond = compile_expr(cond, builder, vars, ctx, pointer_type)?;
-        let inner_then = builder.create_block();
-        let inner_else = builder.create_block();
-
-        builder
-            .ins()
-            .brif(else_cond, inner_then, &[], inner_else, &[]);
-
-        builder.switch_to_block(inner_then);
-        let mut inner_terminated = false;
-        for stmt in block {
-            compile_stmt(
-                stmt,
-                builder,
-                vars,
-                &mut inner_terminated,
-                ctx,
-                pointer_type,
-            )?;
-        }
-        if !inner_terminated {
-            builder.ins().jump(merge_block_id, &[]);
-        }
-
-        builder.switch_to_block(inner_else);
-    }
-
-    let mut else_terminated = false;
-    if let Some(else_stmts) = branches.else_block {
-        for stmt in else_stmts {
-            compile_stmt(stmt, builder, vars, &mut else_terminated, ctx, pointer_type)?;
-        }
-    }
-    if !else_terminated {
-        builder.ins().jump(merge_block_id, &[]);
-    }
-
-    builder.switch_to_block(merge_block_id);
-    builder.seal_block(merge_block_id);
-
-    *terminated = then_terminated && else_terminated;
-
-    Ok(())
 }
 
 fn compile_expr(
     expr: &HirExpr,
     builder: &mut FunctionBuilder,
-    vars: &mut HashMap<String, ir::Value>,
     ctx: &mut CodegenCtx,
-    pointer_type: ir::Type,
 ) -> Result<ir::Value, CraneliftError> {
     match &expr.kind {
         HirExprKind::Int(v, _) => {
-            let ty = ir_type_from_primitive(&expr.type_, pointer_type);
+            let ty = ir_type_from_primitive(&expr.type_, ctx.pointer_type);
             Ok(builder.ins().iconst(ty, *v as i64))
         }
         HirExprKind::Float(v, _) => Ok(builder.ins().f64const(*v)),
@@ -319,13 +299,14 @@ fn compile_expr(
         HirExprKind::String(_) => Err(CraneliftError::Msg(
             "string expressions not supported in codegen yet".to_string(),
         )),
-        HirExprKind::Ident(name) => vars
+        HirExprKind::Ident(name) => ctx
+            .vars
             .get(name)
             .copied()
             .ok_or_else(|| CraneliftError::Msg(format!("undefined variable `{name}`"))),
         HirExprKind::Binary { left, op, right } => {
-            let left_val = compile_expr(left, builder, vars, ctx, pointer_type)?;
-            let right_val = compile_expr(right, builder, vars, ctx, pointer_type)?;
+            let left_val = compile_expr(left, builder, ctx)?;
+            let right_val = compile_expr(right, builder, ctx)?;
             Ok(match op {
                 BinaryOp::Add => builder.ins().iadd(left_val, right_val),
                 BinaryOp::Sub => builder.ins().isub(left_val, right_val),
@@ -402,7 +383,7 @@ fn compile_expr(
                 if let Some(callee_id) = callee_id {
                     let mut call_args = Vec::new();
                     for arg in args {
-                        let val = compile_expr(arg, builder, vars, ctx, pointer_type)?;
+                        let val = compile_expr(arg, builder, ctx)?;
                         call_args.push(val);
                     }
                     let sig = ctx.module.declare_func_in_func(callee_id, builder.func);
@@ -426,7 +407,7 @@ fn compile_expr(
         }
         HirExprKind::Block(stmts) => {
             for stmt in stmts {
-                compile_stmt(stmt, builder, vars, &mut false, ctx, pointer_type)?;
+                compile_stmt(stmt, builder, &mut false, ctx)?;
             }
             Err(CraneliftError::Msg(
                 "blocks as expressions not supported in codegen".to_string(),
@@ -437,19 +418,19 @@ fn compile_expr(
                 Type::Array { element, .. } => element.as_ref(),
                 _ => &Type::Primitive(Primitive::Int32),
             };
-            let elem_size = element_byte_size(element_type, pointer_type);
+            let elem_size = element_byte_size(element_type, ctx.pointer_type);
             let num_elements = elements.len() as u32;
             let slot = builder.create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
                 elem_size * num_elements,
                 0,
             ));
-            let base = builder.ins().stack_addr(pointer_type, slot, 0);
+            let base = builder.ins().stack_addr(ctx.pointer_type, slot, 0);
             for (i, element) in elements.iter().enumerate() {
-                let val = compile_expr(element, builder, vars, ctx, pointer_type)?;
+                let val = compile_expr(element, builder, ctx)?;
                 let offset = builder
                     .ins()
-                    .iconst(pointer_type, (i as i64) * (elem_size as i64));
+                    .iconst(ctx.pointer_type, (i as i64) * (elem_size as i64));
                 let addr = builder.ins().iadd(base, offset);
                 let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                 builder.ins().store(mflags, val, addr, 0);
@@ -457,23 +438,210 @@ fn compile_expr(
             Ok(base)
         }
         HirExprKind::Index { array, index } => {
-            let array_ptr = compile_expr(array, builder, vars, ctx, pointer_type)?;
-            let index_val = compile_expr(index, builder, vars, ctx, pointer_type)?;
+            let array_ptr = compile_expr(array, builder, ctx)?;
+            let index_val = compile_expr(index, builder, ctx)?;
             let index_ty = builder.func.dfg.value_type(index_val);
-            let index_wide = if index_ty != pointer_type {
-                builder.ins().uextend(pointer_type, index_val)
+            let index_wide = if index_ty != ctx.pointer_type {
+                builder.ins().uextend(ctx.pointer_type, index_val)
             } else {
                 index_val
             };
-            let elem_size = element_byte_size(&expr.type_, pointer_type);
-            let size_val = builder.ins().iconst(pointer_type, elem_size as i64);
+            let elem_size = element_byte_size(&expr.type_, ctx.pointer_type);
+            let size_val = builder.ins().iconst(ctx.pointer_type, elem_size as i64);
             let offset = builder.ins().imul(index_wide, size_val);
             let addr = builder.ins().iadd(array_ptr, offset);
-            let result_ty = ir_type_from_primitive(&expr.type_, pointer_type);
+            let result_ty = ir_type_from_primitive(&expr.type_, ctx.pointer_type);
             let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
             Ok(builder.ins().load(result_ty, mflags, addr, 0))
         }
+        HirExprKind::If {
+            condition,
+            then_block,
+            else_if,
+            else_block,
+        } => compile_expr_if(
+            condition,
+            then_block,
+            else_if,
+            else_block,
+            expr,
+            builder,
+            ctx,
+        ),
     }
+}
+
+fn compile_expr_if(
+    condition: &HirExpr,
+    then_block: &[HirStmt],
+    else_if: &[(HirExpr, Vec<HirStmt>)],
+    else_block: &Option<Vec<HirStmt>>,
+    expr: &HirExpr,
+    builder: &mut FunctionBuilder,
+    ctx: &mut CodegenCtx,
+) -> Result<ir::Value, CraneliftError> {
+    let if_header = builder.create_block();
+    let then_block_id = builder.create_block();
+    let else_block_id = builder.create_block();
+    let merge_block_id = builder.create_block();
+
+    let non_unit_result = if !matches!(&expr.type_, Type::Primitive(Primitive::Unit)) {
+        let result_type = ir_type_from_primitive(&expr.type_, ctx.pointer_type);
+        let result_slot = builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            result_type.bytes(),
+            0,
+        ));
+        let result_ptr = builder.ins().stack_addr(ctx.pointer_type, result_slot, 0);
+        Some((result_type, result_ptr))
+    } else {
+        None
+    };
+
+    builder.ins().jump(if_header, &[]);
+    builder.switch_to_block(if_header);
+
+    let cond_val = compile_expr(condition, builder, ctx)?;
+    builder
+        .ins()
+        .brif(cond_val, then_block_id, &[], else_block_id, &[]);
+    builder.seal_block(if_header);
+
+    compile_if_branch(
+        then_block,
+        then_block_id,
+        merge_block_id,
+        non_unit_result,
+        builder,
+        ctx,
+    )?;
+    compile_else_if_chain(
+        else_if,
+        else_block,
+        else_block_id,
+        merge_block_id,
+        non_unit_result,
+        builder,
+        ctx,
+    )?;
+
+    builder.switch_to_block(merge_block_id);
+    builder.seal_block(merge_block_id);
+
+    let result_val = match non_unit_result {
+        Some((result_type, result_ptr)) => {
+            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+            builder.ins().load(result_type, mflags, result_ptr, 0)
+        }
+        None => builder.ins().iconst(types::I8, 0),
+    };
+
+    let after = builder.create_block();
+    builder.ins().jump(after, &[]);
+    builder.switch_to_block(after);
+    Ok(result_val)
+}
+
+fn compile_if_branch(
+    stmts: &[HirStmt],
+    block_id: ir::Block,
+    merge_id: ir::Block,
+    result: Option<(ir::Type, ir::Value)>,
+    builder: &mut FunctionBuilder,
+    ctx: &mut CodegenCtx,
+) -> Result<(), CraneliftError> {
+    builder.switch_to_block(block_id);
+    let mut terminated = false;
+    let mut current = block_id;
+    for (i, stmt) in stmts.iter().enumerate() {
+        let is_last = i == stmts.len() - 1;
+        if is_last
+            && let HirStmt {
+                kind: HirStmtKind::Value(val_expr),
+                ..
+            } = stmt
+        {
+            let val = compile_expr(val_expr, builder, ctx)?;
+            if let Some((_res_type, res_ptr)) = result {
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                builder.ins().store(mflags, val, res_ptr, 0);
+            }
+            builder.ins().jump(merge_id, &[]);
+            terminated = true;
+            break;
+        }
+        compile_stmt(stmt, builder, &mut terminated, ctx)?;
+        if !terminated && let Some(cur) = builder.current_block() {
+            current = cur;
+        }
+    }
+    if !terminated {
+        builder.switch_to_block(current);
+        builder.ins().jump(merge_id, &[]);
+    }
+    Ok(())
+}
+
+fn compile_else_if_chain(
+    else_if: &[(HirExpr, Vec<HirStmt>)],
+    else_block: &Option<Vec<HirStmt>>,
+    else_block_id: ir::Block,
+    merge_id: ir::Block,
+    result: Option<(ir::Type, ir::Value)>,
+    builder: &mut FunctionBuilder,
+    ctx: &mut CodegenCtx,
+) -> Result<(), CraneliftError> {
+    builder.switch_to_block(else_block_id);
+    for (cond, block) in else_if {
+        let cond_val = compile_expr(cond, builder, ctx)?;
+        let inner_then = builder.create_block();
+        let inner_else = builder.create_block();
+        builder
+            .ins()
+            .brif(cond_val, inner_then, &[], inner_else, &[]);
+        compile_if_branch(
+            block,
+            inner_then,
+            merge_id,
+            result,
+            builder,
+            ctx,
+        )?;
+        builder.switch_to_block(inner_else);
+    }
+    if let Some(stmts) = else_block {
+        let mut terminated = false;
+        let mut current = else_block_id;
+        for (i, stmt) in stmts.iter().enumerate() {
+            let is_last = i == stmts.len() - 1;
+            if is_last
+                && let HirStmt {
+                    kind: HirStmtKind::Value(val_expr),
+                    ..
+                } = stmt
+            {
+                let val = compile_expr(val_expr, builder, ctx)?;
+                if let Some((_res_type, res_ptr)) = result {
+                    let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                    builder.ins().store(mflags, val, res_ptr, 0);
+                }
+                builder.ins().jump(merge_id, &[]);
+                terminated = true;
+                break;
+            }
+            compile_stmt(stmt, builder, &mut terminated, ctx)?;
+            if !terminated && let Some(cur) = builder.current_block() {
+                current = cur;
+            }
+        }
+        if !terminated {
+            builder.switch_to_block(current);
+            builder.ins().jump(merge_id, &[]);
+        }
+    } else {
+        builder.ins().jump(merge_id, &[]);
+    }
+    Ok(())
 }
 
 fn element_byte_size(t: &Type, pointer_type: ir::Type) -> u32 {

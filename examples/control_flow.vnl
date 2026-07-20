@@ -1,0 +1,136 @@
+# Control flow examples
+# Run: vinyl run examples/control_flow.vnl
+
+# --- If / else as expression ---
+
+fn clamp(value: int32, low: int32, high: int32): int32 {
+    if value < low { low }
+    else {
+        if value > high { high } else { value }
+    }
+}
+
+fn rating(score: int32): int32 {
+    if score >= 90 { 3 }
+    else {
+        if score >= 60 { 2 }
+        else {
+            if score >= 30 { 1 } else { 0 }
+        }
+    }
+}
+
+fn absolute(n: int32): int32 {
+    if n < 0 { 0 - n } else { n }
+}
+
+fn min(a: int32, b: int32): int32 {
+    let result = if a < b { a } else { b };
+    result
+}
+
+# --- Nested if ---
+
+fn quadrant(x: int32, y: int32): int32 {
+    if x > 0 {
+        if y > 0 { 1 } else { 4 }
+    } else {
+        if y > 0 { 2 } else { 3 }
+    }
+}
+
+# --- If inside arithmetic ---
+
+fn sum_abs(a: int32, b: int32): int32 {
+    (if a < 0 { 0 - a } else { a }) + (if b < 0 { 0 - b } else { b })
+}
+
+# --- Recursion (functional iteration without mutation) ---
+
+fn factorial(n: int32): int32 {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+fn fibonacci(n: int32): int32 {
+    if n <= 1 { n } else { fibonacci(n - 1) + fibonacci(n - 2) }
+}
+
+fn gcd(a: int32, b: int32): int32 {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn sum_range(n: int32): int32 {
+    if n <= 0 { 0 } else { n + sum_range(n - 1) }
+}
+
+fn count_digits(n: int32): int32 {
+    if n < 10 { 1 } else { 1 + count_digits(n / 10) }
+}
+
+fn collatz_steps(n: int32): int32 {
+    if n == 1 { 0 }
+    else {
+        if n % 2 == 0 { 1 + collatz_steps(n / 2) }
+        else { 1 + collatz_steps(3 * n + 1) }
+    }
+}
+
+# --- While (condition checked each iteration) ---
+
+fn while_never_enters(): int32 {
+    let result = 42;
+    while false { }
+    result
+}
+
+fn while_immediate_break(): int32 {
+    while true { break; }
+    7
+}
+
+# --- Loop with break ---
+
+fn loop_immediate_break(): int32 {
+    let result = 7;
+    loop { break; }
+    result
+}
+
+fn loop_cond_break(n: int32): int32 {
+    loop {
+        if n == 0 { break; }
+        break;
+    }
+    n
+}
+
+# --- Loop with continue (syntactic demonstration) ---
+
+fn loop_with_continue(): int32 {
+    loop { break; continue; }
+    1
+}
+
+# --- Main ---
+
+fn main(): int32 {
+    let c = clamp(150, 0, 100);
+    let r = rating(75) + rating(45) + rating(15);
+    let a = absolute(-5);
+    let m = min(10, 20);
+    let q = quadrant(1, -1);
+    let sa = sum_abs(-3, 7);
+    let fact = factorial(6);
+    let fib = fibonacci(10);
+    let g = gcd(48, 18);
+    let sr = sum_range(10);
+    let cd = count_digits(12345);
+    let cs = collatz_steps(27);
+    let wne = while_never_enters();
+    let wib = while_immediate_break();
+    let lib = loop_immediate_break();
+    let lcb = loop_cond_break(0);
+    let lwc = loop_with_continue();
+
+    c + r + a + m + q + sa + fact + fib + g + sr + cd + cs + wne + wib + lib + lcb + lwc
+}

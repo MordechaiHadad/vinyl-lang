@@ -7,7 +7,7 @@
     "type": "git",
     "url": "git+https://github.com/vinyl-lang/vinyl.git"
   },
-  "funding": "",
+  "funding": {},
   "license": "MIT",
   "author": {
     "name": "Mordechai Hadad",

@@ -166,6 +166,7 @@ pub enum Stmt {
     },
     Expr(Expr),
     Return(Option<Expr>, SourceSpan),
+    Value(Expr, SourceSpan),
     If {
         span: SourceSpan,
         condition: Expr,
@@ -173,6 +174,17 @@ pub enum Stmt {
         else_if: Vec<(Expr, Vec<Stmt>)>,
         else_block: Option<Vec<Stmt>>,
     },
+    While {
+        span: SourceSpan,
+        condition: Expr,
+        body: Vec<Stmt>,
+    },
+    Loop {
+        span: SourceSpan,
+        body: Vec<Stmt>,
+    },
+    Break(SourceSpan),
+    Continue(SourceSpan),
 }
 
 impl Stmt {
@@ -181,7 +193,12 @@ impl Stmt {
             Stmt::Let { span, .. } => *span,
             Stmt::Expr(e) => e.span(),
             Stmt::Return(_, span) => *span,
+            Stmt::Value(_, span) => *span,
             Stmt::If { span, .. } => *span,
+            Stmt::While { span, .. } => *span,
+            Stmt::Loop { span, .. } => *span,
+            Stmt::Break(span) => *span,
+            Stmt::Continue(span) => *span,
         }
     }
 }
@@ -229,6 +246,13 @@ pub enum Expr {
     Tuple(Vec<Expr>, SourceSpan),
     Array(Vec<Expr>, SourceSpan),
     Paren(Box<Expr>, SourceSpan),
+    If {
+        span: SourceSpan,
+        condition: Box<Expr>,
+        then_block: Vec<Stmt>,
+        else_if: Vec<(Expr, Vec<Stmt>)>,
+        else_block: Option<Vec<Stmt>>,
+    },
 }
 
 impl Expr {
@@ -250,6 +274,7 @@ impl Expr {
             Expr::Tuple(_, s) => *s,
             Expr::Array(_, s) => *s,
             Expr::Paren(_, s) => *s,
+            Expr::If { span, .. } => *span,
         }
     }
 }

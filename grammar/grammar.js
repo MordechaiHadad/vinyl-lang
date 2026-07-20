@@ -3,7 +3,7 @@ export default grammar({
 
   extras: $ => [/\s/, $.comment],
 
-  conflicts: $ => [],
+  conflicts: $ => [[$._statement, $._expression]],
 
   rules: {
     source_file: $ => repeat($._definition),
@@ -83,6 +83,10 @@ export default grammar({
       $.expression_statement,
       $.return_statement,
       $.if_expression,
+      $.while_statement,
+      $.loop_statement,
+      $.break_statement,
+      $.continue_statement,
     ),
 
     let_declaration: $ => seq(
@@ -120,6 +124,7 @@ export default grammar({
       $.array_expression,
       $.parenthesized_expression,
       $.block,
+      $.if_expression,
     ),
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -227,6 +232,21 @@ export default grammar({
       repeat(seq("else", "if", $._expression, $.block)),
       optional(seq("else", $.block)),
     ),
+
+    while_statement: $ => seq(
+      "while",
+      $._expression,
+      $.block,
+    ),
+
+    loop_statement: $ => seq(
+      "loop",
+      $.block,
+    ),
+
+    break_statement: $ => seq("break", ";"),
+
+    continue_statement: $ => seq("continue", ";"),
   },
 });
 

@@ -41,12 +41,12 @@ pub enum HirStmtKind {
     },
     Expr(HirExpr),
     Return(Option<HirExpr>),
-    If {
-        condition: HirExpr,
-        then_block: Vec<HirStmt>,
-        else_if: Vec<(HirExpr, Vec<HirStmt>)>,
-        else_block: Option<Vec<HirStmt>>,
+    Value(HirExpr),
+    Loop {
+        body: Vec<HirStmt>,
     },
+    Break,
+    Continue,
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +78,12 @@ pub enum HirExprKind {
         index: Box<HirExpr>,
     },
     Array(Vec<HirExpr>),
+    If {
+        condition: Box<HirExpr>,
+        then_block: Vec<HirStmt>,
+        else_if: Vec<(HirExpr, Vec<HirStmt>)>,
+        else_block: Option<Vec<HirStmt>>,
+    },
 }
 
 pub type Type = vinyl_parser::ast::Type;

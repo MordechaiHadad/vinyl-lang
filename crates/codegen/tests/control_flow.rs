@@ -145,3 +145,51 @@ fn or_left_true() {
         1
     );
 }
+
+#[test]
+fn if_expr_let() {
+    assert_eq!(
+        common::run("fn main(): int32 { let x = if true { 1 } else { 2 }; x }").unwrap(),
+        1
+    );
+}
+
+#[test]
+fn if_expr_let_false() {
+    assert_eq!(
+        common::run("fn main(): int32 { let x = if false { 1 } else { 2 }; x }").unwrap(),
+        2
+    );
+}
+
+#[test]
+fn loop_break() {
+    assert_eq!(
+        common::run("fn main(): int32 { loop { if true { break; } } 42 }").unwrap(),
+        42
+    );
+}
+
+#[test]
+fn while_break() {
+    assert_eq!(
+        common::run("fn main(): int32 { while true { break; } 42 }").unwrap(),
+        42
+    );
+}
+
+#[test]
+fn while_false_skip_body() {
+    assert_eq!(
+        common::run("fn main(): int32 { while false { } 42 }").unwrap(),
+        42
+    );
+}
+
+#[test]
+fn loop_break_continue() {
+    assert_eq!(
+        common::run("fn main(): int32 { loop { break; continue; } 42 }").unwrap(),
+        42
+    );
+}

@@ -259,14 +259,42 @@ fn lower_array_type(node: &Node, source: &str, source_name: &str) -> Result<Type
 
 fn lower_block(node: &Node, source: &str, source_name: &str) -> Result<Vec<Stmt>, LowerError> {
     let mut stmts = Vec::new();
-    for i in 0..node.named_child_count() {
+    let child_count = node.named_child_count();
+    for i in 0..child_count {
         if let Some(child) = node.named_child(i as u32) {
+            let is_last = i == child_count - 1;
             match lower_statement(&child, source, source_name) {
-                Ok(Some(stmt)) => stmts.push(stmt),
+                Ok(Some(stmt)) => {
+                    if is_last {
+                        if let Stmt::Expr(Expr::If {
+                            span: if_span,
+                            condition,
+                            then_block,
+                            else_if,
+                            else_block,
+                        }) = stmt
+                        {
+                            stmts.push(Stmt::Value(
+                                Expr::If {
+                                    span: if_span,
+                                    condition,
+                                    then_block,
+                                    else_if,
+                                    else_block,
+                                },
+                                if_span,
+                            ));
+                        } else {
+                            stmts.push(stmt);
+                        }
+                    } else {
+                        stmts.push(stmt);
+                    }
+                }
                 Ok(None) => {
                     if let Ok(expr) = lower_expression(&child, source, source_name) {
                         let span = SourceSpan::from(child.start_byte()..child.end_byte());
-                        stmts.push(Stmt::Return(Some(expr), span));
+                        stmts.push(Stmt::Value(expr, span));
                     }
                 }
                 Err(e) => return Err(e),
@@ -298,7 +326,68 @@ fn lower_statement(
                 "empty expression statement",
             ))
         }
-        "if_expression" => lower_if(node, source, source_name).map(Some),
+        "if_expression" => lower_if(node, source, source_name).map(|e| Some(Stmt::Expr(e))),
+        "while_statement" => {
+            let span = SourceSpan::from(node.start_byte()..node.end_byte());
+            let named = children(node);
+            let condition = match named.first() {
+                Some(n) => lower_expression(n, source, source_name)?,
+                None => {
+                    return Err(span_error(
+                        node,
+                        source,
+                        source_name,
+                        "incomplete while: missing condition",
+                    ));
+                }
+            };
+            let body = match named.get(1) {
+                Some(n) => lower_block(n, source, source_name)?,
+                None => {
+                    return Err(span_error(
+                        node,
+                        source,
+                        source_name,
+                        "incomplete while: missing body",
+                    ));
+                }
+            };
+            let break_stmt = Stmt::Break(span);
+            let if_expr = Expr::If {
+                span,
+                condition: Box::new(condition),
+                then_block: body,
+                else_if: Vec::new(),
+                else_block: Some(vec![break_stmt]),
+            };
+            Ok(Some(Stmt::Loop {
+                span,
+                body: vec![Stmt::Expr(if_expr)],
+            }))
+        }
+        "loop_statement" => {
+            let span = SourceSpan::from(node.start_byte()..node.end_byte());
+            let body = match node.named_child(0) {
+                Some(n) => lower_block(&n, source, source_name)?,
+                None => {
+                    return Err(span_error(
+                        node,
+                        source,
+                        source_name,
+                        "incomplete loop: missing body",
+                    ));
+                }
+            };
+            Ok(Some(Stmt::Loop { span, body }))
+        }
+        "break_statement" => {
+            let span = SourceSpan::from(node.start_byte()..node.end_byte());
+            Ok(Some(Stmt::Break(span)))
+        }
+        "continue_statement" => {
+            let span = SourceSpan::from(node.start_byte()..node.end_byte());
+            Ok(Some(Stmt::Continue(span)))
+        }
         _ => Ok(None),
     }
 }
@@ -344,7 +433,7 @@ fn lower_return(node: &Node, source: &str, source_name: &str) -> Result<Stmt, Lo
     Ok(Stmt::Return(None, span))
 }
 
-fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Stmt, LowerError> {
+fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Expr, LowerError> {
     let span = SourceSpan::from(node.start_byte()..node.end_byte());
     let named = children(node);
 
@@ -378,7 +467,7 @@ fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Stmt, LowerE
         match else_node.kind() {
             "if_expression" => {
                 let inner = lower_if(else_node, source, source_name)?;
-                if let Stmt::If {
+                if let Expr::If {
                     condition: c,
                     then_block: t,
                     else_if: e,
@@ -386,7 +475,7 @@ fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Stmt, LowerE
                     ..
                 } = inner
                 {
-                    else_if.push((c, t));
+                    else_if.push((*c, t));
                     else_if.extend(e);
                     else_block = el;
                 }
@@ -398,9 +487,9 @@ fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Stmt, LowerE
         }
     }
 
-    Ok(Stmt::If {
+    Ok(Expr::If {
         span,
-        condition,
+        condition: Box::new(condition),
         then_block,
         else_if,
         else_block,
@@ -461,6 +550,7 @@ fn lower_expression(node: &Node, source: &str, source_name: &str) -> Result<Expr
                 index: Box::new(index),
             })
         }
+        "if_expression" => lower_if(node, source, source_name),
         kind => Err(invalid_kind(node, source, source_name, kind, "expression")),
     }
 }

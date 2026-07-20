@@ -2,10 +2,7 @@ mod common;
 
 #[test]
 fn char_literal() {
-    assert_eq!(
-        common::run("fn main(): char { 'a' }").unwrap(),
-        'a' as i64
-    );
+    assert_eq!(common::run("fn main(): char { 'a' }").unwrap(), 'a' as i64);
 }
 
 #[test]
@@ -18,18 +15,12 @@ fn char_let() {
 
 #[test]
 fn char_code_point() {
-    assert_eq!(
-        common::run("fn main(): char { '!' }").unwrap(),
-        '!' as i64
-    );
+    assert_eq!(common::run("fn main(): char { '!' }").unwrap(), '!' as i64);
 }
 
 #[test]
 fn char_digit() {
-    assert_eq!(
-        common::run("fn main(): char { '7' }").unwrap(),
-        '7' as i64
-    );
+    assert_eq!(common::run("fn main(): char { '7' }").unwrap(), '7' as i64);
 }
 
 #[test]

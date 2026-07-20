@@ -51,7 +51,10 @@ fn array_multi_element() {
 #[test]
 fn array_bool_index() {
     assert_eq!(
-        common::run("fn main(): int32 { let arr = [true, false, true]; if arr[0] { 1 } else { 0 } }").unwrap(),
+        common::run(
+            "fn main(): int32 { let arr = [true, false, true]; if arr[0] { 1 } else { 0 } }"
+        )
+        .unwrap(),
         1
     );
 }
@@ -59,7 +62,10 @@ fn array_bool_index() {
 #[test]
 fn array_bool_index_false() {
     assert_eq!(
-        common::run("fn main(): int32 { let arr = [true, false, true]; if arr[1] { 1 } else { 0 } }").unwrap(),
+        common::run(
+            "fn main(): int32 { let arr = [true, false, true]; if arr[1] { 1 } else { 0 } }"
+        )
+        .unwrap(),
         0
     );
 }
