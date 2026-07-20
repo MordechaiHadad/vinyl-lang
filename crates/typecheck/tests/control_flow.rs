@@ -67,12 +67,18 @@ fn while_condition_bool() {
 fn while_condition_not_bool() {
     let source = "fn main() { while 1 { break; } }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: while condition must be bool");
+    assert!(
+        items.is_err(),
+        "typeck should fail: while condition must be bool"
+    );
 }
 
 #[test]
 fn while_condition_string() {
     let source = "fn main() { while \"hello\" { break; } }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: while condition must be bool");
+    assert!(
+        items.is_err(),
+        "typeck should fail: while condition must be bool"
+    );
 }

@@ -46,7 +46,10 @@ fn array_index_non_int32() {
 fn array_element_type_mismatch() {
     let source = "fn main() { let arr = [1, true]; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: array element type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: array element type mismatch"
+    );
 }
 
 #[test]
@@ -67,7 +70,10 @@ fn array_of_arrays() {
 fn array_nested_type_mismatch() {
     let source = "fn main() { let arr = [[1, 2], [true, false]]; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: nested array type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: nested array type mismatch"
+    );
 }
 
 #[test]
@@ -81,5 +87,8 @@ fn char_in_array() {
 fn char_array_type_mismatch() {
     let source = "fn main() { let arr: [int32; 2] = ['a', 'b']; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: char array type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: char array type mismatch"
+    );
 }

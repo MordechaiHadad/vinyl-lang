@@ -122,12 +122,7 @@ impl CodegenBackend for CraneliftBackend {
                     pointer_type,
                 };
                 for stmt in &func.body {
-                    compile_stmt(
-                        stmt,
-                        &mut builder,
-                        &mut terminated,
-                        &mut ctx,
-                    )?;
+                    compile_stmt(stmt, &mut builder, &mut terminated, &mut ctx)?;
                 }
 
                 if !terminated {
@@ -460,13 +455,7 @@ fn compile_expr(
             else_if,
             else_block,
         } => compile_expr_if(
-            condition,
-            then_block,
-            else_if,
-            else_block,
-            expr,
-            builder,
-            ctx,
+            condition, then_block, else_if, else_block, expr, builder, ctx,
         ),
     }
 }
@@ -599,14 +588,7 @@ fn compile_else_if_chain(
         builder
             .ins()
             .brif(cond_val, inner_then, &[], inner_else, &[]);
-        compile_if_branch(
-            block,
-            inner_then,
-            merge_id,
-            result,
-            builder,
-            ctx,
-        )?;
+        compile_if_branch(block, inner_then, merge_id, result, builder, ctx)?;
         builder.switch_to_block(inner_else);
     }
     if let Some(stmts) = else_block {

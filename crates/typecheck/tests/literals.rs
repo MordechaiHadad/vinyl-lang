@@ -46,21 +46,30 @@ fn int_literal_infers_float64() {
 fn int_literal_rejects_bool() {
     let source = "fn main(): bool { 42 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: int literal cannot be bool");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int literal cannot be bool"
+    );
 }
 
 #[test]
 fn int_literal_rejects_string() {
     let source = "fn main(): string { 42 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: int literal cannot be string");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int literal cannot be string"
+    );
 }
 
 #[test]
 fn int_literal_rejects_char() {
     let source = "fn main(): char { 42 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: int literal cannot be char");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int literal cannot be char"
+    );
 }
 
 #[test]
@@ -81,21 +90,30 @@ fn float_literal_infers_float32() {
 fn float_literal_rejects_int32() {
     let source = "fn main(): int32 { 3.14 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: float literal cannot be int32");
+    assert!(
+        items.is_err(),
+        "typeck should fail: float literal cannot be int32"
+    );
 }
 
 #[test]
 fn float_literal_rejects_uint32() {
     let source = "fn main(): uint32 { 3.14 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: float literal cannot be uint32");
+    assert!(
+        items.is_err(),
+        "typeck should fail: float literal cannot be uint32"
+    );
 }
 
 #[test]
 fn float_literal_rejects_bool() {
     let source = "fn main(): bool { 3.14 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: float literal cannot be bool");
+    assert!(
+        items.is_err(),
+        "typeck should fail: float literal cannot be bool"
+    );
 }
 
 #[test]
@@ -123,12 +141,18 @@ fn char_let_infer() {
 fn char_return_type_mismatch() {
     let source = "fn main(): int32 { 'a' }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: char return type mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: char return type mismatch"
+    );
 }
 
 #[test]
 fn char_annotation_mismatch() {
     let source = "fn main() { let c: int32 = 'a'; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: char annotation mismatch");
+    assert!(
+        items.is_err(),
+        "typeck should fail: char annotation mismatch"
+    );
 }

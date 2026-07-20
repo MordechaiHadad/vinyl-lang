@@ -193,7 +193,10 @@ fn comparison_returns_bool() {
 fn comparison_result_not_bool() {
     let source = "fn f(): int32 { 1 == 2 }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: comparison returns bool, not int32");
+    assert!(
+        items.is_err(),
+        "typeck should fail: comparison returns bool, not int32"
+    );
 }
 
 #[test]
@@ -228,7 +231,10 @@ fn logical_or_returns_bool() {
 fn logical_result_not_bool() {
     let source = "fn f(): int32 { true && false }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: logical returns bool, not int32");
+    assert!(
+        items.is_err(),
+        "typeck should fail: logical returns bool, not int32"
+    );
 }
 
 #[test]

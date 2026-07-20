@@ -116,7 +116,10 @@ fn return_in_else_fallthrough() {
 fn return_void_in_typed_fn() {
     let source = "fn f(): int32 { return; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: returning unit in int32 fn");
+    assert!(
+        items.is_err(),
+        "typeck should fail: returning unit in int32 fn"
+    );
 }
 
 #[test]

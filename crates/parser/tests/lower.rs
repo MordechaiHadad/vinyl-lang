@@ -40,14 +40,21 @@ fn mut_param() {
 
 #[test]
 fn let_statements() {
-    let items = common::do_lower("fn f() { let x: int32 = 42; let y = 10; let mut z: float64 = 3.14; }");
+    let items =
+        common::do_lower("fn f() { let x: int32 = 42; let y = 10; let mut z: float64 = 3.14; }");
     let func = match &items[0] {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
     assert_eq!(func.body.len(), 3);
 
-    if let Stmt::Let { name, mutable, type_, .. } = &func.body[0] {
+    if let Stmt::Let {
+        name,
+        mutable,
+        type_,
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(name, "x");
         assert!(!mutable);
         assert!(type_.is_some());
@@ -55,7 +62,13 @@ fn let_statements() {
         panic!("expected let statement");
     }
 
-    if let Stmt::Let { name, mutable, type_, .. } = &func.body[1] {
+    if let Stmt::Let {
+        name,
+        mutable,
+        type_,
+        ..
+    } = &func.body[1]
+    {
         assert_eq!(name, "y");
         assert!(!mutable);
         assert!(type_.is_none());
@@ -63,7 +76,13 @@ fn let_statements() {
         panic!("expected let statement");
     }
 
-    if let Stmt::Let { name, mutable, type_, .. } = &func.body[2] {
+    if let Stmt::Let {
+        name,
+        mutable,
+        type_,
+        ..
+    } = &func.body[2]
+    {
         assert_eq!(name, "z");
         assert!(!*mutable);
         assert!(type_.is_some());
@@ -74,14 +93,20 @@ fn let_statements() {
 
 #[test]
 fn literal_values() {
-    let items = common::do_lower("fn f() { let a = 42; let b = 3.14; let c = true; let d = 'x'; let e = \"hello\"; }");
+    let items = common::do_lower(
+        "fn f() { let a = 42; let b = 3.14; let c = true; let d = 'x'; let e = \"hello\"; }",
+    );
     let func = match &items[0] {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
 
     let check_int = |idx| {
-        if let Stmt::Let { value: Expr::Int(v, _), .. } = &func.body[idx] {
+        if let Stmt::Let {
+            value: Expr::Int(v, _),
+            ..
+        } = &func.body[idx]
+        {
             assert_eq!(*v, 42);
         } else {
             panic!("expected int literal at {idx}");
@@ -89,7 +114,11 @@ fn literal_values() {
     };
 
     let check_float = |idx| {
-        if let Stmt::Let { value: Expr::Float(v, _), .. } = &func.body[idx] {
+        if let Stmt::Let {
+            value: Expr::Float(v, _),
+            ..
+        } = &func.body[idx]
+        {
             assert!((*v - (314.0_f64 / 100.0)).abs() < 1e-10);
         } else {
             panic!("expected float literal at {idx}");
@@ -97,7 +126,11 @@ fn literal_values() {
     };
 
     let check_bool = |idx, expected| {
-        if let Stmt::Let { value: Expr::Bool(v, _), .. } = &func.body[idx] {
+        if let Stmt::Let {
+            value: Expr::Bool(v, _),
+            ..
+        } = &func.body[idx]
+        {
             assert_eq!(*v, expected);
         } else {
             panic!("expected bool literal at {idx}");
@@ -105,7 +138,11 @@ fn literal_values() {
     };
 
     let check_char = |idx| {
-        if let Stmt::Let { value: Expr::Char(v, _), .. } = &func.body[idx] {
+        if let Stmt::Let {
+            value: Expr::Char(v, _),
+            ..
+        } = &func.body[idx]
+        {
             assert_eq!(*v, 'x');
         } else {
             panic!("expected char literal at {idx}");
@@ -113,7 +150,11 @@ fn literal_values() {
     };
 
     let check_string = |idx| {
-        if let Stmt::Let { value: Expr::String(v, _), .. } = &func.body[idx] {
+        if let Stmt::Let {
+            value: Expr::String(v, _),
+            ..
+        } = &func.body[idx]
+        {
             assert_eq!(v, "hello");
         } else {
             panic!("expected string literal at {idx}");
@@ -136,7 +177,13 @@ fn binary_expression_structure() {
     };
 
     let last = func.body.last().unwrap();
-    if let Stmt::Value(Expr::Binary { left, op, right, .. }, _) = last {
+    if let Stmt::Value(
+        Expr::Binary {
+            left, op, right, ..
+        },
+        _,
+    ) = last
+    {
         assert_eq!(op, &BinaryOp::Add);
         if let Expr::Int(lv, _) = left.as_ref() {
             assert_eq!(*lv, 1);
@@ -167,7 +214,13 @@ fn if_expression() {
         _ => panic!("expected value statement"),
     };
     match expr {
-        Expr::If { condition, then_block, else_if, else_block, .. } => {
+        Expr::If {
+            condition,
+            then_block,
+            else_if,
+            else_block,
+            ..
+        } => {
             assert!(matches!(condition.as_ref(), Expr::Bool(true, _)));
             assert!(!then_block.is_empty());
             assert!(else_if.is_empty());
@@ -196,7 +249,11 @@ fn array_expression() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let { value: Expr::Array(elements, _), .. } = &func.body[0] {
+    if let Stmt::Let {
+        value: Expr::Array(elements, _),
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(elements.len(), 3);
     } else {
         panic!("expected array expression");
@@ -269,7 +326,9 @@ fn return_void() {
 
 #[test]
 fn primitive_types() {
-    let items = common::do_lower("fn f(x: int8, y: uint16, z: float32, w: string, c: char, b: bool, u: unit) {}");
+    let items = common::do_lower(
+        "fn f(x: int8, y: uint16, z: float32, w: string, c: char, b: bool, u: unit) {}",
+    );
     let func = match &items[0] {
         Item::Function(f) => f,
         _ => panic!("expected function"),
@@ -348,7 +407,11 @@ fn hex_int_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let { value: Expr::Int(v, _), .. } = &func.body[0] {
+    if let Stmt::Let {
+        value: Expr::Int(v, _),
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(*v, 255);
     } else {
         panic!("expected int literal");
@@ -362,7 +425,11 @@ fn binary_int_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let { value: Expr::Int(v, _), .. } = &func.body[0] {
+    if let Stmt::Let {
+        value: Expr::Int(v, _),
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(*v, 10);
     } else {
         panic!("expected int literal");
@@ -376,7 +443,11 @@ fn negative_int_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let { value: Expr::Int(v, _), .. } = &func.body[0] {
+    if let Stmt::Let {
+        value: Expr::Int(v, _),
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(*v, -42);
     } else {
         panic!("expected int literal");
@@ -390,7 +461,11 @@ fn raw_string() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let { value: Expr::String(v, _), .. } = &func.body[0] {
+    if let Stmt::Let {
+        value: Expr::String(v, _),
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(v, "hello\\nworld");
     } else {
         panic!("expected string literal");
@@ -404,7 +479,11 @@ fn char_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let { value: Expr::Char(v, _), .. } = &func.body[0] {
+    if let Stmt::Let {
+        value: Expr::Char(v, _),
+        ..
+    } = &func.body[0]
+    {
         assert_eq!(*v, 'a');
     } else {
         panic!("expected char literal");

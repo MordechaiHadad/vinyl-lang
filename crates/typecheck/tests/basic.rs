@@ -81,7 +81,10 @@ fn if_else_type_mismatch() {
 fn if_no_else_returns_unit() {
     let source = "fn f(): int32 { if true { 1 } }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: if without else yields unit");
+    assert!(
+        items.is_err(),
+        "typeck should fail: if without else yields unit"
+    );
 }
 
 #[test]
@@ -130,21 +133,30 @@ fn block_trailing_binary() {
 fn block_returns_unit() {
     let source = "fn main(): int32 { let x = 1; }";
     let items = common::compile(source);
-    assert!(items.is_ok(), "typeck skips trailing check for non-Value stmts");
+    assert!(
+        items.is_ok(),
+        "typeck skips trailing check for non-Value stmts"
+    );
 }
 
 #[test]
 fn block_expression_returns_unit() {
     let source = "fn main(): int32 { { 42 } }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: block expression returns unit");
+    assert!(
+        items.is_err(),
+        "typeck should fail: block expression returns unit"
+    );
 }
 
 #[test]
 fn block_expression_unit_mismatch() {
     let source = "fn main(): int32 { {} }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: block expression returns unit");
+    assert!(
+        items.is_err(),
+        "typeck should fail: block expression returns unit"
+    );
 }
 
 #[test]
