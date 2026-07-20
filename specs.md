@@ -89,6 +89,8 @@ The current implementation uses a non-generic HM variant (no `let`-polymorphism 
 | `bool` | Boolean |
 | `char` | Unicode scalar value |
 | `string` | Heap-allocated string primitive (like C#, not Rust's `String`/`&str` split) |
+| `int` | 64-bit signed integer (default int type) |
+| `float` | 64-bit floating point (default float type) |
 
 `string` is a reference type (GC-tracked). `unit` is also the default return type when no return type is specified on a function.
 
@@ -99,7 +101,7 @@ r"raw string with no \escape sequences"
 f"interpolation {expr}"
 'a'
 42       // int
-3.14     // float64
+3.14     // float
 true / false
 ```
 
