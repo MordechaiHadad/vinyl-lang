@@ -61,6 +61,7 @@ pub enum HirExprKind {
     Float(f64, SourceSpan),
     String(String),
     Bool(bool),
+    Unit,
     Char(char),
     Ident(String),
     Binary {

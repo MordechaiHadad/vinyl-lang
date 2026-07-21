@@ -221,6 +221,14 @@
         {
           "type": "STRING",
           "value": "unit"
+        },
+        {
+          "type": "STRING",
+          "value": "int"
+        },
+        {
+          "type": "STRING",
+          "value": "float"
         }
       ]
     },
@@ -576,6 +584,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "unit_literal"
+        },
+        {
+          "type": "SYMBOL",
           "name": "call_expression"
         },
         {
@@ -912,6 +924,10 @@
           "value": "false"
         }
       ]
+    },
+    "unit_literal": {
+      "type": "STRING",
+      "value": "unit"
     },
     "call_expression": {
       "type": "SEQ",

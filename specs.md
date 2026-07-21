@@ -59,7 +59,7 @@ The current implementation uses a non-generic HM variant (no `let`-polymorphism 
 
 - **Unification**: Terms are unified via standard Robinson's algorithm with an occurs check to prevent recursive types.
 - **Scope**: Lexical scoping with push/pop scope management. Each `if` branch and block body gets its own scope.
-- **Literals**: Default types are assigned — `int` literals default to `int32`, `float` to `float64`, `bool` to `bool`, `string` to `string`.
+- **Literals**: Default types are assigned — `int` literals default to `int` (`int64`), `float` to `float` (`float64`), `bool` to `bool`, `string` to `string`. Type annotations on the binding or function signature override these defaults.
 - **Binary ops**: Both operands must unify. Comparison and logical operators (`==`, `<`, `&&`, `||`, etc.) return `bool`. Arithmetic operators return the operand type.
 - **Calls**: Function call arguments are unified against the callee's parameter types. Return type is determined from the callee's signature.
 - **Annotations**: Type annotations are unified against inferred types — a mismatch produces a type error.
@@ -71,7 +71,7 @@ The current implementation uses a non-generic HM variant (no `let`-polymorphism 
 
 | Type | Description |
 |------|-------------|
-| `unit` | Unit type (no value) |
+| `unit` | Unit type (no value). `unit` is also a valid expression that evaluates to unit. |
 | `int8` | 8-bit signed integer |
 | `int16` | 16-bit signed integer |
 | `int32` | 32-bit signed integer |
@@ -103,6 +103,7 @@ f"interpolation {expr}"
 42       // int
 3.14     // float
 true / false
+unit     // unit literal (unit type value)
 ```
 
 **References are explicit with `&T`.** You must annotate reference types so it's always visible whether you're copying a value or referencing heap data. No implicit references.

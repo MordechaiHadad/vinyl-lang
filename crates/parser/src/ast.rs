@@ -210,6 +210,7 @@ pub enum Expr {
     String(String, SourceSpan),
     Char(char, SourceSpan),
     Bool(bool, SourceSpan),
+    Unit(SourceSpan),
     Ident(String, SourceSpan),
     Binary {
         span: SourceSpan,
@@ -263,6 +264,7 @@ impl Expr {
             Expr::String(_, s) => *s,
             Expr::Char(_, s) => *s,
             Expr::Bool(_, s) => *s,
+            Expr::Unit(s) => *s,
             Expr::Ident(_, s) => *s,
             Expr::Binary { span, .. } => *span,
             Expr::Unary { span, .. } => *span,

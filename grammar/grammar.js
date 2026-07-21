@@ -119,6 +119,7 @@ export default grammar({
       $.integer_literal,
       $.float_literal,
       $.bool_literal,
+      $.unit_literal,
       $.call_expression,
       $.binary_expression,
       $.index_expression,
@@ -170,6 +171,8 @@ export default grammar({
     float_literal: $ => token(seq(optional("-"), /[0-9]+/, ".", /[0-9]+/)),
 
     bool_literal: $ => choice("true", "false"),
+
+    unit_literal: $ => "unit",
 
     call_expression: $ => seq(
       field("function", $.identifier),

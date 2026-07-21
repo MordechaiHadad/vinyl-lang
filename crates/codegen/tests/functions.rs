@@ -65,3 +65,13 @@ fn func_identity() {
         99
     );
 }
+
+#[test]
+fn unit_return_unit() {
+    assert_eq!(common::run("fn main(): unit { unit }").unwrap(), 0);
+}
+
+#[test]
+fn int_default_literal() {
+    assert_eq!(common::run("fn main(): int { 42 }").unwrap(), 42);
+}

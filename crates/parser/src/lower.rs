@@ -192,6 +192,8 @@ fn lower_simple_type(node: &Node, source: &str, source_name: &str) -> Result<Typ
                 "usize" => Type::Primitive(Primitive::USize),
                 "float32" => Type::Primitive(Primitive::Float32),
                 "float64" => Type::Primitive(Primitive::Float64),
+                "int" => Type::Primitive(Primitive::Int64),
+                "float" => Type::Primitive(Primitive::Float64),
                 "bool" => Type::Primitive(Primitive::Bool),
                 "char" => Type::Primitive(Primitive::Char),
                 "string" => Type::Primitive(Primitive::String),
@@ -506,6 +508,7 @@ fn lower_expression(node: &Node, source: &str, source_name: &str) -> Result<Expr
         "integer_literal" => lower_int(node, source),
         "float_literal" => lower_float(node, source),
         "bool_literal" => Ok(Expr::Bool(node_text(node, source) == "true", span())),
+        "unit_literal" => Ok(Expr::Unit(span())),
         "call_expression" => lower_call(node, source, source_name),
         "binary_expression" => lower_binary(node, source, source_name),
         "parenthesized_expression" => {

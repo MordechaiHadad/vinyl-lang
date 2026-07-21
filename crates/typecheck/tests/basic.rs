@@ -193,3 +193,24 @@ fn bool_type() {
     let items = common::compile(source);
     assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
 }
+
+#[test]
+fn unit_literal() {
+    let source = "fn main(): unit { unit }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn int_type_alias() {
+    let source = "fn main(): int { 42 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn float_type_alias() {
+    let source = "fn main(): float { 3.14 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}

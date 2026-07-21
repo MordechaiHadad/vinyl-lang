@@ -37,7 +37,7 @@ impl std::error::Error for CraneliftError {}
 
 struct CodegenCtx<'a> {
     module: &'a mut JITModule,
-    decls: &'a [(String, cranelift_module::FuncId, Vec<HirParam>)],
+    decls: &'a [(String, cranelift_module::FuncId, Vec<HirParam>, Type)],
     break_target: Option<ir::Block>,
     continue_target: Option<ir::Block>,
     vars: &'a mut HashMap<String, ir::Value>,
@@ -48,7 +48,7 @@ struct CodegenCtx<'a> {
 pub struct CraneliftBackend {
     module: JITModule,
     ctx: cranelift_codegen::Context,
-    decls: Vec<(String, cranelift_module::FuncId, Vec<HirParam>)>,
+    decls: Vec<(String, cranelift_module::FuncId, Vec<HirParam>, Type)>,
 }
 
 impl CraneliftBackend {
@@ -84,10 +84,10 @@ impl CodegenBackend for CraneliftBackend {
                 .module
                 .declare_function(&f.name, Linkage::Export, &sig)
                 .map_err(|e| CraneliftError::Msg(format!("declare {}: {e}", f.name)))?;
-            self.decls.push((f.name.clone(), func_id, f.params.clone()));
+            self.decls.push((f.name.clone(), func_id, f.params.clone(), f.return_type.clone()));
         }
 
-        for (name, func_id, params) in &self.decls.clone() {
+        for (name, func_id, params, _) in &self.decls.clone() {
             let func = items
                 .iter()
                 .find_map(|item| {
@@ -155,17 +155,22 @@ impl CodegenBackend for CraneliftBackend {
     }
 
     fn run(&self) -> Result<i64, Self::Error> {
-        let Some(main_id) = self
+        let Some((main_id, main_return)) = self
             .decls
             .iter()
-            .find(|(n, _, _)| n == "main")
-            .map(|(_, id, _)| *id)
+            .find(|(n, _, _, _)| n == "main")
+            .map(|(_, id, _, ret_type)| (id, ret_type))
         else {
             return Ok(0);
         };
 
-        let main_ptr = self.module.get_finalized_function(main_id);
+        if matches!(main_return, Type::Primitive(Primitive::Unit)) {
+            let main_fn: unsafe extern "C" fn() = unsafe { std::mem::transmute(self.module.get_finalized_function(*main_id)) };
+            unsafe { main_fn() };
+            return Ok(0);
+        }
 
+        let main_ptr = self.module.get_finalized_function(*main_id);
         let main_fn: unsafe extern "C" fn() -> i64 = unsafe { std::mem::transmute(main_ptr) };
         let result = unsafe { main_fn() };
         Ok(result)
@@ -208,7 +213,11 @@ impl<'a> CodegenCtx<'a> {
             }
             HirStmtKind::Value(expr) => {
                 let val = self.compile_expr(expr)?;
-                self.builder.ins().return_(&[val]);
+                if matches!(expr.type_, Type::Primitive(Primitive::Unit)) {
+                    self.builder.ins().return_(&[]);
+                } else {
+                    self.builder.ins().return_(&[val]);
+                }
                 *terminated = true;
                 Ok(())
             }
@@ -285,6 +294,7 @@ impl<'a> CodegenCtx<'a> {
                 Ok(self.builder.ins().iconst(ty, *v as i64))
             }
             HirExprKind::Float(v, _) => Ok(self.builder.ins().f64const(*v)),
+            HirExprKind::Unit => Ok(self.builder.ins().iconst(types::I8, 0)),
             HirExprKind::Bool(b) => Ok(self.builder.ins().iconst(types::I8, *b as i64)),
             HirExprKind::Char(c) => Ok(self.builder.ins().iconst(types::I32, *c as i64)),
             HirExprKind::String(_) => Err(CraneliftError::Msg(
@@ -374,8 +384,8 @@ impl<'a> CodegenCtx<'a> {
                     let callee_id = self
                         .decls
                         .iter()
-                        .find(|(n, _, _)| n == name)
-                        .map(|(_, id, _)| *id);
+                        .find(|(n, _, _, _)| n == name)
+                        .map(|(_, id, _, _)| *id);
                     if let Some(callee_id) = callee_id {
                         let mut call_args = Vec::new();
                         for arg in args {

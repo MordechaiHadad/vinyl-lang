@@ -489,3 +489,24 @@ fn char_literal() {
         panic!("expected char literal");
     }
 }
+
+#[test]
+fn int_float_type_aliases() {
+    let items = common::do_lower("fn f(x: int, y: float) {}");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    assert_eq!(func.params[0].type_, Type::Primitive(Primitive::Int64));
+    assert_eq!(func.params[1].type_, Type::Primitive(Primitive::Float64));
+}
+
+#[test]
+fn unit_literal_expression() {
+    let items = common::do_lower("fn f() { let x = unit; }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    assert!(matches!(func.body[0], Stmt::Let { value: Expr::Unit(_), .. }));
+}

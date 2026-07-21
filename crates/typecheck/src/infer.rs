@@ -1,5 +1,5 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use vinyl_parser::ast::{BinaryOp, Expr, FunctionDef, Item, Primitive, Stmt};
@@ -75,7 +75,7 @@ pub fn typeck(
         }
     }
 
-    warnings.extend(state.warnings.drain(..));
+        warnings.append(&mut state.warnings);
 
     if state.errors.is_empty() {
         Ok(hir_items)
@@ -99,6 +99,7 @@ struct InferState {
     current_return_type: Option<Type>,
     next_var: usize,
     loop_depth: usize,
+    float_vars: HashSet<usize>,
 }
 
 impl InferState {
@@ -113,6 +114,7 @@ impl InferState {
             current_return_type: None,
             next_var: 0,
             loop_depth: 0,
+            float_vars: HashSet::new(),
         }
     }
 
@@ -448,13 +450,23 @@ impl InferState {
                 kind: HirExprKind::Int(*v, *span),
                 type_: self.fresh_var(),
             }),
-            Expr::Float(v, span) => Ok(HirExpr {
-                kind: HirExprKind::Float(*v, *span),
-                type_: self.fresh_var(),
-            }),
+            Expr::Float(v, span) => {
+                let var = self.fresh_var();
+                if let Type::Var(id) = &var {
+                    self.float_vars.insert(*id);
+                }
+                Ok(HirExpr {
+                    kind: HirExprKind::Float(*v, *span),
+                    type_: var,
+                })
+            }
             Expr::String(s, _) => Ok(HirExpr {
                 kind: HirExprKind::String(s.clone()),
                 type_: Type::Primitive(Primitive::String),
+            }),
+            Expr::Unit(_) => Ok(HirExpr {
+                kind: HirExprKind::Unit,
+                type_: Type::Primitive(Primitive::Unit),
             }),
             Expr::Bool(b, _) => Ok(HirExpr {
                 kind: HirExprKind::Bool(*b),
@@ -647,8 +659,6 @@ impl InferState {
                     self.errors.push(e);
                 }
 
-                let prev_return = self.current_return_type.take();
-
                 self.push_scope();
                 let hir_then = self.infer_block(then_block, signatures)?;
                 self.pop_scope();
@@ -677,8 +687,6 @@ impl InferState {
                         result
                     })
                     .transpose()?;
-
-                self.current_return_type = prev_return;
 
                 let result_type =
                     self.infer_if_result_type(&hir_then, &hir_else_if, &hir_else, *span)?;
@@ -745,13 +753,15 @@ impl InferState {
 
     fn resolve_hir_type(&self, t: &Type) -> Type {
         match t {
-            Type::Var(id) => {
-                if let Some(resolved) = self.subs.get(id) {
-                    self.resolve_hir_type(resolved)
-                } else {
-                    Type::Primitive(Primitive::Int32)
+                Type::Var(id) => {
+                    if let Some(resolved) = self.subs.get(id) {
+                        self.resolve_hir_type(resolved)
+                    } else if self.float_vars.contains(id) {
+                        Type::Primitive(Primitive::Float64)
+                    } else {
+                        Type::Primitive(Primitive::Int64)
+                    }
                 }
-            }
             Type::Ref(inner) => Type::Ref(Box::new(self.resolve_hir_type(inner))),
             Type::Array { element, size } => Type::Array {
                 element: Box::new(self.resolve_hir_type(element)),
@@ -811,6 +821,7 @@ impl InferState {
                         .as_ref()
                         .map(|b| b.iter().map(|s| self.resolve_hir_stmt(s)).collect()),
                 },
+                HirExprKind::Unit => HirExprKind::Unit,
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),

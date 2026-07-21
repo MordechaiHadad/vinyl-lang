@@ -62,6 +62,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "unit_literal",
+          "named": true
         }
       ]
     }
@@ -128,6 +132,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -233,6 +241,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -404,6 +416,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "unit_literal",
+          "named": true
         }
       ]
     }
@@ -494,6 +510,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         },
         {
@@ -611,6 +631,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -752,6 +776,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "unit_literal",
+          "named": true
         }
       ]
     }
@@ -818,6 +846,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -900,6 +932,10 @@
         },
         {
           "type": "type_annotation",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -1024,6 +1060,10 @@
         {
           "type": "string_literal",
           "named": true
+        },
+        {
+          "type": "unit_literal",
+          "named": true
         }
       ]
     }
@@ -1095,6 +1135,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -1168,6 +1212,11 @@
     }
   },
   {
+    "type": "unit_literal",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "while_statement",
     "named": true,
     "fields": {},
@@ -1229,6 +1278,10 @@
         },
         {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "unit_literal",
           "named": true
         }
       ]
@@ -1396,6 +1449,10 @@
     "named": false
   },
   {
+    "type": "float",
+    "named": false
+  },
+  {
     "type": "float32",
     "named": false
   },
@@ -1417,6 +1474,10 @@
   },
   {
     "type": "if",
+    "named": false
+  },
+  {
+    "type": "int",
     "named": false
   },
   {
