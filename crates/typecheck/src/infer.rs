@@ -642,18 +642,10 @@ impl InferState {
                     },
                 })
             }
-            Expr::Index { array, index, .. } => {
+            Expr::Index { array, index, span } => {
                 let hir_array = self.infer_expr(array, signatures)?;
                 let hir_index = self.infer_expr(index, signatures)?;
                 let array_type = self.apply(&hir_array.type_);
-                let index_type = self.apply(&hir_index.type_);
-                if let Err(e) = self.unify(
-                    &index_type,
-                    &Type::Primitive(Primitive::Int32),
-                    index.span(),
-                ) {
-                    self.errors.push(e);
-                }
                 let element_type = match &array_type {
                     Type::Array { element, .. } => *element.clone(),
                     Type::Primitive(Primitive::String) => Type::Primitive(Primitive::Char),
@@ -666,6 +658,7 @@ impl InferState {
                 };
                 Ok(HirExpr {
                     kind: HirExprKind::Index {
+                        span: *span,
                         array: Box::new(hir_array),
                         index: Box::new(hir_index),
                     },
@@ -825,7 +818,8 @@ impl InferState {
                 HirExprKind::Block(stmts) => {
                     HirExprKind::Block(stmts.iter().map(|s| self.resolve_hir_stmt(s)).collect())
                 }
-                HirExprKind::Index { array, index } => HirExprKind::Index {
+                HirExprKind::Index { span, array, index } => HirExprKind::Index {
+                    span: *span,
                     array: Box::new(self.resolve_hir_expr(array)),
                     index: Box::new(self.resolve_hir_expr(index)),
                 },
@@ -914,38 +908,25 @@ impl InferState {
 
     fn validate_literal_types_expr(&self, expr: &HirExpr, errors: &mut Vec<TypeError>) {
         match &expr.kind {
-            HirExprKind::Int(_, span) => match &expr.type_ {
-                Type::Primitive(
-                    Primitive::Int8
-                    | Primitive::Int16
-                    | Primitive::Int32
-                    | Primitive::Int64
-                    | Primitive::Int128
-                    | Primitive::ISize
-                    | Primitive::UInt8
-                    | Primitive::UInt16
-                    | Primitive::UInt32
-                    | Primitive::UInt64
-                    | Primitive::UInt128
-                    | Primitive::USize
-                    | Primitive::Float32
-                    | Primitive::Float64,
-                ) => {}
-                _ => errors.push(self.error(
-                    *span,
-                    format!(
-                        "integer literal must be a numeric type, found `{}`",
-                        expr.type_
-                    ),
-                )),
-            },
-            HirExprKind::Float(_, span) => match &expr.type_ {
-                Type::Primitive(Primitive::Float32 | Primitive::Float64) => {}
-                _ => errors.push(self.error(
-                    *span,
-                    format!("float literal must be a float type, found `{}`", expr.type_),
-                )),
-            },
+            HirExprKind::Int(_, span) => {
+                if !expr.type_.is_numeric() {
+                    errors.push(self.error(
+                        *span,
+                        format!(
+                            "integer literal must be a numeric type, found `{}`",
+                            expr.type_
+                        ),
+                    ));
+                }
+            }
+            HirExprKind::Float(_, span) => {
+                if !expr.type_.is_float() {
+                    errors.push(self.error(
+                        *span,
+                        format!("float literal must be a float type, found `{}`", expr.type_),
+                    ));
+                }
+            }
             HirExprKind::Binary { left, right, .. } => {
                 self.validate_literal_types_expr(left, errors);
                 self.validate_literal_types_expr(right, errors);
@@ -960,9 +941,15 @@ impl InferState {
                 }
             }
             HirExprKind::Block(stmts) => self.validate_literal_types(stmts, errors),
-            HirExprKind::Index { array, index } => {
+            HirExprKind::Index { span, array, index } => {
                 self.validate_literal_types_expr(array, errors);
                 self.validate_literal_types_expr(index, errors);
+                if !index.type_.is_int() && !index.type_.is_uint() {
+                    errors.push(self.error(
+                        *span,
+                        format!("index type must be an integer, found `{}`", index.type_),
+                    ));
+                }
             }
             HirExprKind::Array(elements) => {
                 for e in elements {

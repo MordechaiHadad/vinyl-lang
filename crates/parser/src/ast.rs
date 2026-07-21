@@ -86,6 +86,39 @@ pub enum Type {
     Var(usize),
 }
 
+impl Type {
+    pub fn as_primitive(&self) -> Option<&Primitive> {
+        match self {
+            Type::Primitive(p) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn is_int(&self) -> bool {
+        self.as_primitive().is_some_and(|p| p.is_int())
+    }
+
+    pub fn is_uint(&self) -> bool {
+        self.as_primitive().is_some_and(|p| p.is_uint())
+    }
+
+    pub fn is_signed(&self) -> bool {
+        self.is_int()
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        self.is_uint()
+    }
+
+    pub fn is_float(&self) -> bool {
+        self.as_primitive().is_some_and(|p| p.is_float())
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        self.as_primitive().is_some_and(|p| p.is_numeric())
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -128,6 +161,48 @@ pub enum Primitive {
     Char,
     String,
     Unit,
+}
+
+impl Primitive {
+    pub fn is_int(&self) -> bool {
+        matches!(
+            self,
+            Primitive::Int8
+                | Primitive::Int16
+                | Primitive::Int32
+                | Primitive::Int64
+                | Primitive::Int128
+                | Primitive::ISize
+        )
+    }
+
+    pub fn is_uint(&self) -> bool {
+        matches!(
+            self,
+            Primitive::UInt8
+                | Primitive::UInt16
+                | Primitive::UInt32
+                | Primitive::UInt64
+                | Primitive::UInt128
+                | Primitive::USize
+        )
+    }
+
+    pub fn is_signed(&self) -> bool {
+        self.is_int()
+    }
+
+    pub fn is_unsigned(&self) -> bool {
+        self.is_uint()
+    }
+
+    pub fn is_float(&self) -> bool {
+        matches!(self, Primitive::Float32 | Primitive::Float64)
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        self.is_int() || self.is_uint() || self.is_float()
+    }
 }
 
 impl fmt::Display for Primitive {

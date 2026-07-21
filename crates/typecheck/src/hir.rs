@@ -79,6 +79,7 @@ pub enum HirExprKind {
     },
     Block(Vec<HirStmt>),
     Index {
+        span: SourceSpan,
         array: Box<HirExpr>,
         index: Box<HirExpr>,
     },

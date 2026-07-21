@@ -461,7 +461,7 @@ impl<'a> CodegenCtx<'a> {
                 }
                 Ok(base)
             }
-            HirExprKind::Index { array, index } => {
+            HirExprKind::Index { array, index, .. } => {
                 let array_ptr = self.compile_expr(array)?;
                 let index_val = self.compile_expr(index)?;
                 let index_ty = self.builder.func.dfg.value_type(index_val);
