@@ -388,10 +388,9 @@ impl<'a> CodegenCtx<'a> {
                         self.builder.ins().isub(zero, val)
                     }
                     UnaryOp::Not => {
-                        let zero = self.builder.ins().iconst(types::I8, 0);
-                        let one = self.builder.ins().iconst(types::I8, 1);
-                        let cmp = self.builder.ins().icmp(IntCC::Equal, val, zero);
-                        self.builder.ins().bxor(cmp, one)
+                        let ty = self.builder.func.dfg.value_type(val);
+                        let one = self.builder.ins().iconst(ty, 1);
+                        self.builder.ins().bxor(val, one)
                     }
                 })
             }
