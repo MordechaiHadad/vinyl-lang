@@ -1,9 +1,25 @@
+const PREC = {
+  UNARY: 12,
+  INDEX: 12,
+  POWER: 11,
+  MULTIPLICATIVE: 10,
+  ADDITIVE: 9,
+  SHIFT: 8,
+  BITAND: 7,
+  BITXOR: 6,
+  BITOR: 5,
+  RANGE: 4,
+  COMPARISON: 3,
+  AND: 2,
+  OR: 1,
+};
+
 export default grammar({
   name: "vinyl",
 
   extras: $ => [/\s/, $.comment],
 
-  conflicts: $ => [[$._statement, $._expression]],
+  conflicts: $ => [[$._statement, $._expression], [$.unary_expression, $.index_expression]],
 
   rules: {
     source_file: $ => repeat($._definition),
@@ -122,6 +138,7 @@ export default grammar({
       $.unit_literal,
       $.call_expression,
       $.binary_expression,
+      $.unary_expression,
       $.index_expression,
       $.array_expression,
       $.parenthesized_expression,
@@ -162,13 +179,13 @@ export default grammar({
     ),
 
     integer_literal: $ => token(choice(
-      seq(optional("-"), /[0-9]+/),
-      seq(optional("-"), "0x", /[0-9a-fA-F]+/),
-      seq(optional("-"), "0o", /[0-7]+/),
-      seq(optional("-"), "0b", /[01]+/),
+      /[0-9]+/,
+      seq("0x", /[0-9a-fA-F]+/),
+      seq("0o", /[0-7]+/),
+      seq("0b", /[01]+/),
     )),
 
-    float_literal: $ => token(seq(optional("-"), /[0-9]+/, ".", /[0-9]+/)),
+    float_literal: $ => token(seq(/[0-9]+/, ".", /[0-9]+/)),
 
     bool_literal: $ => choice("true", "false"),
 
@@ -185,36 +202,26 @@ export default grammar({
       ")",
     ),
 
-    binary_expression: $ => {
-      const PREC = {
-        POWER: 11,
-        MULTIPLICATIVE: 10,
-        ADDITIVE: 9,
-        SHIFT: 8,
-        BITAND: 7,
-        BITXOR: 6,
-        BITOR: 5,
-        RANGE: 4,
-        COMPARISON: 3,
-        AND: 2,
-        OR: 1,
-      };
-      return choice(
-        prec.right(PREC.POWER, seq($._expression, field("operator", "**"), $._expression)),
-        prec.left(PREC.MULTIPLICATIVE, seq($._expression, field("operator", choice("*", "/", "%", "//")), $._expression)),
-        prec.left(PREC.ADDITIVE, seq($._expression, field("operator", choice("+", "-")), $._expression)),
-        prec.left(PREC.SHIFT, seq($._expression, field("operator", choice("<<", ">>")), $._expression)),
-        prec.left(PREC.BITAND, seq($._expression, field("operator", "&"), $._expression)),
-        prec.left(PREC.BITXOR, seq($._expression, field("operator", "^"), $._expression)),
-        prec.left(PREC.BITOR, seq($._expression, field("operator", "|"), $._expression)),
-        prec.left(PREC.RANGE, seq($._expression, field("operator", choice("..", "..=")), $._expression)),
-        prec.left(PREC.COMPARISON, seq($._expression, field("operator", choice("==", "!=", "<", ">", "<=", ">=")), $._expression)),
-        prec.left(PREC.AND, seq($._expression, field("operator", choice("&&", "and")), $._expression)),
-        prec.left(PREC.OR, seq($._expression, field("operator", choice("||", "or")), $._expression)),
-      );
-    },
+    unary_expression: $ => prec(PREC.UNARY, seq(
+      field("operator", choice("-", "!", "not")),
+      $._expression
+    )),
 
-    index_expression: $ => prec(12, seq(
+    binary_expression: $ => choice(
+      prec.right(PREC.POWER, seq($._expression, field("operator", "**"), $._expression)),
+      prec.left(PREC.MULTIPLICATIVE, seq($._expression, field("operator", choice("*", "/", "%", "//")), $._expression)),
+      prec.left(PREC.ADDITIVE, seq($._expression, field("operator", choice("+", "-")), $._expression)),
+      prec.left(PREC.SHIFT, seq($._expression, field("operator", choice("<<", ">>")), $._expression)),
+      prec.left(PREC.BITAND, seq($._expression, field("operator", "&"), $._expression)),
+      prec.left(PREC.BITXOR, seq($._expression, field("operator", "^"), $._expression)),
+      prec.left(PREC.BITOR, seq($._expression, field("operator", "|"), $._expression)),
+      prec.left(PREC.RANGE, seq($._expression, field("operator", choice("..", "..=")), $._expression)),
+      prec.left(PREC.COMPARISON, seq($._expression, field("operator", choice("==", "!=", "<", ">", "<=", ">=")), $._expression)),
+      prec.left(PREC.AND, seq($._expression, field("operator", choice("&&", "and")), $._expression)),
+      prec.left(PREC.OR, seq($._expression, field("operator", choice("||", "or")), $._expression)),
+    ),
+
+    index_expression: $ => prec(PREC.INDEX, seq(
       $._expression,
       "[",
       $._expression,

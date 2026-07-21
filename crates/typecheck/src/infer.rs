@@ -2,7 +2,7 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use vinyl_parser::ast::{BinaryOp, Expr, FunctionDef, Item, Primitive, Stmt};
+use vinyl_parser::ast::{BinaryOp, Expr, FunctionDef, Item, Primitive, Stmt, UnaryOp};
 
 use crate::hir::{
     HirExpr, HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
@@ -526,6 +526,37 @@ impl InferState {
                     type_: result_type,
                 })
             }
+            Expr::Unary { span, op, operand } => {
+                let hir_operand = self.infer_expr(operand, signatures)?;
+                let operand_type = self.apply(&hir_operand.type_);
+                match op {
+                    UnaryOp::Not => {
+                        if let Err(e) = self.unify(
+                            &operand_type,
+                            &Type::Primitive(Primitive::Bool),
+                            *span,
+                        ) {
+                            self.errors.push(e);
+                        }
+                        Ok(HirExpr {
+                            kind: HirExprKind::Unary {
+                                op: op.clone(),
+                                operand: Box::new(hir_operand),
+                            },
+                            type_: Type::Primitive(Primitive::Bool),
+                        })
+                    }
+                    UnaryOp::Neg => {
+                        Ok(HirExpr {
+                            kind: HirExprKind::Unary {
+                                op: op.clone(),
+                                operand: Box::new(hir_operand),
+                            },
+                            type_: operand_type,
+                        })
+                    }
+                }
+            }
             Expr::Call {
                 span,
                 function,
@@ -783,6 +814,10 @@ impl InferState {
                     op: op.clone(),
                     right: Box::new(self.resolve_hir_expr(right)),
                 },
+                HirExprKind::Unary { op, operand } => HirExprKind::Unary {
+                    op: op.clone(),
+                    operand: Box::new(self.resolve_hir_expr(operand)),
+                },
                 HirExprKind::Call { function, args } => HirExprKind::Call {
                     function: Box::new(self.resolve_hir_expr(function)),
                     args: args.iter().map(|a| self.resolve_hir_expr(a)).collect(),
@@ -914,6 +949,9 @@ impl InferState {
             HirExprKind::Binary { left, right, .. } => {
                 self.validate_literal_types_expr(left, errors);
                 self.validate_literal_types_expr(right, errors);
+            }
+            HirExprKind::Unary { operand, .. } => {
+                self.validate_literal_types_expr(operand, errors);
             }
             HirExprKind::Call { function, args } => {
                 self.validate_literal_types_expr(function, errors);

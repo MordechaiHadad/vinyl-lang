@@ -1,5 +1,5 @@
 use miette::SourceSpan;
-use vinyl_parser::ast::BinaryOp;
+use vinyl_parser::ast::{BinaryOp, UnaryOp};
 
 #[derive(Debug, Clone)]
 pub struct HirItem {
@@ -68,6 +68,10 @@ pub enum HirExprKind {
         left: Box<HirExpr>,
         op: BinaryOp,
         right: Box<HirExpr>,
+    },
+    Unary {
+        op: UnaryOp,
+        operand: Box<HirExpr>,
     },
     Call {
         function: Box<HirExpr>,

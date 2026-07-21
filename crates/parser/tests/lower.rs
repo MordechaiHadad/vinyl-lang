@@ -450,7 +450,7 @@ fn negative_int_literal() {
     {
         assert_eq!(*v, -42);
     } else {
-        panic!("expected int literal");
+        panic!("expected int literal (constant folded from -42)");
     }
 }
 
@@ -509,4 +509,122 @@ fn unit_literal_expression() {
         _ => panic!("expected function"),
     };
     assert!(matches!(func.body[0], Stmt::Let { value: Expr::Unit(_), .. }));
+}
+
+#[test]
+fn unary_not_bool() {
+    let items = common::do_lower("fn f() { let a = !true; let b = not false; }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    match &func.body[0] {
+        Stmt::Let { value: Expr::Bool(v, _), .. } => assert!(!*v),
+        _ => panic!("expected folded bool literal (!true = false)"),
+    }
+    match &func.body[1] {
+        Stmt::Let { value: Expr::Bool(v, _), .. } => assert!(*v),
+        _ => panic!("expected folded bool literal (not false = true)"),
+    }
+}
+
+#[test]
+fn unary_neg_folding() {
+    let items = common::do_lower("fn f(): int64 { -42 }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Int(v, _), _) => assert_eq!(*v, -42),
+        _ => panic!("expected folded int literal, got {last:?}"),
+    }
+}
+
+#[test]
+fn unary_not_folding_true() {
+    let items = common::do_lower("fn f(): bool { !true }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Bool(v, _), _) => assert!(!*v),
+        _ => panic!("expected folded bool literal, got {last:?}"),
+    }
+}
+
+#[test]
+fn unary_not_folding_false() {
+    let items = common::do_lower("fn f(): bool { not false }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Bool(v, _), _) => assert!(*v),
+        _ => panic!("expected folded bool literal, got {last:?}"),
+    }
+}
+
+#[test]
+fn unary_neg_variable() {
+    let items = common::do_lower("fn f(x: int64): int64 { -x }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Unary { op: UnaryOp::Neg, operand, .. }, _) => {
+            match operand.as_ref() {
+                Expr::Ident(name, _) => assert_eq!(name, "x"),
+                _ => panic!("expected ident operand"),
+            }
+        }
+        _ => panic!("expected unary neg expression"),
+    }
+}
+
+#[test]
+fn unary_double_not() {
+    let items = common::do_lower("fn f(): bool { !!true }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Bool(v, _), _) => assert!(*v),
+        _ => panic!("expected folded bool literal (double not = identity), got {last:?}"),
+    }
+}
+
+#[test]
+fn unary_precedence() {
+    let items = common::do_lower("fn f(): int64 { -2 * 3 }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(
+            Expr::Binary { left, op: BinaryOp::Mul, right, .. },
+            _,
+        ) => {
+            match left.as_ref() {
+                Expr::Int(v, _) => assert_eq!(*v, -2),
+                _ => panic!("expected folded int literal -2 as left operand"),
+            }
+            match right.as_ref() {
+                Expr::Int(v, _) => assert_eq!(*v, 3),
+                _ => panic!("expected int literal 3 as right operand"),
+            }
+        }
+        _ => panic!("expected binary expression (-2 unfolded to Int(-2) by const folding, then * 3)"),
+    }
 }

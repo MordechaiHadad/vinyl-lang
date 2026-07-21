@@ -307,7 +307,7 @@ pub enum BinaryOp {
     RangeInclusive,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Neg,
     Not,

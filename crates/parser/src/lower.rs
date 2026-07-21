@@ -511,6 +511,7 @@ fn lower_expression(node: &Node, source: &str, source_name: &str) -> Result<Expr
         "unit_literal" => Ok(Expr::Unit(span())),
         "call_expression" => lower_call(node, source, source_name),
         "binary_expression" => lower_binary(node, source, source_name),
+        "unary_expression" => lower_unary(node, source, source_name),
         "parenthesized_expression" => {
             for i in 0..node.named_child_count() {
                 if let Some(child) = node.named_child(i as u32) {
@@ -638,6 +639,45 @@ fn lower_call(node: &Node, source: &str, source_name: &str) -> Result<Expr, Lowe
         span,
         function: Box::new(function),
         args,
+    })
+}
+
+fn lower_unary(node: &Node, source: &str, source_name: &str) -> Result<Expr, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let children = children(node);
+    if children.is_empty() {
+        return Err(span_error(node, source, source_name, "incomplete unary expression"));
+    }
+    let op = lower_unary_op(
+        &child_by_field(node, "operator", source, source_name)?,
+        source,
+        source_name,
+    )?;
+    let operand = lower_expression(&children[0], source, source_name)?;
+    match (&op, &operand) {
+        (UnaryOp::Neg, Expr::Int(v, _)) => Ok(Expr::Int(-v, span)),
+        (UnaryOp::Neg, Expr::Float(v, _)) => Ok(Expr::Float(-v, span)),
+        (UnaryOp::Not, Expr::Bool(b, _)) => Ok(Expr::Bool(!b, span)),
+        _ => Ok(Expr::Unary {
+            span,
+            op,
+            operand: Box::new(operand),
+        }),
+    }
+}
+
+fn lower_unary_op(node: &Node, source: &str, source_name: &str) -> Result<UnaryOp, LowerError> {
+    Ok(match node_text(node, source).as_str() {
+        "-" => UnaryOp::Neg,
+        "!" | "not" => UnaryOp::Not,
+        other => {
+            return Err(span_error(
+                node,
+                source,
+                source_name,
+                &format!("unknown unary operator `{other}`"),
+            ));
+        }
     })
 }
 

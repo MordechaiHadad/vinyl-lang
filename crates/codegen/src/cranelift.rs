@@ -11,7 +11,7 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
 use target_lexicon::Triple;
 
-use vinyl_parser::ast::{BinaryOp, Primitive};
+use vinyl_parser::ast::{BinaryOp, Primitive, UnaryOp};
 use vinyl_typecheck::hir::{
     HirExpr, HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
 };
@@ -376,6 +376,22 @@ impl<'a> CodegenCtx<'a> {
                         return Err(CraneliftError::Msg(
                             "range operators not supported in codegen".to_string(),
                         ));
+                    }
+                })
+            }
+            HirExprKind::Unary { op, operand } => {
+                let val = self.compile_expr(operand)?;
+                Ok(match op {
+                    UnaryOp::Neg => {
+                        let ty = self.builder.func.dfg.value_type(val);
+                        let zero = self.builder.ins().iconst(ty, 0);
+                        self.builder.ins().isub(zero, val)
+                    }
+                    UnaryOp::Not => {
+                        let zero = self.builder.ins().iconst(types::I8, 0);
+                        let one = self.builder.ins().iconst(types::I8, 1);
+                        let cmp = self.builder.ins().icmp(IntCC::Equal, val, zero);
+                        self.builder.ins().bxor(cmp, one)
                     }
                 })
             }
