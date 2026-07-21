@@ -1,6 +1,7 @@
 use miette::Diagnostic;
 use std::error::Error;
 use std::fmt;
+use tracing::instrument;
 use vinyl_parser::lower::LowerError;
 use vinyl_typecheck::TypeError;
 
@@ -50,6 +51,7 @@ impl From<TypeError> for CompileError {
     }
 }
 
+#[instrument(skip_all)]
 pub fn compile(
     source: &str,
     source_name: &str,

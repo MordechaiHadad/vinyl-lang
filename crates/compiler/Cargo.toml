@@ -7,3 +7,4 @@ edition = "2024"
 vinyl-parser = { path = "../parser" }
 vinyl-typecheck = { path = "../typecheck" }
 miette = { version = "7", features = ["derive"] }
+tracing = "0.1"

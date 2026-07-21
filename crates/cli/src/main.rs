@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, Subcommand};
 use miette::Report;
-use tracing::warn;
+use tracing::{error, warn};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
 use vinyl_codegen::CodegenBackend;
@@ -62,9 +62,9 @@ fn compile_and_report(
         Err(errors) => {
             for error in errors {
                 match error {
-                    CompileError::Parse(e) => eprintln!("{:?}", Report::from(e)),
-                    CompileError::Lower(e) => eprintln!("{:?}", Report::from(e)),
-                    CompileError::TypeError(e) => eprintln!("{:?}", Report::from(e)),
+                    CompileError::Parse(e) => error!("{:?}", Report::from(e)),
+                    CompileError::Lower(e) => error!("{:?}", Report::from(e)),
+                    CompileError::TypeError(e) => error!("{:?}", Report::from(e)),
                 }
             }
             std::process::exit(1);
