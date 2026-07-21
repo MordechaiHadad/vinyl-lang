@@ -1,0 +1,19 @@
+[package]
+name = "vinyl-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vinyl"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+vinyl-parser = { path = "../parser" }
+vinyl-compiler = { path = "../compiler" }
+vinyl-codegen = { path = "../codegen" }
+miette = { version = "7", features = ["fancy"] }
+eyre = "0.6"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+vinyl-typecheck = { path = "../typecheck" }
