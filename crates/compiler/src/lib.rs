@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt;
 use tracing::instrument;
 use vinyl_parser::lower::LowerError;
+use vinyl_typecheck::CompileWarning;
 use vinyl_typecheck::TypeError;
 
 #[derive(Debug, Diagnostic)]
@@ -55,6 +56,7 @@ impl From<TypeError> for CompileError {
 pub fn compile(
     source: &str,
     source_name: &str,
+    warnings: &mut Vec<CompileWarning>,
 ) -> Result<Vec<vinyl_typecheck::hir::HirItem>, Vec<CompileError>> {
     let tree = match vinyl_parser::parse(source) {
         Ok(t) => t,
@@ -68,7 +70,7 @@ pub fn compile(
             .collect::<Vec<_>>()
     })?;
 
-    vinyl_typecheck::typeck(&items, source, source_name).map_err(|errors| {
+    vinyl_typecheck::typeck(&items, source, source_name, warnings).map_err(|errors| {
         errors
             .into_iter()
             .map(CompileError::TypeError)

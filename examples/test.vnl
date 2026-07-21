@@ -1,0 +1,4 @@
+fn main(): int32{
+    return 69;
+    let x = 5;
+}

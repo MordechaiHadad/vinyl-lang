@@ -82,3 +82,59 @@ fn while_condition_string() {
         "typeck should fail: while condition must be bool"
     );
 }
+
+#[test]
+fn unreachable_after_return() {
+    let source = "fn main(): int32 { return 1; let x = 2; x }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 2, "should warn about `let x = 2;` and `x`");
+}
+
+#[test]
+fn unreachable_after_break() {
+    let source = "fn main() { loop { break; let x = 1; } }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 1, "should warn about `let x = 1;`");
+}
+
+#[test]
+fn unreachable_after_continue() {
+    let source = "fn main() { loop { continue; let x = 1; } }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 1, "should warn about `let x = 1;`");
+}
+
+#[test]
+fn no_warning_when_reachable() {
+    let source = "fn main() { loop { break; } let x = 1; }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 0, "no unreachable code");
+}
+
+#[test]
+fn unreachable_in_nested_block() {
+    let source = "fn main(): int32 { loop { break; { let x = 1; } } 1 }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 1, "should warn about the nested block expression");
+}
+
+#[test]
+fn no_warning_break_in_nested_if() {
+    let source = "fn main() { loop { if true { break; } let x = 1; } }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 0, "break inside if does not make subsequent code unreachable");
+}
+
+#[test]
+fn multiple_unreachable_statements() {
+    let source = "fn main() { loop { break; let x = 1; let y = 2; } }";
+    let (result, warnings) = common::compile_with_warnings(source);
+    assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
+    assert_eq!(warnings.len(), 2, "should warn about both statements");
+}

@@ -26,10 +26,29 @@ impl fmt::Display for TypeError {
 
 impl Error for TypeError {}
 
+#[derive(Debug, Diagnostic)]
+#[diagnostic(severity(Warning))]
+pub struct CompileWarning {
+    pub message: String,
+    #[source_code]
+    pub source: NamedSource<String>,
+    #[label]
+    pub span: SourceSpan,
+}
+
+impl fmt::Display for CompileWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl Error for CompileWarning {}
+
 pub fn typeck(
     items: &[Item],
     source: &str,
     source_name: &str,
+    warnings: &mut Vec<CompileWarning>,
 ) -> Result<Vec<HirItem>, Vec<TypeError>> {
     let mut state = InferState::new(source, source_name);
 
@@ -56,6 +75,8 @@ pub fn typeck(
         }
     }
 
+    warnings.extend(state.warnings.drain(..));
+
     if state.errors.is_empty() {
         Ok(hir_items)
     } else {
@@ -73,6 +94,7 @@ struct InferState {
     source_name: String,
     scopes: Vec<HashMap<String, TypeScheme>>,
     errors: Vec<TypeError>,
+    warnings: Vec<CompileWarning>,
     subs: HashMap<usize, Type>,
     current_return_type: Option<Type>,
     next_var: usize,
@@ -86,6 +108,7 @@ impl InferState {
             source_name: source_name.to_string(),
             scopes: vec![HashMap::new()],
             errors: Vec::new(),
+            warnings: Vec::new(),
             subs: HashMap::new(),
             current_return_type: None,
             next_var: 0,
@@ -220,6 +243,14 @@ impl InferState {
         }
     }
 
+    fn warn(&self, span: SourceSpan, message: String) -> CompileWarning {
+        CompileWarning {
+            message,
+            source: NamedSource::new(&self.source_name, self.source.to_string()),
+            span,
+        }
+    }
+
     fn infer_function(
         &mut self,
         func: &FunctionDef,
@@ -282,8 +313,16 @@ impl InferState {
         signatures: &HashMap<&str, &FunctionDef>,
     ) -> Result<Vec<HirStmt>, TypeError> {
         let mut hir_stmts = Vec::new();
+        let mut terminated = false;
         for stmt in stmts {
+            if terminated {
+                self.warnings.push(self.warn(stmt.span(), "unreachable statement".to_string()));
+            }
             hir_stmts.push(self.infer_stmt(stmt, signatures)?);
+            match stmt {
+                Stmt::Return(..) | Stmt::Break(..) | Stmt::Continue(..) => terminated = true,
+                _ => {}
+            }
         }
         Ok(hir_stmts)
     }
