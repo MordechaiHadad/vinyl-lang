@@ -100,11 +100,13 @@ The current implementation uses a non-generic HM variant (no `let`-polymorphism 
 r"raw string with no \escape sequences"
 f"interpolation {expr}"
 'a'
-42       // int
-3.14     // float
+42       // int (positive only)
+3.14     // float (positive only)
 true / false
 unit     // unit literal (unit type value)
 ```
+
+Negative numeric literals like `-42` are not a single token -- they are parsed as a unary `-` operator applied to the positive literal. The compiler performs **constant folding** at lowering time: `-42` becomes `Int(-42)` in a single step, so there is no runtime cost for simple negations. Unary `!` and `not` on `bool` literals are folded the same way: `!true` becomes `false`.
 
 **References are explicit with `&T`.** You must annotate reference types so it's always visible whether you're copying a value or referencing heap data. No implicit references.
 
@@ -122,7 +124,8 @@ No null. No exceptions. Fallible functions return `Result`. Optional values use 
 ```
 Arithmetic: +  -  *  /  %  **  //
 Comparison: ==  !=  <  >  <=  >=
-Logical:    &&  ||  !        (also `and`, `or`)
+Logical:    &&  ||  !  not    (also `and`, `or`)
+Unary:      - (negate)  ! (not)  not (not)
 Bitwise:    &  |  ^  ~  <<  >>
 Assignment: =  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 Range:      ..  ..=  (exclusive/inclusive)
@@ -130,6 +133,8 @@ Access:     .  ?.  (optional chaining on Option)
 Error prop: ?  (unwraps Result/Option, propagates error/None)
 Unwrap:     ??  (unwrap `Option`/`Result` with a fallback or early return)
 ```
+
+Unary `-` negates a numeric value. Unary `!` / `not` perform logical NOT on a `bool` -- no truthiness coercion.
 
 No `++` or `--`. Use `+= 1` / `-= 1`.
 
