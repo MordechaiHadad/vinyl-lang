@@ -3,12 +3,12 @@
 
 # --- Functions with explicit return ---
 
-fn abs(n: int32): int32 {
+fn abs(n: int): int {
     if n < 0 { return 0 - n; }
     n
 }
 
-fn signum(val: int32): int32 {
+fn signum(val: int): int {
     if val > 0 { return 1; }
     if val < 0 { return 0 - 1; }
     0
@@ -16,44 +16,44 @@ fn signum(val: int32): int32 {
 
 # --- Functions with implicit return (trailing expression, no ;) ---
 
-fn square(n: int32): int32 {
+fn square(n: int): int {
     n * n
 }
 
-fn average(a: int32, b: int32): int32 {
+fn average(a: int, b: int): int {
     (a + b) / 2
 }
 
 # --- Floor division (//) truncates toward negative infinity ---
 
-fn floor_divide(a: int32, b: int32): int32 {
+fn floor_divide(a: int, b: int): int {
     a // b
 }
 
-fn floor_sum(): int32 {
+fn floor_sum(): int {
     7 // 3 + (-7) // 3 + 7 // (-3) + (-7) // (-3)
 }
 
 # --- Type inference: integer literals adapt to the return type ---
 
-fn four(): int32 {
+fn four(): int {
     4
 }
 
-fn eight(): int32 {
+fn eight(): int {
     8
 }
 
 # --- If / else control flow ---
 
-fn max(a: int32, b: int32): int32 {
+fn max(a: int, b: int): int {
     if a > b { return a; }
     b
 }
 
 # --- Nested if ---
 
-fn classify(n: int32): int32 {
+fn classify(n: int): int {
     if n > 0 {
         if n > 100 { return 2; }
         return 1;
@@ -64,20 +64,20 @@ fn classify(n: int32): int32 {
 
 # --- Bitwise and shift operators ---
 
-fn bitwise_demo(x: int32, y: int32): int32 {
+fn bitwise_demo(x: int, y: int): int {
     (x & y) + (x | y) + (x ^ y) + (x << 1) + (y >> 1)
 }
 
 # --- Logical operators ---
 
-fn both_nonzero(a: int32, b: int32): int32 {
+fn both_nonzero(a: int, b: int): int {
     if a != 0 && b != 0 { return 1; }
     0
 }
 
 # --- Main: ties everything together ---
 
-fn main(): int32 {
+fn main(): int {
     let a = abs(-5);
     let s = signum(-3) + signum(0) + signum(7);
     let sq = square(average(10, 20));

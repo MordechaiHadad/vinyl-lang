@@ -3,14 +3,14 @@
 
 # --- If / else as expression ---
 
-fn clamp(value: int32, low: int32, high: int32): int32 {
+fn clamp(value: int, low: int, high: int): int {
     if value < low { low }
     else {
         if value > high { high } else { value }
     }
 }
 
-fn rating(score: int32): int32 {
+fn rating(score: int): int {
     if score >= 90 { 3 }
     else {
         if score >= 60 { 2 }
@@ -20,18 +20,18 @@ fn rating(score: int32): int32 {
     }
 }
 
-fn absolute(n: int32): int32 {
+fn absolute(n: int): int {
     if n < 0 { 0 - n } else { n }
 }
 
-fn min(a: int32, b: int32): int32 {
+fn min(a: int, b: int): int {
     let result = if a < b { a } else { b };
     result
 }
 
 # --- Nested if ---
 
-fn quadrant(x: int32, y: int32): int32 {
+fn quadrant(x: int, y: int): int {
     if x > 0 {
         if y > 0 { 1 } else { 4 }
     } else {
@@ -41,33 +41,33 @@ fn quadrant(x: int32, y: int32): int32 {
 
 # --- If inside arithmetic ---
 
-fn sum_abs(a: int32, b: int32): int32 {
+fn sum_abs(a: int, b: int): int {
     (if a < 0 { 0 - a } else { a }) + (if b < 0 { 0 - b } else { b })
 }
 
 # --- Recursion (functional iteration without mutation) ---
 
-fn factorial(n: int32): int32 {
+fn factorial(n: int): int {
     if n <= 1 { 1 } else { n * factorial(n - 1) }
 }
 
-fn fibonacci(n: int32): int32 {
+fn fibonacci(n: int): int {
     if n <= 1 { n } else { fibonacci(n - 1) + fibonacci(n - 2) }
 }
 
-fn gcd(a: int32, b: int32): int32 {
+fn gcd(a: int, b: int): int {
     if b == 0 { a } else { gcd(b, a % b) }
 }
 
-fn sum_range(n: int32): int32 {
+fn sum_range(n: int): int {
     if n <= 0 { 0 } else { n + sum_range(n - 1) }
 }
 
-fn count_digits(n: int32): int32 {
+fn count_digits(n: int): int {
     if n < 10 { 1 } else { 1 + count_digits(n / 10) }
 }
 
-fn collatz_steps(n: int32): int32 {
+fn collatz_steps(n: int): int {
     if n == 1 { 0 }
     else {
         if n % 2 == 0 { 1 + collatz_steps(n / 2) }
@@ -77,26 +77,26 @@ fn collatz_steps(n: int32): int32 {
 
 # --- While (condition checked each iteration) ---
 
-fn while_never_enters(): int32 {
+fn while_never_enters(): int {
     let result = 42;
     while false { }
     result
 }
 
-fn while_immediate_break(): int32 {
+fn while_immediate_break(): int {
     while true { break; }
     7
 }
 
 # --- Loop with break ---
 
-fn loop_immediate_break(): int32 {
+fn loop_immediate_break(): int {
     let result = 7;
     loop { break; }
     result
 }
 
-fn loop_cond_break(n: int32): int32 {
+fn loop_cond_break(n: int): int {
     loop {
         if n == 0 { break; }
         break;
@@ -106,14 +106,14 @@ fn loop_cond_break(n: int32): int32 {
 
 # --- Loop with continue (syntactic demonstration) ---
 
-fn loop_with_continue(): int32 {
+fn loop_with_continue(): int {
     loop { break; continue; }
     1
 }
 
 # --- Main ---
 
-fn main(): int32 {
+fn main(): int {
     let c = clamp(150, 0, 100);
     let r = rating(75) + rating(45) + rating(15);
     let a = absolute(-5);

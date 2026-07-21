@@ -1,15 +1,15 @@
 # Char type examples
 # Run: vinyl run examples/chars.vnl
 
-fn is_letter(c: char): int32 {
+fn is_letter(c: char): int {
     if c >= 'a' && c <= 'z' { 1 } else { 0 }
 }
 
-fn is_digit(c: char): int32 {
+fn is_digit(c: char): int {
     if c >= '0' && c <= '9' { 1 } else { 0 }
 }
 
-fn main(): int32 {
+fn main(): int {
     let a = is_letter('m');
     let b = is_letter('Z');
     let c = is_digit('7');

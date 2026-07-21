@@ -1,7 +1,7 @@
 # Array examples
 # Run: vinyl run examples/arrays.vnl
 
-fn sum5(arr: [int32; 5]): int32 {
+fn sum5(arr: [int; 5]): int {
     arr[0] + arr[1] + arr[2] + arr[3] + arr[4]
 }
 
@@ -9,11 +9,11 @@ fn first_char(arr: [char; 3]): char {
     arr[0]
 }
 
-fn any_true(arr: [bool; 3]): int32 {
+fn any_true(arr: [bool; 3]): int {
     if arr[0] || arr[1] || arr[2] { 1 } else { 0 }
 }
 
-fn main(): int32 {
+fn main(): int {
     let nums = [10, 20, 30, 40, 50];
     let s = sum5(nums);
 
