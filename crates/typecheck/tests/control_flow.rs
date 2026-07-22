@@ -50,6 +50,17 @@ fn else_if_expression() {
 }
 
 #[test]
+fn ref_parameter_requires_reference_argument() {
+    let source = "fn oof(param: &int) { param * 2 } fn main(): int { let mut x = 10; oof(x); x }";
+    let errors = common::compile(source).expect_err("typeck should require `&`");
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("must be a reference"))
+    );
+}
+
+#[test]
 fn break_in_if_inside_loop() {
     let source = "fn main() { loop { if true { break; } } }";
     let items = common::compile(source);

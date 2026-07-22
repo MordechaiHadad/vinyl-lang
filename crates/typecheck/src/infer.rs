@@ -273,7 +273,7 @@ impl InferState {
     ) -> Result<HirFunction, TypeError> {
         let mut params = Vec::new();
         for param in &func.params {
-            let mutable = param.mutable || matches!(param.type_, Type::Ref(_));
+            let mutable = true;
             params.push(HirParam {
                 name: param.name.clone(),
                 mutable,
@@ -529,11 +529,8 @@ impl InferState {
                     ));
                 }
 
-                // For assignment through ref: if target type is &T, deref and store
-                if *ast_op == AssignOp::Eq
-                    && let Type::Ref(inner) = &resolved_type
-                {
-                    if matches!(value_expr, Expr::Ref { .. }) {
+                if let Type::Ref(inner) = &resolved_type {
+                    if *ast_op == AssignOp::Eq && matches!(value_expr, Expr::Ref { .. }) {
                         self.unify(value_type, &resolved_type, span)?;
                         return Ok(HirAssignTarget::Ident(name.clone()));
                     }
@@ -749,6 +746,17 @@ impl InferState {
 
                     for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
                         let arg_type = self.apply(&hir_args[i].type_);
+                        if matches!(&param.type_, Type::Ref(_)) && !matches!(arg, Expr::Ref { .. })
+                        {
+                            self.errors.push(self.error(
+                                arg.span(),
+                                format!(
+                                    "argument {} to `{name}` must be a reference; use `&`",
+                                    i + 1
+                                ),
+                            ));
+                            continue;
+                        }
                         if let Err(e) = self.unify(&arg_type, &param.type_, arg.span()) {
                             self.errors.push(e);
                         }

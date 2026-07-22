@@ -9,6 +9,17 @@ fn mutable_var_assignment() {
 }
 
 #[test]
+fn parameters_are_mutable_by_default() {
+    assert_eq!(
+        common::run(
+            "fn oof(param: int32): int32 { param *= 2; param } fn main(): int32 { oof(10) }"
+        )
+        .unwrap(),
+        20
+    );
+}
+
+#[test]
 fn repeated_assignment() {
     assert_eq!(
         common::run("fn main(): int32 { let mut x = 0; x = 1; x = 2; x }").unwrap(),
@@ -156,6 +167,17 @@ fn write_through_ref_param() {
         common::run("fn foo(p: &int32) { p = 10; } fn main(): int32 { let mut x = 5; foo(&x); x }")
             .unwrap(),
         10
+    );
+}
+
+#[test]
+fn compound_write_through_ref_param() {
+    assert_eq!(
+        common::run(
+            "fn foo(p: &int32) { p *= 2; } fn main(): int32 { let mut x = 10; foo(&x); x }"
+        )
+        .unwrap(),
+        20
     );
 }
 
