@@ -856,7 +856,6 @@ impl<'a> CodegenCtx<'a> {
         }
         if let Some(stmts) = else_block {
             let mut terminated = false;
-            let mut current = else_block_id;
             for (i, stmt) in stmts.iter().enumerate() {
                 let is_last = i == stmts.len() - 1;
                 if is_last
@@ -875,12 +874,8 @@ impl<'a> CodegenCtx<'a> {
                     break;
                 }
                 self.compile_stmt(stmt, &mut terminated)?;
-                if !terminated && let Some(cur) = self.builder.current_block() {
-                    current = cur;
-                }
             }
             if !terminated {
-                self.builder.switch_to_block(current);
                 self.builder.ins().jump(if_ctx.merge_block, &[]);
             }
         } else {
