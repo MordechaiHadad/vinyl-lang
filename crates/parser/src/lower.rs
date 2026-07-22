@@ -570,28 +570,17 @@ fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Expr, LowerE
     let mut else_if = Vec::new();
     let mut else_block = None;
 
-    if let Some(else_node) = named.get(2) {
-        match else_node.kind() {
-            "if_expression" => {
-                let inner = lower_if(else_node, source, source_name)?;
-                if let Expr::If {
-                    condition: c,
-                    then_block: t,
-                    else_if: e,
-                    else_block: el,
-                    ..
-                } = inner
-                {
-                    else_if.push((*c, t));
-                    else_if.extend(e);
-                    else_block = el;
-                }
-            }
-            "block" => {
-                else_block = Some(lower_block(else_node, source, source_name)?);
-            }
-            _ => {}
-        }
+    let mut index = 2;
+    while index + 1 < named.len() && named[index + 1].kind() == "block" {
+        let condition = lower_expression(&named[index], source, source_name)?;
+        let block = lower_block(&named[index + 1], source, source_name)?;
+        else_if.push((condition, block));
+        index += 2;
+    }
+    if let Some(else_node) = named.get(index)
+        && else_node.kind() == "block"
+    {
+        else_block = Some(lower_block(else_node, source, source_name)?);
     }
 
     Ok(Expr::If {

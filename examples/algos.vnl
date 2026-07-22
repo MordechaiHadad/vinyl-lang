@@ -1,76 +1,59 @@
 # Common Algorithms in Vinyl
 # Run: vinyl run examples/algorithms.vnl
 
-# --- 1. Fast Exponentiation (Binary Exponentiation) ---
-# Calculates base^exp in O(log exp) time recursively using expression-based ifs.
+# --- 1. Fast Exponentiation ---
 
 fn power(base: int, exp: int): int {
     if exp == 0 { 1 }
-    else {
-        if exp % 2 == 0 {
-            let half = power(base, exp / 2);
-            half * half
-        } else {
-            base * power(base, exp - 1)
-        }
+    else if exp % 2 == 0 {
+        let half = power(base, exp / 2);
+        half * half
+    } else {
+        base * power(base, exp - 1)
     }
 }
 
-# --- 2. Integer Square Root (Newton-Raphson Method) ---
-# Computes floor(sqrt(n)) using iterative approximation.
+# --- 2. Integer Square Root (Newton-Raphson) ---
 
 fn isqrt(n: int): int {
     if n < 0 { 0 - 1 }
+    else if n == 0 { 0 }
     else {
-        if n == 0 { 0 }
-        else {
-            let mut x = n;
-            let mut y = (x + 1) / 2;
-            while y < x {
-                x = y;
-                y = (x + n / x) / 2;
-            }
-            x
+        let mut x = n;
+        let mut y = (x + 1) / 2;
+        while y < x {
+            x = y;
+            y = (x + n / x) / 2;
         }
+        x
     }
 }
 
 # --- 3. Primality Test (Trial Division) ---
-# Returns 1 if prime, 0 if composite.
 
 fn is_prime(n: int): int {
     if n <= 1 { 0 }
+    else if n <= 3 { 1 }
+    else if n % 2 == 0 { 0 }
+    else if n % 3 == 0 { 0 }
     else {
-        if n <= 3 { 1 }
-        else {
-            if n % 2 == 0 { 0 }
-            else {
-                if n % 3 == 0 { 0 }
-                else {
-                    let mut i = 5;
-                    let mut prime = 1;
-                    while i * i <= n {
-                        if n % i == 0 {
-                            prime = 0;
-                            break;
-                        } else {
-                            if n % (i + 2) == 0 {
-                                prime = 0;
-                                break;
-                            }
-                        }
-                        i = i + 6;
-                    }
-                    prime
-                }
+        let mut i = 5;
+        let mut prime = 1;
+        while i * i <= n {
+            if n % i == 0 {
+                prime = 0;
+                break;
+            } else if n % (i + 2) == 0 {
+                prime = 0;
+                break;
             }
+            i = i + 6;
         }
+        prime
     }
 }
 
 # --- 4. Extended Euclidean Algorithm ---
-# Computes gcd(a, b) and updates mutable references `x` and `y`
-# such that a*x + b*y = gcd(a, b).
 
 fn ext_gcd(a: int, b: int, x: &int, y: &int): int {
     if b == 0 {
@@ -88,7 +71,6 @@ fn ext_gcd(a: int, b: int, x: &int, y: &int): int {
 }
 
 # --- 5. Integer Digit Reversal ---
-# Reverses the digits of a non-negative integer (e.g., 1234 -> 4321).
 
 fn reverse_digits(n: int): int {
     let mut num = n;
@@ -101,7 +83,6 @@ fn reverse_digits(n: int): int {
 }
 
 # --- 6. Population Count / Hamming Weight ---
-# Counts set bits in the binary representation of an integer.
 
 fn popcount(n: int): int {
     let mut count = 0;
@@ -115,8 +96,7 @@ fn popcount(n: int): int {
     count
 }
 
-# --- 7. Binary Search for Integer Square Root ---
-# Range reduction search finding largest x where x * x <= n.
+# --- 7. Binary Search Square Root ---
 
 fn binary_search_sqrt(n: int): int {
     let mut low = 0;
@@ -138,19 +118,17 @@ fn binary_search_sqrt(n: int): int {
 # --- Main Driver ---
 
 fn main(): int {
-    let pow_res = power(2, 10);              # 1024
-    let sqrt_res = isqrt(144);                # 12
-    let prime_res = is_prime(29);             # 1 (true)
+    let pow_res = power(2, 10);               # 1024
+    let sqrt_res = isqrt(144);                 # 12
+    let prime_res = is_prime(29);              # 1
     
     let mut x_coef = 0;
     let mut y_coef = 0;
-    let gcd_res = ext_gcd(240, 46, &x_coef, &y_coef); 
-    # gcd_res = 2, x_coef = -9, y_coef = 47 -> 240(-9) + 46(47) = 2
+    let gcd_res = ext_gcd(240, 46, &x_coef, &y_coef); # 2
 
-    let rev_res = reverse_digits(12345);      # 54321
-    let pop_res = popcount(255);              # 8 (0b11111111)
-    let bs_sqrt = binary_search_sqrt(50);     # 7
+    let rev_res = reverse_digits(12345);       # 54321
+    let pop_res = popcount(255);               # 8
+    let bs_sqrt = binary_search_sqrt(50);      # 7
 
-    # Aggregated result test
     pow_res + sqrt_res + prime_res + gcd_res + x_coef + y_coef + rev_res + pop_res + bs_sqrt
 }

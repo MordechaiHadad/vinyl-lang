@@ -43,6 +43,13 @@ fn nested_loops() {
 }
 
 #[test]
+fn else_if_expression() {
+    let source = "fn main(): int { if false { 1 } else if true { 2 } else { 3 } }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
 fn break_in_if_inside_loop() {
     let source = "fn main() { loop { if true { break; } } }";
     let items = common::compile(source);

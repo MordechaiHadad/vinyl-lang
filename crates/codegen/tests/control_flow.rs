@@ -71,6 +71,14 @@ fn nested_if_in_else() {
 }
 
 #[test]
+fn else_if_expression() {
+    assert_eq!(
+        common::run("fn main(): int { if false { 1 } else if true { 2 } else { 3 } }").unwrap(),
+        2
+    );
+}
+
+#[test]
 fn cmp_eq_true() {
     assert_eq!(
         common::run("fn main(): int32 { if 3 == 3 { return 1; } 0 }").unwrap(),
