@@ -1,0 +1,24 @@
+# Mutability and reference examples
+# Run: vinyl run examples/mutability.vnl
+
+fn set_value(slot: &int) {
+    slot = 10;
+}
+
+fn main(): int {
+    let mut value = 10;
+    let view = &value;
+    value = 20;
+
+    let mut target = &value;
+    target = 30;
+
+    let mut other = 40;
+    target = &other;
+    target = 50;
+
+    set_value(&value);
+
+    # view and value both read 10 after the function call.
+    view + value + other
+}
