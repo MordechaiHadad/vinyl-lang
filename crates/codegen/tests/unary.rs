@@ -12,7 +12,10 @@ fn not_false() {
 
 #[test]
 fn not_variable() {
-    assert_eq!(common::run("fn main(): bool { let x = false; not x }").unwrap(), 1);
+    assert_eq!(
+        common::run("fn main(): bool { let x = false; not x }").unwrap(),
+        1
+    );
 }
 
 #[test]
@@ -22,7 +25,10 @@ fn neg_int() {
 
 #[test]
 fn neg_variable() {
-    assert_eq!(common::run("fn main(): int64 { let x = 5; -x }").unwrap(), -5);
+    assert_eq!(
+        common::run("fn main(): int64 { let x = 5; -x }").unwrap(),
+        -5
+    );
 }
 
 #[test]
@@ -37,5 +43,8 @@ fn double_not() {
 
 #[test]
 fn not_in_if_condition() {
-    assert_eq!(common::run("fn main(): int64 { let t = true; if not t { 10 } else { 69 } }").unwrap(), 69);
+    assert_eq!(
+        common::run("fn main(): int64 { let t = true; if not t { 10 } else { 69 } }").unwrap(),
+        69
+    );
 }

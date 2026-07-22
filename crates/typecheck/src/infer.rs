@@ -2,10 +2,13 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use vinyl_parser::ast::{BinaryOp, Expr, FunctionDef, Item, Primitive, Stmt, UnaryOp};
+use vinyl_parser::ast::{
+    AssignOp, AssignTarget, BinaryOp, Expr, FunctionDef, Item, Primitive, Stmt, UnaryOp,
+};
 
 use crate::hir::{
-    HirExpr, HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
+    AssignOp as HirAssignOp, HirAssignTarget, HirExpr, HirExprKind, HirFunction, HirItem,
+    HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
 };
 
 #[derive(Debug, Diagnostic)]
@@ -75,7 +78,7 @@ pub fn typeck(
         }
     }
 
-        warnings.append(&mut state.warnings);
+    warnings.append(&mut state.warnings);
 
     if state.errors.is_empty() {
         Ok(hir_items)
@@ -87,6 +90,7 @@ pub fn typeck(
 #[derive(Debug, Clone)]
 struct TypeScheme {
     type_: Type,
+    mutable: bool,
 }
 
 struct InferState {
@@ -237,6 +241,15 @@ impl InferState {
         None
     }
 
+    fn lookup_scope_index(&self, name: &str) -> Option<usize> {
+        for (depth, scope) in self.scopes.iter().enumerate().rev() {
+            if scope.contains_key(name) {
+                return Some(depth);
+            }
+        }
+        None
+    }
+
     fn error(&self, span: SourceSpan, message: String) -> TypeError {
         TypeError {
             message,
@@ -260,23 +273,34 @@ impl InferState {
     ) -> Result<HirFunction, TypeError> {
         let mut params = Vec::new();
         for param in &func.params {
+            let mutable = param.mutable || matches!(param.type_, Type::Ref(_));
             params.push(HirParam {
                 name: param.name.clone(),
-                mutable: param.mutable,
+                mutable,
                 type_: param.type_.clone(),
             });
             self.bind(
                 &param.name,
                 TypeScheme {
                     type_: param.type_.clone(),
+                    mutable,
                 },
             );
         }
 
-        let return_type = match &func.return_type {
+        let mut return_type = match &func.return_type {
             Some(t) => t.clone(),
             None => self.fresh_var(),
         };
+
+        // TODO: check that return type is not &T
+        let resolved_ret = self.apply(&return_type);
+        if let Type::Ref(_) = &resolved_ret {
+            self.errors.push(self.error(
+                func.span,
+                "functions cannot return reference types".to_string(),
+            ));
+        }
 
         let prev_return = self.current_return_type.replace(return_type.clone());
         self.push_scope();
@@ -296,8 +320,16 @@ impl InferState {
             }
         }
 
+        if !body
+            .last()
+            .is_some_and(|s| matches!(s.kind, HirStmtKind::Value(_)))
+        {
+            if let Type::Var(id) = &return_type {
+                self.subs.remove(id);
+            }
+            return_type = Type::Primitive(Primitive::Unit);
+        }
         let body = self.resolve_hir_stmts(body);
-        let return_type = self.resolve_hir_type(&return_type);
 
         self.errors.extend(self.collect_literal_type_errors(&body));
 
@@ -318,7 +350,8 @@ impl InferState {
         let mut terminated = false;
         for stmt in stmts {
             if terminated {
-                self.warnings.push(self.warn(stmt.span(), "unreachable statement".to_string()));
+                self.warnings
+                    .push(self.warn(stmt.span(), "unreachable statement".to_string()));
             }
             hir_stmts.push(self.infer_stmt(stmt, signatures)?);
             match stmt {
@@ -354,6 +387,7 @@ impl InferState {
                 let value_type = self.apply(&hir_value.type_);
                 let scheme = TypeScheme {
                     type_: value_type.clone(),
+                    mutable: *mutable,
                 };
                 self.bind(name, scheme);
 
@@ -437,7 +471,122 @@ impl InferState {
                     kind: HirStmtKind::Continue,
                 })
             }
+            Stmt::Assign {
+                span,
+                target,
+                op,
+                value,
+            } => {
+                let hir_value = self.infer_expr(value, signatures)?;
+                let target_type = self.infer_assign_target(
+                    target,
+                    op,
+                    &hir_value.type_,
+                    *span,
+                    signatures,
+                    value,
+                )?;
+                Ok(HirStmt {
+                    kind: HirStmtKind::Assign {
+                        target: target_type,
+                        op: Self::hir_assign_op(op),
+                        value: hir_value,
+                    },
+                })
+            }
         }
+    }
+
+    fn infer_assign_target(
+        &mut self,
+        target: &AssignTarget,
+        ast_op: &AssignOp,
+        value_type: &Type,
+        span: SourceSpan,
+        signatures: &HashMap<&str, &FunctionDef>,
+        value_expr: &Expr,
+    ) -> Result<HirAssignTarget, TypeError> {
+        match target {
+            AssignTarget::Ident(name, name_span) => {
+                let scheme = self.lookup(name).cloned().ok_or_else(|| {
+                    self.error(*name_span, format!("undefined variable `{name}`"))
+                })?;
+                let resolved_type = self.apply(&scheme.type_);
+
+                self.check_assign_mutability(name, *name_span)?;
+
+                if let Expr::Ref { operand, .. } = value_expr
+                    && let Expr::Ident(ref_name, ref_span) = operand.as_ref()
+                    && let (Some(target_depth), Some(ref_depth)) = (
+                        self.lookup_scope_index(name),
+                        self.lookup_scope_index(ref_name),
+                    )
+                    && ref_depth > target_depth
+                {
+                    return Err(self.error(
+                        *ref_span,
+                        format!("cannot reference inner scope variable `{ref_name}`"),
+                    ));
+                }
+
+                // For assignment through ref: if target type is &T, deref and store
+                if *ast_op == AssignOp::Eq
+                    && let Type::Ref(inner) = &resolved_type
+                {
+                    if matches!(value_expr, Expr::Ref { .. }) {
+                        self.unify(value_type, &resolved_type, span)?;
+                        return Ok(HirAssignTarget::Ident(name.clone()));
+                    }
+                    self.unify(value_type, inner, span)?;
+                    return Ok(HirAssignTarget::Deref(Box::new(HirExpr {
+                        kind: HirExprKind::Ident(name.clone()),
+                        type_: scheme.type_,
+                    })));
+                }
+
+                // Direct assignment — unify value with target type
+                self.unify(value_type, &resolved_type, span)?;
+                Ok(HirAssignTarget::Ident(name.clone()))
+            }
+            AssignTarget::Index {
+                span: _index_span,
+                array,
+                index,
+            } => {
+                let hir_array = self.infer_expr(array, signatures)?;
+                let hir_index = self.infer_expr(index, signatures)?;
+                Ok(HirAssignTarget::Index {
+                    array: Box::new(hir_array),
+                    index: Box::new(hir_index),
+                })
+            }
+            AssignTarget::Field {
+                span: _field_span,
+                object,
+                name,
+            } => {
+                let hir_object = self.infer_expr(object, signatures)?;
+                Ok(HirAssignTarget::Field {
+                    object: Box::new(hir_object),
+                    name: name.clone(),
+                })
+            }
+        }
+    }
+
+    fn check_assign_mutability(&self, name: &str, span: SourceSpan) -> Result<(), TypeError> {
+        for scope in self.scopes.iter().rev() {
+            if let Some(scheme) = scope.get(name) {
+                if !scheme.mutable {
+                    return Err(self.error(
+                        span,
+                        format!("cannot assign to immutable variable `{name}`"),
+                    ));
+                }
+                return Ok(());
+            }
+        }
+        Err(self.error(span, format!("variable `{name}` not found")))
     }
 
     fn infer_expr(
@@ -479,10 +628,20 @@ impl InferState {
             Expr::Ident(name, span) => {
                 let scheme = self.lookup(name).cloned();
                 match scheme {
-                    Some(scheme) => Ok(HirExpr {
-                        kind: HirExprKind::Ident(name.clone()),
-                        type_: scheme.type_,
-                    }),
+                    Some(scheme) => {
+                        let resolved = self.apply(&scheme.type_);
+                        if let Type::Ref(inner) = &resolved {
+                            Ok(HirExpr {
+                                kind: HirExprKind::Ident(name.clone()),
+                                type_: *inner.clone(),
+                            })
+                        } else {
+                            Ok(HirExpr {
+                                kind: HirExprKind::Ident(name.clone()),
+                                type_: scheme.type_,
+                            })
+                        }
+                    }
                     None if signatures.contains_key(name.as_str()) => Ok(HirExpr {
                         kind: HirExprKind::Ident(name.clone()),
                         type_: Type::Primitive(Primitive::Unit),
@@ -531,11 +690,9 @@ impl InferState {
                 let operand_type = self.apply(&hir_operand.type_);
                 match op {
                     UnaryOp::Not => {
-                        if let Err(e) = self.unify(
-                            &operand_type,
-                            &Type::Primitive(Primitive::Bool),
-                            *span,
-                        ) {
+                        if let Err(e) =
+                            self.unify(&operand_type, &Type::Primitive(Primitive::Bool), *span)
+                        {
                             self.errors.push(e);
                         }
                         Ok(HirExpr {
@@ -546,13 +703,19 @@ impl InferState {
                             type_: Type::Primitive(Primitive::Bool),
                         })
                     }
-                    UnaryOp::Neg => {
+                    UnaryOp::Neg => Ok(HirExpr {
+                        kind: HirExprKind::Unary {
+                            op: op.clone(),
+                            operand: Box::new(hir_operand),
+                        },
+                        type_: operand_type,
+                    }),
+                    UnaryOp::Ref => {
+                        // &expr — require mutable variable as target
+                        let operand_type = self.apply(&hir_operand.type_);
                         Ok(HirExpr {
-                            kind: HirExprKind::Unary {
-                                op: op.clone(),
-                                operand: Box::new(hir_operand),
-                            },
-                            type_: operand_type,
+                            kind: HirExprKind::Ref(Box::new(hir_operand)),
+                            type_: Type::Ref(Box::new(operand_type)),
                         })
                     }
                 }
@@ -588,6 +751,19 @@ impl InferState {
                         let arg_type = self.apply(&hir_args[i].type_);
                         if let Err(e) = self.unify(&arg_type, &param.type_, arg.span()) {
                             self.errors.push(e);
+                        }
+                        if let Type::Ref(_) = &param.type_
+                            && let Expr::Ref { operand, .. } = arg
+                            && let Expr::Ident(name, _) = operand.as_ref()
+                            && let Some(scheme) = self.lookup(name)
+                            && !scheme.mutable
+                        {
+                            self.errors.push(self.error(
+                                arg.span(),
+                                format!(
+                                    "cannot pass immutable binding `{name}` as mutable reference"
+                                ),
+                            ));
                         }
                     }
 
@@ -666,6 +842,20 @@ impl InferState {
                 })
             }
             Expr::Paren(inner, _) => self.infer_expr(inner, signatures),
+            Expr::Ref { span, operand } => {
+                if matches!(operand.as_ref(), Expr::Index { .. }) {
+                    return Err(self.error(
+                        *span,
+                        "cannot take reference to array index element".to_string(),
+                    ));
+                }
+                let hir_operand = self.infer_expr(operand, signatures)?;
+                let operand_type = self.apply(&hir_operand.type_);
+                Ok(HirExpr {
+                    kind: HirExprKind::Ref(Box::new(hir_operand)),
+                    type_: Type::Ref(Box::new(operand_type)),
+                })
+            }
             Expr::If {
                 condition,
                 then_block,
@@ -777,15 +967,15 @@ impl InferState {
 
     fn resolve_hir_type(&self, t: &Type) -> Type {
         match t {
-                Type::Var(id) => {
-                    if let Some(resolved) = self.subs.get(id) {
-                        self.resolve_hir_type(resolved)
-                    } else if self.float_vars.contains(id) {
-                        Type::Primitive(Primitive::Float64)
-                    } else {
-                        Type::Primitive(Primitive::Int64)
-                    }
+            Type::Var(id) => {
+                if let Some(resolved) = self.subs.get(id) {
+                    self.resolve_hir_type(resolved)
+                } else if self.float_vars.contains(id) {
+                    Type::Primitive(Primitive::Float64)
+                } else {
+                    Type::Primitive(Primitive::Int64)
                 }
+            }
             Type::Ref(inner) => Type::Ref(Box::new(self.resolve_hir_type(inner))),
             Type::Array { element, size } => Type::Array {
                 element: Box::new(self.resolve_hir_type(element)),
@@ -851,6 +1041,7 @@ impl InferState {
                         .map(|b| b.iter().map(|s| self.resolve_hir_stmt(s)).collect()),
                 },
                 HirExprKind::Unit => HirExprKind::Unit,
+                HirExprKind::Ref(expr) => HirExprKind::Ref(Box::new(self.resolve_hir_expr(expr))),
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),
@@ -881,7 +1072,29 @@ impl InferState {
                 },
                 HirStmtKind::Break => HirStmtKind::Break,
                 HirStmtKind::Continue => HirStmtKind::Continue,
+                HirStmtKind::Assign { target, op, value } => HirStmtKind::Assign {
+                    target: self.resolve_hir_assign_target(target),
+                    op: op.clone(),
+                    value: self.resolve_hir_expr(value),
+                },
             },
+        }
+    }
+
+    fn resolve_hir_assign_target(&self, target: &HirAssignTarget) -> HirAssignTarget {
+        match target {
+            HirAssignTarget::Ident(name) => HirAssignTarget::Ident(name.clone()),
+            HirAssignTarget::Index { array, index } => HirAssignTarget::Index {
+                array: Box::new(self.resolve_hir_expr(array)),
+                index: Box::new(self.resolve_hir_expr(index)),
+            },
+            HirAssignTarget::Field { object, name } => HirAssignTarget::Field {
+                object: Box::new(self.resolve_hir_expr(object)),
+                name: name.clone(),
+            },
+            HirAssignTarget::Deref(expr) => {
+                HirAssignTarget::Deref(Box::new(self.resolve_hir_expr(expr)))
+            }
         }
     }
 
@@ -903,29 +1116,28 @@ impl InferState {
                 self.validate_literal_types(body, errors);
             }
             HirStmtKind::Break | HirStmtKind::Continue => {}
+            HirStmtKind::Assign { value, .. } => {
+                self.validate_literal_types_expr(value, errors);
+            }
         }
     }
 
     fn validate_literal_types_expr(&self, expr: &HirExpr, errors: &mut Vec<TypeError>) {
         match &expr.kind {
-            HirExprKind::Int(_, span) => {
-                if !expr.type_.is_numeric() {
-                    errors.push(self.error(
-                        *span,
-                        format!(
-                            "integer literal must be a numeric type, found `{}`",
-                            expr.type_
-                        ),
-                    ));
-                }
+            HirExprKind::Int(_, span) if !expr.type_.is_numeric() => {
+                errors.push(self.error(
+                    *span,
+                    format!(
+                        "integer literal must be a numeric type, found `{}`",
+                        expr.type_
+                    ),
+                ));
             }
-            HirExprKind::Float(_, span) => {
-                if !expr.type_.is_float() {
-                    errors.push(self.error(
-                        *span,
-                        format!("float literal must be a float type, found `{}`", expr.type_),
-                    ));
-                }
+            HirExprKind::Float(_, span) if !expr.type_.is_float() => {
+                errors.push(self.error(
+                    *span,
+                    format!("float literal must be a float type, found `{}`", expr.type_),
+                ));
             }
             HirExprKind::Binary { left, right, .. } => {
                 self.validate_literal_types_expr(left, errors);
@@ -980,6 +1192,22 @@ impl InferState {
         let mut errors = Vec::new();
         self.validate_literal_types(stmts, &mut errors);
         errors
+    }
+
+    fn hir_assign_op(op: &AssignOp) -> HirAssignOp {
+        match op {
+            AssignOp::Eq => HirAssignOp::Eq,
+            AssignOp::AddEq => HirAssignOp::AddEq,
+            AssignOp::SubEq => HirAssignOp::SubEq,
+            AssignOp::MulEq => HirAssignOp::MulEq,
+            AssignOp::DivEq => HirAssignOp::DivEq,
+            AssignOp::RemEq => HirAssignOp::RemEq,
+            AssignOp::BitAndEq => HirAssignOp::BitAndEq,
+            AssignOp::BitOrEq => HirAssignOp::BitOrEq,
+            AssignOp::BitXorEq => HirAssignOp::BitXorEq,
+            AssignOp::ShlEq => HirAssignOp::ShlEq,
+            AssignOp::ShrEq => HirAssignOp::ShrEq,
+        }
     }
 
     fn validate_literal_types(&self, stmts: &[HirStmt], errors: &mut Vec<TypeError>) {

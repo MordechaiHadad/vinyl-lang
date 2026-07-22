@@ -47,6 +47,40 @@ pub enum HirStmtKind {
     },
     Break,
     Continue,
+    Assign {
+        target: HirAssignTarget,
+        op: AssignOp,
+        value: HirExpr,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum HirAssignTarget {
+    Ident(String),
+    Index {
+        array: Box<HirExpr>,
+        index: Box<HirExpr>,
+    },
+    Field {
+        object: Box<HirExpr>,
+        name: String,
+    },
+    Deref(Box<HirExpr>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignOp {
+    Eq,
+    AddEq,
+    SubEq,
+    MulEq,
+    DivEq,
+    RemEq,
+    BitAndEq,
+    BitOrEq,
+    BitXorEq,
+    ShlEq,
+    ShrEq,
 }
 
 #[derive(Debug, Clone)]
@@ -90,6 +124,7 @@ pub enum HirExprKind {
         else_if: Vec<(HirExpr, Vec<HirStmt>)>,
         else_block: Option<Vec<HirStmt>>,
     },
+    Ref(Box<HirExpr>),
 }
 
 pub type Type = vinyl_parser::ast::Type;

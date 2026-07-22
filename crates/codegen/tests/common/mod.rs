@@ -6,7 +6,8 @@ pub fn run(source: &str) -> Result<i64, String> {
     let items = vinyl_parser::lower::lower(&tree, source, "<test>")
         .map_err(|e| format!("lower error: {e:?}"))?;
     let mut warnings = Vec::new();
-    let hir = vinyl_typecheck::typeck(&items, source, "<test>", &mut warnings).map_err(|_| "type error")?;
+    let hir = vinyl_typecheck::typeck(&items, source, "<test>", &mut warnings)
+        .map_err(|_| "type error")?;
     let mut backend = CraneliftBackend::new().map_err(|e| format!("backend error: {e}"))?;
     backend
         .compile(&hir)

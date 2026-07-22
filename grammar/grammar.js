@@ -19,7 +19,10 @@ export default grammar({
 
   extras: $ => [/\s/, $.comment],
 
-  conflicts: $ => [[$._statement, $._expression], [$.unary_expression, $.index_expression]],
+  conflicts: $ => [
+    [$._statement, $._expression],
+    [$.unary_expression, $.index_expression],
+  ],
 
   rules: {
     source_file: $ => repeat($._definition),
@@ -50,7 +53,10 @@ export default grammar({
       $.simple_type,
       $.generic_type,
       $.array_type,
+      $.reference_type,
     ),
+
+    reference_type: $ => seq("&", $._type),
 
     primitive_type: $ => choice(
       'int8', 'int16', 'int32', 'int64', 'int128', 'isize',
@@ -83,7 +89,7 @@ export default grammar({
     ),
 
     parameter: $ => seq(
-      optional("mut"),
+      optional(field("mut", "mut")),
       field("name", $.identifier),
       field("type", $.type_annotation),
     ),
@@ -97,6 +103,7 @@ export default grammar({
 
     _statement: $ => choice(
       $.let_declaration,
+      $.assignment_statement,
       $.expression_statement,
       $.return_statement,
       $.if_expression,
@@ -108,7 +115,7 @@ export default grammar({
 
     let_declaration: $ => seq(
       "let",
-      optional("mut"),
+      optional(field("mut", "mut")),
       field("name", $.identifier),
       optional($.type_annotation),
       "=",
@@ -119,6 +126,13 @@ export default grammar({
     return_statement: $ => seq(
       "return",
       optional($._expression),
+      ";",
+    ),
+
+    assignment_statement: $ => seq(
+      $._expression,
+      field("operator", choice("=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=")),
+      $._expression,
       ";",
     ),
 
@@ -203,7 +217,7 @@ export default grammar({
     ),
 
     unary_expression: $ => prec(PREC.UNARY, seq(
-      field("operator", choice("-", "!", "not")),
+      field("operator", choice("-", "!", "not", "&")),
       $._expression
     )),
 

@@ -155,6 +155,7 @@ fn lower_type(node: &Node, source: &str, source_name: &str) -> Result<Type, Lowe
         "simple_type" => return lower_simple_type(node, source, source_name),
         "generic_type" => return lower_generic_type(node, source, source_name),
         "array_type" => return lower_array_type(node, source, source_name),
+        "reference_type" => return lower_reference_type(node, source, source_name),
         _ => {}
     }
     for i in 0..node.named_child_count() {
@@ -163,11 +164,27 @@ fn lower_type(node: &Node, source: &str, source_name: &str) -> Result<Type, Lowe
                 "simple_type" => lower_simple_type(&child, source, source_name),
                 "generic_type" => lower_generic_type(&child, source, source_name),
                 "array_type" => lower_array_type(&child, source, source_name),
+                "reference_type" => lower_reference_type(&child, source, source_name),
                 kind => Err(invalid_kind(node, source, source_name, kind, "type")),
             };
         }
     }
     Err(invalid_kind(node, source, source_name, node.kind(), "type"))
+}
+
+fn lower_reference_type(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32) {
+            let inner = lower_type(&child, source, source_name)?;
+            return Ok(Type::Ref(Box::new(inner)));
+        }
+    }
+    Err(span_error(
+        node,
+        source,
+        source_name,
+        "empty reference type",
+    ))
 }
 
 fn lower_simple_type(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
@@ -313,6 +330,7 @@ fn lower_statement(
 ) -> Result<Option<Stmt>, LowerError> {
     match node.kind() {
         "let_declaration" => lower_let(node, source, source_name).map(Some),
+        "assignment_statement" => lower_assignment(node, source, source_name).map(Some),
         "return_statement" => lower_return(node, source, source_name).map(Some),
         "expression_statement" => {
             for i in 0..node.named_child_count() {
@@ -406,6 +424,93 @@ fn lower_let(node: &Node, source: &str, source_name: &str) -> Result<Stmt, Lower
         mutable,
         type_,
         value,
+    })
+}
+
+fn lower_assignment(node: &Node, source: &str, source_name: &str) -> Result<Stmt, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let named = children(node);
+    if named.len() < 2 {
+        return Err(span_error(
+            node,
+            source,
+            source_name,
+            "incomplete assignment",
+        ));
+    }
+
+    let target = lower_assign_target(&named[0], source, source_name)?;
+    let op = lower_assign_op(node, source, source_name)?;
+    let value = lower_expression(&named[1], source, source_name)?;
+
+    Ok(Stmt::Assign {
+        span,
+        target,
+        op,
+        value: Box::new(value),
+    })
+}
+
+fn lower_assign_target(
+    node: &Node,
+    source: &str,
+    source_name: &str,
+) -> Result<AssignTarget, LowerError> {
+    let span = || SourceSpan::from(node.start_byte()..node.end_byte());
+    match node.kind() {
+        "identifier" => Ok(AssignTarget::Ident(node_text(node, source), span())),
+        "index_expression" => {
+            let children = children(node);
+            if children.len() < 2 {
+                return Err(span_error(
+                    node,
+                    source,
+                    source_name,
+                    "incomplete index expression in assignment",
+                ));
+            }
+            let array = lower_expression(&children[0], source, source_name)?;
+            let index = lower_expression(&children[1], source, source_name)?;
+            Ok(AssignTarget::Index {
+                span: span(),
+                array: Box::new(array),
+                index: Box::new(index),
+            })
+        }
+        _ => Err(span_error(
+            node,
+            source,
+            source_name,
+            &format!("invalid assignment target: `{}`", node.kind()),
+        )),
+    }
+}
+
+fn lower_assign_op(node: &Node, source: &str, source_name: &str) -> Result<AssignOp, LowerError> {
+    let op_node = node
+        .child_by_field_name("operator")
+        .ok_or_else(|| span_error(node, source, source_name, "missing assignment operator"))?;
+    let text = node_text(&op_node, source);
+    Ok(match text.as_str() {
+        "=" => AssignOp::Eq,
+        "+=" => AssignOp::AddEq,
+        "-=" => AssignOp::SubEq,
+        "*=" => AssignOp::MulEq,
+        "/=" => AssignOp::DivEq,
+        "%=" => AssignOp::RemEq,
+        "&=" => AssignOp::BitAndEq,
+        "|=" => AssignOp::BitOrEq,
+        "^=" => AssignOp::BitXorEq,
+        "<<=" => AssignOp::ShlEq,
+        ">>=" => AssignOp::ShrEq,
+        other => {
+            return Err(span_error(
+                &op_node,
+                source,
+                source_name,
+                &format!("unknown assignment operator `{other}`"),
+            ));
+        }
     })
 }
 
@@ -646,7 +751,12 @@ fn lower_unary(node: &Node, source: &str, source_name: &str) -> Result<Expr, Low
     let span = SourceSpan::from(node.start_byte()..node.end_byte());
     let children = children(node);
     if children.is_empty() {
-        return Err(span_error(node, source, source_name, "incomplete unary expression"));
+        return Err(span_error(
+            node,
+            source,
+            source_name,
+            "incomplete unary expression",
+        ));
     }
     let op = lower_unary_op(
         &child_by_field(node, "operator", source, source_name)?,
@@ -658,6 +768,10 @@ fn lower_unary(node: &Node, source: &str, source_name: &str) -> Result<Expr, Low
         (UnaryOp::Neg, Expr::Int(v, _)) => Ok(Expr::Int(-v, span)),
         (UnaryOp::Neg, Expr::Float(v, _)) => Ok(Expr::Float(-v, span)),
         (UnaryOp::Not, Expr::Bool(b, _)) => Ok(Expr::Bool(!b, span)),
+        (UnaryOp::Ref, _) => Ok(Expr::Ref {
+            span,
+            operand: Box::new(operand),
+        }),
         _ => Ok(Expr::Unary {
             span,
             op,
@@ -670,6 +784,7 @@ fn lower_unary_op(node: &Node, source: &str, source_name: &str) -> Result<UnaryO
     Ok(match node_text(node, source).as_str() {
         "-" => UnaryOp::Neg,
         "!" | "not" => UnaryOp::Not,
+        "&" => UnaryOp::Ref,
         other => {
             return Err(span_error(
                 node,

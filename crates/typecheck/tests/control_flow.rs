@@ -120,7 +120,11 @@ fn unreachable_in_nested_block() {
     let source = "fn main(): int32 { loop { break; { let x = 1; } } 1 }";
     let (result, warnings) = common::compile_with_warnings(source);
     assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
-    assert_eq!(warnings.len(), 1, "should warn about the nested block expression");
+    assert_eq!(
+        warnings.len(),
+        1,
+        "should warn about the nested block expression"
+    );
 }
 
 #[test]
@@ -128,7 +132,11 @@ fn no_warning_break_in_nested_if() {
     let source = "fn main() { loop { if true { break; } let x = 1; } }";
     let (result, warnings) = common::compile_with_warnings(source);
     assert!(result.is_ok(), "typeck should succeed: {:?}", result.err());
-    assert_eq!(warnings.len(), 0, "break inside if does not make subsequent code unreachable");
+    assert_eq!(
+        warnings.len(),
+        0,
+        "break inside if does not make subsequent code unreachable"
+    );
 }
 
 #[test]

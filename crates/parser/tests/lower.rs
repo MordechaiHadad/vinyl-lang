@@ -84,7 +84,7 @@ fn let_statements() {
     } = &func.body[2]
     {
         assert_eq!(name, "z");
-        assert!(!*mutable);
+        assert!(*mutable);
         assert!(type_.is_some());
     } else {
         panic!("expected let statement");
@@ -508,7 +508,13 @@ fn unit_literal_expression() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    assert!(matches!(func.body[0], Stmt::Let { value: Expr::Unit(_), .. }));
+    assert!(matches!(
+        func.body[0],
+        Stmt::Let {
+            value: Expr::Unit(_),
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -519,11 +525,17 @@ fn unary_not_bool() {
         _ => panic!("expected function"),
     };
     match &func.body[0] {
-        Stmt::Let { value: Expr::Bool(v, _), .. } => assert!(!*v),
+        Stmt::Let {
+            value: Expr::Bool(v, _),
+            ..
+        } => assert!(!*v),
         _ => panic!("expected folded bool literal (!true = false)"),
     }
     match &func.body[1] {
-        Stmt::Let { value: Expr::Bool(v, _), .. } => assert!(*v),
+        Stmt::Let {
+            value: Expr::Bool(v, _),
+            ..
+        } => assert!(*v),
         _ => panic!("expected folded bool literal (not false = true)"),
     }
 }
@@ -579,12 +591,17 @@ fn unary_neg_variable() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(Expr::Unary { op: UnaryOp::Neg, operand, .. }, _) => {
-            match operand.as_ref() {
-                Expr::Ident(name, _) => assert_eq!(name, "x"),
-                _ => panic!("expected ident operand"),
-            }
-        }
+        Stmt::Value(
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                operand,
+                ..
+            },
+            _,
+        ) => match operand.as_ref() {
+            Expr::Ident(name, _) => assert_eq!(name, "x"),
+            _ => panic!("expected ident operand"),
+        },
         _ => panic!("expected unary neg expression"),
     }
 }
@@ -613,7 +630,12 @@ fn unary_precedence() {
     let last = func.body.last().unwrap();
     match last {
         Stmt::Value(
-            Expr::Binary { left, op: BinaryOp::Mul, right, .. },
+            Expr::Binary {
+                left,
+                op: BinaryOp::Mul,
+                right,
+                ..
+            },
             _,
         ) => {
             match left.as_ref() {
@@ -625,6 +647,8 @@ fn unary_precedence() {
                 _ => panic!("expected int literal 3 as right operand"),
             }
         }
-        _ => panic!("expected binary expression (-2 unfolded to Int(-2) by const folding, then * 3)"),
+        _ => {
+            panic!("expected binary expression (-2 unfolded to Int(-2) by const folding, then * 3)")
+        }
     }
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use cranelift_codegen::ir::{
@@ -6,14 +6,15 @@ use cranelift_codegen::ir::{
 };
 use cranelift_codegen::isa::{self, CallConv};
 use cranelift_codegen::settings;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
 use target_lexicon::Triple;
 
 use vinyl_parser::ast::{BinaryOp, Primitive, UnaryOp};
 use vinyl_typecheck::hir::{
-    HirExpr, HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
+    AssignOp, HirAssignTarget, HirExpr, HirExprKind, HirFunction, HirItem, HirItemKind, HirParam,
+    HirStmt, HirStmtKind, Type,
 };
 
 use tracing::debug;
@@ -35,12 +36,25 @@ impl fmt::Display for CraneliftError {
 
 impl std::error::Error for CraneliftError {}
 
+struct VarInfo {
+    slot: VarSlot,
+    vinyl_type: Type,
+}
+
+#[derive(Clone, Copy)]
+enum VarSlot {
+    Value(ir::Value),
+    Variable(Variable),
+    StackSlot(ir::StackSlot, ir::Type),
+}
+
 struct CodegenCtx<'a> {
     module: &'a mut JITModule,
     decls: &'a [(String, cranelift_module::FuncId, Vec<HirParam>, Type)],
     break_target: Option<ir::Block>,
     continue_target: Option<ir::Block>,
-    vars: &'a mut HashMap<String, ir::Value>,
+    vars: &'a mut HashMap<String, VarInfo>,
+    ref_vars: &'a HashSet<String>,
     pointer_type: ir::Type,
     builder: &'a mut FunctionBuilder<'a>,
 }
@@ -84,7 +98,12 @@ impl CodegenBackend for CraneliftBackend {
                 .module
                 .declare_function(&f.name, Linkage::Export, &sig)
                 .map_err(|e| CraneliftError::Msg(format!("declare {}: {e}", f.name)))?;
-            self.decls.push((f.name.clone(), func_id, f.params.clone(), f.return_type.clone()));
+            self.decls.push((
+                f.name.clone(),
+                func_id,
+                f.params.clone(),
+                f.return_type.clone(),
+            ));
         }
 
         for (name, func_id, params, _) in &self.decls.clone() {
@@ -107,12 +126,22 @@ impl CodegenBackend for CraneliftBackend {
                 let entry = builder.create_block();
                 builder.switch_to_block(entry);
 
+                let ref_vars = prescan_function_body(&func.body);
                 let mut vars = HashMap::new();
 
                 for param in params.iter() {
                     let ty = param_type_to_clif(&param.type_, pointer_type);
                     let val = builder.append_block_param(entry, ty);
-                    vars.insert(param.name.clone(), val);
+                    let mode = var_mode(&param.name, param.mutable, &ref_vars);
+                    let (slot, _) =
+                        build_var_info(&mut builder, &param.type_, ty, val, mode, pointer_type);
+                    vars.insert(
+                        param.name.clone(),
+                        VarInfo {
+                            slot,
+                            vinyl_type: param.type_.clone(),
+                        },
+                    );
                 }
 
                 let mut ctx = CodegenCtx {
@@ -121,6 +150,7 @@ impl CodegenBackend for CraneliftBackend {
                     break_target: None,
                     continue_target: None,
                     vars: &mut vars,
+                    ref_vars: &ref_vars,
                     pointer_type,
                     builder: &mut builder,
                 };
@@ -165,7 +195,8 @@ impl CodegenBackend for CraneliftBackend {
         };
 
         if matches!(main_return, Type::Primitive(Primitive::Unit)) {
-            let main_fn: unsafe extern "C" fn() = unsafe { std::mem::transmute(self.module.get_finalized_function(*main_id)) };
+            let main_fn: unsafe extern "C" fn() =
+                unsafe { std::mem::transmute(self.module.get_finalized_function(*main_id)) };
             unsafe { main_fn() };
             return Ok(0);
         }
@@ -178,7 +209,65 @@ impl CodegenBackend for CraneliftBackend {
 }
 
 impl<'a> CodegenCtx<'a> {
-    fn compile_stmt(&mut self, stmt: &HirStmt, terminated: &mut bool) -> Result<(), CraneliftError> {
+    fn read_var(&mut self, name: &str) -> Result<ir::Value, CraneliftError> {
+        let val = self.read_var_raw(name)?;
+        let info = self
+            .vars
+            .get(name)
+            .ok_or_else(|| CraneliftError::Msg(format!("undefined variable `{name}`")))?;
+        if let Type::Ref(inner) = &info.vinyl_type {
+            let inner_ty = ir_type_from_primitive(inner.as_ref(), self.pointer_type);
+            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+            Ok(self.builder.ins().load(inner_ty, mflags, val, 0))
+        } else {
+            Ok(val)
+        }
+    }
+
+    fn read_var_raw(&mut self, name: &str) -> Result<ir::Value, CraneliftError> {
+        let info = self
+            .vars
+            .get(name)
+            .ok_or_else(|| CraneliftError::Msg(format!("undefined variable `{name}`")))?;
+        match info.slot {
+            VarSlot::Value(v) => Ok(v),
+            VarSlot::Variable(v) => Ok(self.builder.use_var(v)),
+            VarSlot::StackSlot(slot, ty) => {
+                let addr = self.builder.ins().stack_addr(self.pointer_type, slot, 0);
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                let val = self.builder.ins().load(ty, mflags, addr, 0);
+                Ok(val)
+            }
+        }
+    }
+
+    fn write_var(&mut self, name: &str, val: ir::Value) -> Result<(), CraneliftError> {
+        let info = self
+            .vars
+            .get_mut(name)
+            .ok_or_else(|| CraneliftError::Msg(format!("undefined variable `{name}`")))?;
+        match info.slot {
+            VarSlot::Value(_) => Err(CraneliftError::Msg(format!(
+                "cannot write to immutable variable `{name}`"
+            ))),
+            VarSlot::Variable(v) => {
+                self.builder.def_var(v, val);
+                Ok(())
+            }
+            VarSlot::StackSlot(slot, _ty) => {
+                let addr = self.builder.ins().stack_addr(self.pointer_type, slot, 0);
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                self.builder.ins().store(mflags, val, addr, 0);
+                Ok(())
+            }
+        }
+    }
+
+    fn compile_stmt(
+        &mut self,
+        stmt: &HirStmt,
+        terminated: &mut bool,
+    ) -> Result<(), CraneliftError> {
         if *terminated {
             return Ok(());
         }
@@ -186,12 +275,22 @@ impl<'a> CodegenCtx<'a> {
         match &stmt.kind {
             HirStmtKind::Let {
                 name,
-                type_: _,
+                type_,
                 value,
-                ..
+                mutable,
             } => {
+                let clif_type = ir_type_from_primitive(type_, self.pointer_type);
                 let val = self.compile_expr(value)?;
-                self.vars.insert(name.clone(), val);
+                let mode = var_mode(name, *mutable, self.ref_vars);
+                let (slot, _) =
+                    build_var_info(self.builder, type_, clif_type, val, mode, self.pointer_type);
+                self.vars.insert(
+                    name.clone(),
+                    VarInfo {
+                        slot,
+                        vinyl_type: type_.clone(),
+                    },
+                );
                 Ok(())
             }
             HirStmtKind::Expr(expr) => {
@@ -284,6 +383,122 @@ impl<'a> CodegenCtx<'a> {
                 *terminated = true;
                 Ok(())
             }
+            HirStmtKind::Assign { target, op, value } => {
+                let val = self.compile_expr(value)?;
+                self.compile_assign_target(target, op, val)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn compile_assign_target(
+        &mut self,
+        target: &HirAssignTarget,
+        op: &AssignOp,
+        value: ir::Value,
+    ) -> Result<(), CraneliftError> {
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        let is_compound = *op != AssignOp::Eq;
+
+        let write_val = if is_compound {
+            // Read current value, apply compound operator, produce final value
+            let current = match target {
+                HirAssignTarget::Ident(name) => self.read_var(name)?,
+                HirAssignTarget::Deref(inner) => {
+                    let ptr = match &inner.kind {
+                        HirExprKind::Ident(name) => self.read_var_raw(name)?,
+                        _ => self.compile_expr(inner)?,
+                    };
+                    let ty = self.builder.func.dfg.value_type(value);
+                    self.builder.ins().load(ty, mflags, ptr, 0)
+                }
+                HirAssignTarget::Index { array, index } => {
+                    let array_ptr = self.compile_expr(array)?;
+                    let index_val = self.compile_expr(index)?;
+                    let addr = self.compute_index_addr(array_ptr, index_val, target)?;
+                    let ty = self.builder.func.dfg.value_type(value);
+                    self.builder.ins().load(ty, mflags, addr, 0)
+                }
+                HirAssignTarget::Field { .. } => {
+                    return Err(CraneliftError::Msg(
+                        "compound assignment to struct field not supported".to_string(),
+                    ));
+                }
+            };
+            self.apply_compound_op(current, value, op)
+        } else {
+            value
+        };
+
+        match target {
+            HirAssignTarget::Ident(name) => self.write_var(name, write_val),
+            HirAssignTarget::Deref(inner) => {
+                let ptr = match &inner.kind {
+                    HirExprKind::Ident(name) => self.read_var_raw(name)?,
+                    _ => self.compile_expr(inner)?,
+                };
+                self.builder.ins().store(mflags, write_val, ptr, 0);
+                Ok(())
+            }
+            HirAssignTarget::Index { array, index } => {
+                let array_ptr = self.compile_expr(array)?;
+                let index_val = self.compile_expr(index)?;
+                let addr = self.compute_index_addr(array_ptr, index_val, target)?;
+                self.builder.ins().store(mflags, write_val, addr, 0);
+                Ok(())
+            }
+            HirAssignTarget::Field { object, name: _ } => {
+                let _ = self.compile_expr(object)?;
+                Err(CraneliftError::Msg(
+                    "struct field assignment not supported".to_string(),
+                ))
+            }
+        }
+    }
+
+    fn compute_index_addr(
+        &mut self,
+        array_ptr: ir::Value,
+        index_val: ir::Value,
+        target: &HirAssignTarget,
+    ) -> Result<ir::Value, CraneliftError> {
+        let index_ty = self.builder.func.dfg.value_type(index_val);
+        let index_wide = if index_ty != self.pointer_type {
+            self.builder.ins().uextend(self.pointer_type, index_val)
+        } else {
+            index_val
+        };
+        let elem_type = match extract_array_element_type(target) {
+            Some(t) => t,
+            None => &Type::Primitive(Primitive::Int32),
+        };
+        let elem_size = element_byte_size(elem_type, self.pointer_type);
+        let size_val = self
+            .builder
+            .ins()
+            .iconst(self.pointer_type, elem_size as i64);
+        let offset = self.builder.ins().imul(index_wide, size_val);
+        Ok(self.builder.ins().iadd(array_ptr, offset))
+    }
+
+    fn apply_compound_op(
+        &mut self,
+        current: ir::Value,
+        value: ir::Value,
+        op: &AssignOp,
+    ) -> ir::Value {
+        match op {
+            AssignOp::Eq => value,
+            AssignOp::AddEq => self.builder.ins().iadd(current, value),
+            AssignOp::SubEq => self.builder.ins().isub(current, value),
+            AssignOp::MulEq => self.builder.ins().imul(current, value),
+            AssignOp::DivEq => self.builder.ins().sdiv(current, value),
+            AssignOp::RemEq => self.builder.ins().srem(current, value),
+            AssignOp::BitAndEq => self.builder.ins().band(current, value),
+            AssignOp::BitOrEq => self.builder.ins().bor(current, value),
+            AssignOp::BitXorEq => self.builder.ins().bxor(current, value),
+            AssignOp::ShlEq => self.builder.ins().ishl(current, value),
+            AssignOp::ShrEq => self.builder.ins().sshr(current, value),
         }
     }
 
@@ -300,11 +515,7 @@ impl<'a> CodegenCtx<'a> {
             HirExprKind::String(_) => Err(CraneliftError::Msg(
                 "string expressions not supported in codegen yet".to_string(),
             )),
-            HirExprKind::Ident(name) => self
-                .vars
-                .get(name)
-                .copied()
-                .ok_or_else(|| CraneliftError::Msg(format!("undefined variable `{name}`"))),
+            HirExprKind::Ident(name) => self.read_var(name),
             HirExprKind::Binary { left, op, right } => {
                 let left_val = self.compile_expr(left)?;
                 let right_val = self.compile_expr(right)?;
@@ -315,25 +526,30 @@ impl<'a> CodegenCtx<'a> {
                     BinaryOp::Div => self.builder.ins().sdiv(left_val, right_val),
                     BinaryOp::Rem => self.builder.ins().srem(left_val, right_val),
                     BinaryOp::Eq => self.builder.ins().icmp(IntCC::Equal, left_val, right_val),
-                    BinaryOp::Ne => self.builder.ins().icmp(IntCC::NotEqual, left_val, right_val),
-                    BinaryOp::Lt => self
+                    BinaryOp::Ne => self
                         .builder
                         .ins()
-                        .icmp(IntCC::SignedLessThan, left_val, right_val),
-                    BinaryOp::Gt => self
-                        .builder
-                        .ins()
-                        .icmp(IntCC::SignedGreaterThan, left_val, right_val),
+                        .icmp(IntCC::NotEqual, left_val, right_val),
+                    BinaryOp::Lt => {
+                        self.builder
+                            .ins()
+                            .icmp(IntCC::SignedLessThan, left_val, right_val)
+                    }
+                    BinaryOp::Gt => {
+                        self.builder
+                            .ins()
+                            .icmp(IntCC::SignedGreaterThan, left_val, right_val)
+                    }
                     BinaryOp::Le => {
                         self.builder
                             .ins()
                             .icmp(IntCC::SignedLessThanOrEqual, left_val, right_val)
                     }
-                    BinaryOp::Ge => {
-                        self.builder
-                            .ins()
-                            .icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val)
-                    }
+                    BinaryOp::Ge => self.builder.ins().icmp(
+                        IntCC::SignedGreaterThanOrEqual,
+                        left_val,
+                        right_val,
+                    ),
                     BinaryOp::And => {
                         let zero = self.builder.ins().iconst(types::I8, 0);
                         let l = self.builder.ins().icmp(IntCC::NotEqual, left_val, zero);
@@ -359,10 +575,10 @@ impl<'a> CodegenCtx<'a> {
                         let r = self.builder.ins().srem(left_val, right_val);
                         let r_ne_zero = self.builder.ins().icmp(IntCC::NotEqual, r, zero);
                         let sign_xor = self.builder.ins().bxor(left_val, right_val);
-                        let signs_differ = self
-                            .builder
-                            .ins()
-                            .icmp(IntCC::SignedLessThan, sign_xor, zero);
+                        let signs_differ =
+                            self.builder
+                                .ins()
+                                .icmp(IntCC::SignedLessThan, sign_xor, zero);
                         let adjust = self.builder.ins().band(r_ne_zero, signs_differ);
                         let q_minus_1 = self.builder.ins().isub(q, one);
                         self.builder.ins().select(adjust, q_minus_1, q)
@@ -392,6 +608,7 @@ impl<'a> CodegenCtx<'a> {
                         let one = self.builder.ins().iconst(ty, 1);
                         self.builder.ins().bxor(val, one)
                     }
+                    UnaryOp::Ref => self.compound_ref_expr(operand),
                 })
             }
             HirExprKind::Call { function, args } => {
@@ -413,9 +630,7 @@ impl<'a> CodegenCtx<'a> {
                         let inst = self.builder.ins().call(sig, &call_args);
                         let results = self.builder.inst_results(inst);
                         if results.is_empty() {
-                            Err(CraneliftError::Msg(
-                                "void function call used as expression".to_string(),
-                            ))
+                            Ok(self.builder.ins().iconst(types::I32, 0))
                         } else {
                             Ok(results[0])
                         }
@@ -471,12 +686,37 @@ impl<'a> CodegenCtx<'a> {
                     index_val
                 };
                 let elem_size = element_byte_size(&expr.type_, self.pointer_type);
-                let size_val = self.builder.ins().iconst(self.pointer_type, elem_size as i64);
+                let size_val = self
+                    .builder
+                    .ins()
+                    .iconst(self.pointer_type, elem_size as i64);
                 let offset = self.builder.ins().imul(index_wide, size_val);
                 let addr = self.builder.ins().iadd(array_ptr, offset);
                 let result_ty = ir_type_from_primitive(&expr.type_, self.pointer_type);
                 let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                 Ok(self.builder.ins().load(result_ty, mflags, addr, 0))
+            }
+            HirExprKind::Ref(inner) => {
+                match inner.as_ref() {
+                    HirExpr {
+                        kind: HirExprKind::Ident(name),
+                        ..
+                    } => {
+                        // &x: return the stack address of x
+                        match self.vars.get(name) {
+                            Some(VarInfo {
+                                slot: VarSlot::StackSlot(slot, _),
+                                ..
+                            }) => Ok(self.builder.ins().stack_addr(self.pointer_type, *slot, 0)),
+                            _ => Err(CraneliftError::Msg(format!(
+                                "cannot take reference of variable `{name}`: not stored in a stack slot"
+                            ))),
+                        }
+                    }
+                    _ => Err(CraneliftError::Msg(
+                        "reference operator only supports identifiers".to_string(),
+                    )),
+                }
             }
             HirExprKind::If {
                 condition,
@@ -496,8 +736,18 @@ impl<'a> CodegenCtx<'a> {
         }
     }
 
+    fn compound_ref_expr(&mut self, _operand: &HirExpr) -> ir::Value {
+        unreachable!("UnaryOp::Ref not used directly; HirExprKind::Ref handles it")
+    }
+
     fn compile_expr_if(&mut self, if_expr: IfExprBundle) -> Result<ir::Value, CraneliftError> {
-        let IfExprBundle { condition, then_block, else_if, else_block, result_type } = if_expr;
+        let IfExprBundle {
+            condition,
+            then_block,
+            else_if,
+            else_block,
+            result_type,
+        } = if_expr;
 
         let if_header = self.builder.create_block();
         let then_block_id = self.builder.create_block();
@@ -559,10 +809,11 @@ impl<'a> CodegenCtx<'a> {
     ) -> Result<(), CraneliftError> {
         self.builder.switch_to_block(block_id);
         let mut terminated = false;
-        let mut current = block_id;
         for (i, stmt) in stmts.iter().enumerate() {
-            let is_last = i == stmts.len() - 1;
-            if is_last
+            if terminated {
+                break;
+            }
+            if i == stmts.len() - 1
                 && let HirStmt {
                     kind: HirStmtKind::Value(val_expr),
                     ..
@@ -578,12 +829,8 @@ impl<'a> CodegenCtx<'a> {
                 break;
             }
             self.compile_stmt(stmt, &mut terminated)?;
-            if !terminated && let Some(cur) = self.builder.current_block() {
-                current = cur;
-            }
         }
         if !terminated {
-            self.builder.switch_to_block(current);
             self.builder.ins().jump(if_ctx.merge_block, &[]);
         }
         Ok(())
@@ -656,6 +903,149 @@ struct IfBranchCtx {
     result_slot: Option<(ir::Type, ir::Value)>,
 }
 
+enum VarMode {
+    Value,
+    Variable,
+    StackSlot,
+}
+
+fn var_mode(name: &str, mutable: bool, ref_vars: &HashSet<String>) -> VarMode {
+    if ref_vars.contains(name) {
+        VarMode::StackSlot
+    } else if mutable {
+        VarMode::Variable
+    } else {
+        VarMode::Value
+    }
+}
+
+fn build_var_info(
+    builder: &mut FunctionBuilder,
+    _vtype: &Type,
+    clif_type: ir::Type,
+    initial_val: ir::Value,
+    mode: VarMode,
+    pointer_type: ir::Type,
+) -> (VarSlot, ir::Type) {
+    match mode {
+        VarMode::Value => (VarSlot::Value(initial_val), clif_type),
+        VarMode::Variable => {
+            let var = builder.declare_var(clif_type);
+            builder.def_var(var, initial_val);
+            (VarSlot::Variable(var), clif_type)
+        }
+        VarMode::StackSlot => {
+            let ptr_size = pointer_type.bytes();
+            let slot = builder.create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                ptr_size.max(clif_type.bytes()),
+                0,
+            ));
+            let addr = builder.ins().stack_addr(pointer_type, slot, 0);
+            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+            builder.ins().store(mflags, initial_val, addr, 0);
+            (VarSlot::StackSlot(slot, clif_type), clif_type)
+        }
+    }
+}
+
+fn prescan_function_body(body: &[HirStmt]) -> HashSet<String> {
+    let mut refed = HashSet::new();
+    prescan_stmts(body, &mut refed);
+    refed
+}
+
+fn prescan_stmts(stmts: &[HirStmt], refed: &mut HashSet<String>) {
+    for stmt in stmts {
+        match &stmt.kind {
+            HirStmtKind::Let { value, .. } => prescan_expr(value, refed),
+            HirStmtKind::Expr(e) | HirStmtKind::Value(e) => prescan_expr(e, refed),
+            HirStmtKind::Return(Some(e)) => prescan_expr(e, refed),
+            HirStmtKind::Return(None) => {}
+            HirStmtKind::Loop { body } => prescan_stmts(body, refed),
+            HirStmtKind::Break | HirStmtKind::Continue => {}
+            HirStmtKind::Assign { target, value, .. } => {
+                if let HirAssignTarget::Deref(e) = target {
+                    prescan_expr(e, refed);
+                }
+                prescan_expr(value, refed);
+            }
+        }
+    }
+}
+
+fn prescan_expr(expr: &HirExpr, refed: &mut HashSet<String>) {
+    match &expr.kind {
+        HirExprKind::Ident(_name) => {}
+        HirExprKind::Ref(inner) => {
+            if let HirExpr {
+                kind: HirExprKind::Ident(name),
+                ..
+            } = inner.as_ref()
+            {
+                refed.insert(name.clone());
+            }
+            prescan_expr(inner, refed);
+        }
+        HirExprKind::Unary { operand, .. } => prescan_expr(operand, refed),
+        HirExprKind::Binary { left, right, .. } => {
+            prescan_expr(left, refed);
+            prescan_expr(right, refed);
+        }
+        HirExprKind::Call { function, args } => {
+            prescan_expr(function, refed);
+            for arg in args {
+                prescan_expr(arg, refed);
+            }
+        }
+        HirExprKind::Block(stmts) => prescan_stmts(stmts, refed),
+        HirExprKind::Array(elements) => {
+            for elem in elements {
+                prescan_expr(elem, refed);
+            }
+        }
+        HirExprKind::Index { array, index, .. } => {
+            prescan_expr(array, refed);
+            prescan_expr(index, refed);
+        }
+        HirExprKind::If {
+            condition,
+            then_block,
+            else_if,
+            else_block,
+        } => {
+            prescan_expr(condition, refed);
+            prescan_stmts(then_block, refed);
+            for (cond, block) in else_if {
+                prescan_expr(cond, refed);
+                prescan_stmts(block, refed);
+            }
+            if let Some(block) = else_block {
+                prescan_stmts(block, refed);
+            }
+        }
+        HirExprKind::Int(..)
+        | HirExprKind::Float(..)
+        | HirExprKind::String(..)
+        | HirExprKind::Bool(..)
+        | HirExprKind::Unit
+        | HirExprKind::Char(..) => {}
+    }
+}
+
+fn extract_array_element_type(target: &HirAssignTarget) -> Option<&Type> {
+    match target {
+        HirAssignTarget::Index { array, .. } => {
+            if let Type::Array { element, .. } = &array.type_ {
+                Some(element.as_ref())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 fn element_byte_size(t: &Type, pointer_type: ir::Type) -> u32 {
     let ptr_size = pointer_type.bytes();
     match t {
@@ -678,7 +1068,7 @@ fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> types::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
         Type::Primitive(Primitive::Int64) => types::I64,
-        Type::Primitive(Primitive::ISize) => pointer_type,
+        Type::Primitive(Primitive::ISize) | Type::Ref(_) => pointer_type,
         Type::Primitive(Primitive::USize) => pointer_type,
         Type::Primitive(Primitive::Float64) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
@@ -691,7 +1081,7 @@ fn ir_type_from_primitive(t: &Type, pointer_type: ir::Type) -> ir::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
         Type::Primitive(Primitive::Int64) => types::I64,
-        Type::Primitive(Primitive::ISize) => pointer_type,
+        Type::Primitive(Primitive::ISize) | Type::Ref(_) => pointer_type,
         Type::Primitive(Primitive::USize) => pointer_type,
         Type::Primitive(Primitive::Float64) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,

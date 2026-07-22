@@ -260,6 +260,12 @@ pub enum Stmt {
     },
     Break(SourceSpan),
     Continue(SourceSpan),
+    Assign {
+        span: SourceSpan,
+        target: AssignTarget,
+        op: AssignOp,
+        value: Box<Expr>,
+    },
 }
 
 impl Stmt {
@@ -274,8 +280,39 @@ impl Stmt {
             Stmt::Loop { span, .. } => *span,
             Stmt::Break(span) => *span,
             Stmt::Continue(span) => *span,
+            Stmt::Assign { span, .. } => *span,
         }
     }
+}
+
+#[derive(Debug)]
+pub enum AssignTarget {
+    Ident(String, SourceSpan),
+    Index {
+        span: SourceSpan,
+        array: Box<Expr>,
+        index: Box<Expr>,
+    },
+    Field {
+        span: SourceSpan,
+        object: Box<Expr>,
+        name: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AssignOp {
+    Eq,
+    AddEq,
+    SubEq,
+    MulEq,
+    DivEq,
+    RemEq,
+    BitAndEq,
+    BitOrEq,
+    BitXorEq,
+    ShlEq,
+    ShrEq,
 }
 
 #[derive(Debug)]
@@ -322,6 +359,10 @@ pub enum Expr {
     Tuple(Vec<Expr>, SourceSpan),
     Array(Vec<Expr>, SourceSpan),
     Paren(Box<Expr>, SourceSpan),
+    Ref {
+        span: SourceSpan,
+        operand: Box<Expr>,
+    },
     If {
         span: SourceSpan,
         condition: Box<Expr>,
@@ -351,6 +392,7 @@ impl Expr {
             Expr::Tuple(_, s) => *s,
             Expr::Array(_, s) => *s,
             Expr::Paren(_, s) => *s,
+            Expr::Ref { span, .. } => *span,
             Expr::If { span, .. } => *span,
         }
     }
@@ -386,6 +428,7 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Neg,
     Not,
+    Ref,
 }
 
 #[derive(Debug)]
