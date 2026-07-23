@@ -1,5 +1,5 @@
 use miette::SourceSpan;
-use vinyl_parser::ast::{BinaryOp, UnaryOp};
+use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
 
 #[derive(Debug, Clone)]
 pub struct HirItem {
@@ -19,7 +19,7 @@ pub struct HirFunction {
     pub name: String,
     pub params: Vec<HirParam>,
     pub return_type: Type,
-    pub body: Vec<HirStmt>,
+    pub body: Vec<HirStatement>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,12 +67,12 @@ pub struct HirParam {
 }
 
 #[derive(Debug, Clone)]
-pub struct HirStmt {
-    pub kind: HirStmtKind,
+pub struct HirStatement {
+    pub kind: HirStatementKind,
 }
 
 #[derive(Debug, Clone)]
-pub enum HirStmtKind {
+pub enum HirStatementKind {
     Let {
         name: String,
         mutable: bool,
@@ -83,7 +83,7 @@ pub enum HirStmtKind {
     Return(Option<HirExpr>),
     Value(HirExpr),
     Loop {
-        body: Vec<HirStmt>,
+        body: Vec<HirStatement>,
     },
     Break,
     Continue,
@@ -151,7 +151,7 @@ pub enum HirExprKind {
         function: Box<HirExpr>,
         args: Vec<HirExpr>,
     },
-    Block(Vec<HirStmt>),
+    Block(Vec<HirStatement>),
     Index {
         span: SourceSpan,
         array: Box<HirExpr>,
@@ -160,9 +160,9 @@ pub enum HirExprKind {
     Array(Vec<HirExpr>),
     If {
         condition: Box<HirExpr>,
-        then_block: Vec<HirStmt>,
-        else_if: Vec<(HirExpr, Vec<HirStmt>)>,
-        else_block: Option<Vec<HirStmt>>,
+        then_block: Vec<HirStatement>,
+        else_if: Vec<(HirExpr, Vec<HirStatement>)>,
+        else_block: Option<Vec<HirStatement>>,
     },
     Ref(Box<HirExpr>),
     EnumVariant {
@@ -178,4 +178,4 @@ pub enum HirExprKind {
     },
 }
 
-pub type Type = vinyl_parser::ast::Type;
+pub type Type = vinyl_parser::ast::types::Type;

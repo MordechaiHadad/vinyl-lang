@@ -13,10 +13,11 @@ use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
 use target_lexicon::Triple;
 
-use vinyl_parser::ast::{BinaryOp, Primitive, UnaryOp};
+use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
+use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{
     AssignOp, HirAssignTarget, HirEnumVariantData, HirExpr,
-    HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
+    HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStatement, HirStatementKind, Type,
 };
 
 use tracing::debug;
@@ -285,7 +286,7 @@ impl<'a> CodegenCtx<'a> {
 
     fn compile_stmt(
         &mut self,
-        stmt: &HirStmt,
+        stmt: &HirStatement,
         terminated: &mut bool,
     ) -> Result<(), CraneliftError> {
         if *terminated {
@@ -293,7 +294,7 @@ impl<'a> CodegenCtx<'a> {
         }
 
         match &stmt.kind {
-            HirStmtKind::Let {
+            HirStatementKind::Let {
                 name,
                 type_,
                 value,
@@ -313,11 +314,11 @@ impl<'a> CodegenCtx<'a> {
                 );
                 Ok(())
             }
-            HirStmtKind::Expr(expr) => {
+            HirStatementKind::Expr(expr) => {
                 self.compile_expr(expr)?;
                 Ok(())
             }
-            HirStmtKind::Return(expr) => {
+            HirStatementKind::Return(expr) => {
                 match expr {
                     Some(e) => {
                         let val = self.compile_expr(e)?;
@@ -330,7 +331,7 @@ impl<'a> CodegenCtx<'a> {
                 *terminated = true;
                 Ok(())
             }
-            HirStmtKind::Value(expr) => {
+            HirStatementKind::Value(expr) => {
                 let val = self.compile_expr(expr)?;
                 if matches!(expr.type_, Type::Primitive(Primitive::Unit)) {
                     self.builder.ins().return_(&[]);
@@ -340,7 +341,7 @@ impl<'a> CodegenCtx<'a> {
                 *terminated = true;
                 Ok(())
             }
-            HirStmtKind::Loop { body } => {
+            HirStatementKind::Loop { body } => {
                 let saved_break = self.break_target;
                 let saved_continue = self.continue_target;
 
@@ -355,8 +356,8 @@ impl<'a> CodegenCtx<'a> {
 
                 let mut body_terminated = false;
                 for stmt in body {
-                    if let HirStmt {
-                        kind: HirStmtKind::Value(expr),
+                    if let HirStatement {
+                        kind: HirStatementKind::Value(expr),
                         ..
                     } = stmt
                     {
@@ -379,7 +380,7 @@ impl<'a> CodegenCtx<'a> {
                 *terminated = false;
                 Ok(())
             }
-            HirStmtKind::Break => {
+            HirStatementKind::Break => {
                 match self.break_target {
                     Some(target) => {
                         self.builder.ins().jump(target, &[]);
@@ -391,7 +392,7 @@ impl<'a> CodegenCtx<'a> {
                 *terminated = true;
                 Ok(())
             }
-            HirStmtKind::Continue => {
+            HirStatementKind::Continue => {
                 match self.continue_target {
                     Some(target) => {
                         self.builder.ins().jump(target, &[]);
@@ -403,7 +404,7 @@ impl<'a> CodegenCtx<'a> {
                 *terminated = true;
                 Ok(())
             }
-            HirStmtKind::Assign { target, op, value } => {
+            HirStatementKind::Assign { target, op, value } => {
                 let val = self.compile_expr(value)?;
                 self.compile_assign_target(target, op, val)?;
                 Ok(())
@@ -913,7 +914,7 @@ impl<'a> CodegenCtx<'a> {
 
     fn compile_if_branch(
         &mut self,
-        stmts: &[HirStmt],
+        stmts: &[HirStatement],
         block_id: ir::Block,
         if_ctx: &mut IfBranchCtx,
     ) -> Result<(), CraneliftError> {
@@ -924,8 +925,8 @@ impl<'a> CodegenCtx<'a> {
                 break;
             }
             if i == stmts.len() - 1
-                && let HirStmt {
-                    kind: HirStmtKind::Value(val_expr),
+                && let HirStatement {
+                    kind: HirStatementKind::Value(val_expr),
                     ..
                 } = stmt
             {
@@ -948,8 +949,8 @@ impl<'a> CodegenCtx<'a> {
 
     fn compile_else_if_chain(
         &mut self,
-        else_if: &[(HirExpr, Vec<HirStmt>)],
-        else_block: &Option<Vec<HirStmt>>,
+        else_if: &[(HirExpr, Vec<HirStatement>)],
+        else_block: &Option<Vec<HirStatement>>,
         else_block_id: ir::Block,
         if_ctx: &mut IfBranchCtx,
     ) -> Result<(), CraneliftError> {
@@ -969,8 +970,8 @@ impl<'a> CodegenCtx<'a> {
             for (i, stmt) in stmts.iter().enumerate() {
                 let is_last = i == stmts.len() - 1;
                 if is_last
-                    && let HirStmt {
-                        kind: HirStmtKind::Value(val_expr),
+                    && let HirStatement {
+                        kind: HirStatementKind::Value(val_expr),
                         ..
                     } = stmt
                 {
@@ -1019,7 +1020,7 @@ impl<'a> CodegenCtx<'a> {
             None => Vec::new(),
         };
         let (total_size, data_offset, _disc_size) =
-            layout::enum_layout(&[payload_types.clone()], ptr_size);
+            layout::enum_layout(std::slice::from_ref(&payload_types), ptr_size);
         if total_size > 8 {
             return Err(CraneliftError::Msg(format!(
                 "enum `{type_name}` is too large (> 8 bytes) for codegen yet"
@@ -1059,9 +1060,9 @@ impl<'a> CodegenCtx<'a> {
 
 struct IfExprBundle<'a> {
     condition: &'a HirExpr,
-    then_block: &'a [HirStmt],
-    else_if: &'a [(HirExpr, Vec<HirStmt>)],
-    else_block: &'a Option<Vec<HirStmt>>,
+    then_block: &'a [HirStatement],
+    else_if: &'a [(HirExpr, Vec<HirStatement>)],
+    else_block: &'a Option<Vec<HirStatement>>,
     result_type: &'a Type,
 }
 
@@ -1116,22 +1117,22 @@ fn build_var_info(
     }
 }
 
-fn prescan_function_body(body: &[HirStmt]) -> HashSet<String> {
+fn prescan_function_body(body: &[HirStatement]) -> HashSet<String> {
     let mut refed = HashSet::new();
     prescan_stmts(body, &mut refed);
     refed
 }
 
-fn prescan_stmts(stmts: &[HirStmt], refed: &mut HashSet<String>) {
+fn prescan_stmts(stmts: &[HirStatement], refed: &mut HashSet<String>) {
     for stmt in stmts {
         match &stmt.kind {
-            HirStmtKind::Let { value, .. } => prescan_expr(value, refed),
-            HirStmtKind::Expr(e) | HirStmtKind::Value(e) => prescan_expr(e, refed),
-            HirStmtKind::Return(Some(e)) => prescan_expr(e, refed),
-            HirStmtKind::Return(None) => {}
-            HirStmtKind::Loop { body } => prescan_stmts(body, refed),
-            HirStmtKind::Break | HirStmtKind::Continue => {}
-            HirStmtKind::Assign { target, value, .. } => {
+            HirStatementKind::Let { value, .. } => prescan_expr(value, refed),
+            HirStatementKind::Expr(e) | HirStatementKind::Value(e) => prescan_expr(e, refed),
+            HirStatementKind::Return(Some(e)) => prescan_expr(e, refed),
+            HirStatementKind::Return(None) => {}
+            HirStatementKind::Loop { body } => prescan_stmts(body, refed),
+            HirStatementKind::Break | HirStatementKind::Continue => {}
+            HirStatementKind::Assign { target, value, .. } => {
                 if let HirAssignTarget::Deref(e) = target {
                     prescan_expr(e, refed);
                 }

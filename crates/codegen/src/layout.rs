@@ -1,4 +1,6 @@
-use vinyl_parser::ast::{Primitive, Type};
+use vinyl_parser::ast::types::Primitive;
+use vinyl_typecheck::hir::Type;
+
 
 pub struct Layout {
     pub size: u32,

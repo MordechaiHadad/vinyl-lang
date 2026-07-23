@@ -1,15 +1,17 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use vinyl_parser::ast::expression::Expression;
+use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
+use vinyl_parser::ast::operator::{AssignOp, BinaryOp, UnaryOp};
+use vinyl_parser::ast::statement::{AssignTarget, Statement};
+use vinyl_parser::ast::types::Primitive;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
-use vinyl_parser::ast::{
-    AssignOp, AssignTarget, BinaryOp, EnumVariantData, Expr, FunctionDef, Item, Primitive, Stmt,
-    UnaryOp,
-};
+
 
 use crate::hir::{
     AssignOp as HirAssignOp, HirAssignTarget, HirEnum, HirEnumVariant, HirEnumVariantData, HirExpr,
-    HirExprKind, HirField, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind,
+    HirExprKind, HirField, HirFunction, HirItem, HirItemKind, HirParam, HirStatement, HirStatementKind,
     HirStruct, HirTupleStruct, Type,
 };
 
@@ -389,8 +391,8 @@ impl InferState {
         self.pop_scope();
         self.current_return_type = prev_return;
 
-        if let Some(HirStmt {
-            kind: HirStmtKind::Value(expr),
+        if let Some(HirStatement {
+            kind: HirStatementKind::Value(expr),
             ..
         }) = body.last()
         {
@@ -403,7 +405,7 @@ impl InferState {
 
         if !body
             .last()
-            .is_some_and(|s| matches!(s.kind, HirStmtKind::Value(_)))
+            .is_some_and(|s| matches!(s.kind, HirStatementKind::Value(_)))
         {
             if let Type::Var(id) = &return_type {
                 self.subs.remove(id);
@@ -424,9 +426,9 @@ impl InferState {
 
     fn infer_block(
         &mut self,
-        stmts: &[Stmt],
+        stmts: &[Statement],
         signatures: &HashMap<&str, &FunctionDef>,
-    ) -> Result<Vec<HirStmt>, TypeError> {
+    ) -> Result<Vec<HirStatement>, TypeError> {
         let mut hir_stmts = Vec::new();
         let mut terminated = false;
         for stmt in stmts {
@@ -436,7 +438,7 @@ impl InferState {
             }
             hir_stmts.push(self.infer_stmt(stmt, signatures)?);
             match stmt {
-                Stmt::Return(..) | Stmt::Break(..) | Stmt::Continue(..) => terminated = true,
+                Statement::Return(..) | Statement::Break(..) | Statement::Continue(..) => terminated = true,
                 _ => {}
             }
         }
@@ -445,11 +447,11 @@ impl InferState {
 
     fn infer_stmt(
         &mut self,
-        stmt: &Stmt,
+        stmt: &Statement,
         signatures: &HashMap<&str, &FunctionDef>,
-    ) -> Result<HirStmt, TypeError> {
+    ) -> Result<HirStatement, TypeError> {
         match stmt {
-            Stmt::Let {
+            Statement::Let {
                 span,
                 name,
                 mutable,
@@ -472,8 +474,8 @@ impl InferState {
                 };
                 self.bind(name, scheme);
 
-                Ok(HirStmt {
-                    kind: HirStmtKind::Let {
+                Ok(HirStatement {
+                    kind: HirStatementKind::Let {
                         name: name.clone(),
                         mutable: *mutable,
                         type_: value_type,
@@ -481,13 +483,13 @@ impl InferState {
                     },
                 })
             }
-            Stmt::Expr(expr) => {
+            Statement::Expression(expr) => {
                 let hir_expr = self.infer_expr(expr, signatures)?;
-                Ok(HirStmt {
-                    kind: HirStmtKind::Expr(hir_expr),
+                Ok(HirStatement {
+                    kind: HirStatementKind::Expr(hir_expr),
                 })
             }
-            Stmt::Return(expr, span) => {
+            Statement::Return(expr, span) => {
                 let hir_expr = expr
                     .as_ref()
                     .map(|e| self.infer_expr(e, signatures))
@@ -510,49 +512,49 @@ impl InferState {
                     }
                 }
 
-                Ok(HirStmt {
-                    kind: HirStmtKind::Return(hir_expr),
+                Ok(HirStatement {
+                    kind: HirStatementKind::Return(hir_expr),
                 })
             }
-            Stmt::Value(expr, _span) => {
+            Statement::Value(expr, _span) => {
                 let hir_expr = self.infer_expr(expr, signatures)?;
-                Ok(HirStmt {
-                    kind: HirStmtKind::Value(hir_expr),
+                Ok(HirStatement {
+                    kind: HirStatementKind::Value(hir_expr),
                 })
             }
-            Stmt::If { .. } => {
+            Statement::If { .. } => {
                 panic!("Stmt::If should not appear after lowering; use Expr::If");
             }
-            Stmt::While { .. } => {
+            Statement::While { .. } => {
                 panic!("Stmt::While should not appear after lowering; lowered to Stmt::Loop");
             }
-            Stmt::Loop { span: _, body } => {
+            Statement::Loop { span: _, body } => {
                 self.loop_depth += 1;
                 self.push_scope();
                 let hir_body = self.infer_block(body, signatures)?;
                 self.pop_scope();
                 self.loop_depth -= 1;
-                Ok(HirStmt {
-                    kind: HirStmtKind::Loop { body: hir_body },
+                Ok(HirStatement {
+                    kind: HirStatementKind::Loop { body: hir_body },
                 })
             }
-            Stmt::Break(span) => {
+            Statement::Break(span) => {
                 if self.loop_depth == 0 {
                     return Err(self.error(*span, "break outside of loop".to_string()));
                 }
-                Ok(HirStmt {
-                    kind: HirStmtKind::Break,
+                Ok(HirStatement {
+                    kind: HirStatementKind::Break,
                 })
             }
-            Stmt::Continue(span) => {
+            Statement::Continue(span) => {
                 if self.loop_depth == 0 {
                     return Err(self.error(*span, "continue outside of loop".to_string()));
                 }
-                Ok(HirStmt {
-                    kind: HirStmtKind::Continue,
+                Ok(HirStatement {
+                    kind: HirStatementKind::Continue,
                 })
             }
-            Stmt::Assign {
+            Statement::Assign {
                 span,
                 target,
                 op,
@@ -567,8 +569,8 @@ impl InferState {
                     signatures,
                     value,
                 )?;
-                Ok(HirStmt {
-                    kind: HirStmtKind::Assign {
+                Ok(HirStatement {
+                    kind: HirStatementKind::Assign {
                         target: target_type,
                         op: Self::hir_assign_op(op),
                         value: hir_value,
@@ -585,7 +587,7 @@ impl InferState {
         value_type: &Type,
         span: SourceSpan,
         signatures: &HashMap<&str, &FunctionDef>,
-        value_expr: &Expr,
+        value_expr: &Expression,
     ) -> Result<HirAssignTarget, TypeError> {
         match target {
             AssignTarget::Ident(name, name_span) => {
@@ -596,8 +598,8 @@ impl InferState {
 
                 self.check_assign_mutability(name, *name_span)?;
 
-                if let Expr::Ref { operand, .. } = value_expr
-                    && let Expr::Ident(ref_name, ref_span) = operand.as_ref()
+                if let Expression::Ref { operand, .. } = value_expr
+                    && let Expression::Ident(ref_name, ref_span) = operand.as_ref()
                     && let (Some(target_depth), Some(ref_depth)) = (
                         self.lookup_scope_index(name),
                         self.lookup_scope_index(ref_name),
@@ -611,7 +613,7 @@ impl InferState {
                 }
 
                 if let Type::Ref(inner) = &resolved_type {
-                    if *ast_op == AssignOp::Eq && matches!(value_expr, Expr::Ref { .. }) {
+                    if *ast_op == AssignOp::Eq && matches!(value_expr, Expression::Ref { .. }) {
                         self.unify(value_type, &resolved_type, span)?;
                         return Ok(HirAssignTarget::Ident(name.clone()));
                     }
@@ -669,15 +671,15 @@ impl InferState {
 
     fn infer_expr(
         &mut self,
-        expr: &Expr,
+        expr: &Expression,
         signatures: &HashMap<&str, &FunctionDef>,
     ) -> Result<HirExpr, TypeError> {
         match expr {
-            Expr::Int(v, span) => Ok(HirExpr {
+            Expression::Int(v, span) => Ok(HirExpr {
                 kind: HirExprKind::Int(*v, *span),
                 type_: self.fresh_var(),
             }),
-            Expr::Float(v, span) => {
+            Expression::Float(v, span) => {
                 let var = self.fresh_var();
                 if let Type::Var(id) = &var {
                     self.float_vars.insert(*id);
@@ -687,23 +689,23 @@ impl InferState {
                     type_: var,
                 })
             }
-            Expr::String(s, _) => Ok(HirExpr {
+            Expression::String(s, _) => Ok(HirExpr {
                 kind: HirExprKind::String(s.clone()),
                 type_: Type::Primitive(Primitive::String),
             }),
-            Expr::Unit(_) => Ok(HirExpr {
+            Expression::Unit(_) => Ok(HirExpr {
                 kind: HirExprKind::Unit,
                 type_: Type::Primitive(Primitive::Unit),
             }),
-            Expr::Bool(b, _) => Ok(HirExpr {
+            Expression::Bool(b, _) => Ok(HirExpr {
                 kind: HirExprKind::Bool(*b),
                 type_: Type::Primitive(Primitive::Bool),
             }),
-            Expr::Char(c, _) => Ok(HirExpr {
+            Expression::Char(c, _) => Ok(HirExpr {
                 kind: HirExprKind::Char(*c),
                 type_: Type::Primitive(Primitive::Char),
             }),
-            Expr::Ident(name, span) => {
+            Expression::Ident(name, span) => {
                 let scheme = self.lookup(name).cloned();
                 match scheme {
                     Some(scheme) => {
@@ -727,7 +729,7 @@ impl InferState {
                     None => Err(self.error(*span, format!("undefined variable `{name}`"))),
                 }
             }
-            Expr::Binary {
+            Expression::Binary {
                 span,
                 left,
                 op,
@@ -763,7 +765,7 @@ impl InferState {
                     type_: result_type,
                 })
             }
-            Expr::Unary { span, op, operand } => {
+            Expression::Unary { span, op, operand } => {
                 let hir_operand = self.infer_expr(operand, signatures)?;
                 let operand_type = self.apply(&hir_operand.type_);
                 match op {
@@ -798,7 +800,7 @@ impl InferState {
                     }
                 }
             }
-            Expr::Call {
+            Expression::Call {
                 span,
                 function,
                 args,
@@ -827,7 +829,7 @@ impl InferState {
 
                     for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
                         let arg_type = self.apply(&hir_args[i].type_);
-                        if matches!(&param.type_, Type::Ref(_)) && !matches!(arg, Expr::Ref { .. })
+                        if matches!(&param.type_, Type::Ref(_)) && !matches!(arg, Expression::Ref { .. })
                         {
                             self.errors.push(self.error(
                                 arg.span(),
@@ -842,8 +844,8 @@ impl InferState {
                             self.errors.push(e);
                         }
                         if let Type::Ref(_) = &param.type_
-                            && let Expr::Ref { operand, .. } = arg
-                            && let Expr::Ident(name, _) = operand.as_ref()
+                            && let Expression::Ref { operand, .. } = arg
+                            && let Expression::Ident(name, _) = operand.as_ref()
                             && let Some(scheme) = self.lookup(name)
                             && !scheme.mutable
                         {
@@ -878,7 +880,7 @@ impl InferState {
                     type_: Type::Primitive(Primitive::Unit),
                 })
             }
-            Expr::Block(block, _) => {
+            Expression::Block(block, _) => {
                 self.push_scope();
                 let stmts = self.infer_block(block, signatures)?;
                 self.pop_scope();
@@ -887,7 +889,7 @@ impl InferState {
                     type_: Type::Primitive(Primitive::Unit),
                 })
             }
-            Expr::Array(elements, _) => {
+            Expression::Array(elements, _) => {
                 let mut hir_elements = Vec::new();
                 let element_var = self.fresh_var();
                 for element in elements {
@@ -907,7 +909,7 @@ impl InferState {
                     },
                 })
             }
-            Expr::Index { array, index, span } => {
+            Expression::Index { array, index, span } => {
                 let hir_array = self.infer_expr(array, signatures)?;
                 let hir_index = self.infer_expr(index, signatures)?;
                 let array_type = self.apply(&hir_array.type_);
@@ -930,9 +932,9 @@ impl InferState {
                     type_: element_type,
                 })
             }
-            Expr::Paren(inner, _) => self.infer_expr(inner, signatures),
-            Expr::Ref { span, operand } => {
-                if matches!(operand.as_ref(), Expr::Index { .. }) {
+            Expression::Paren(inner, _) => self.infer_expr(inner, signatures),
+            Expression::Ref { span, operand } => {
+                if matches!(operand.as_ref(), Expression::Index { .. }) {
                     return Err(self.error(
                         *span,
                         "cannot take reference to array index element".to_string(),
@@ -945,7 +947,7 @@ impl InferState {
                     type_: Type::Ref(Box::new(operand_type)),
                 })
             }
-            Expr::If {
+            Expression::If {
                 condition,
                 then_block,
                 else_if,
@@ -1004,7 +1006,7 @@ impl InferState {
                     type_: result_type,
                 })
             }
-            Expr::Tuple(elements, span) => {
+            Expression::Tuple(elements, span) => {
                 let mut hir_elements = Vec::new();
                 let mut element_types = Vec::new();
                 for element in elements {
@@ -1017,7 +1019,7 @@ impl InferState {
                     type_: Type::Tuple(element_types),
                 })
             }
-            Expr::Field {
+            Expression::Field {
                 span,
                 object,
                 name,
@@ -1034,7 +1036,7 @@ impl InferState {
                     type_: field_type,
                 })
             }
-            Expr::EnumVariant {
+            Expression::EnumVariant {
                 span,
                 type_name,
                 variant_name,
@@ -1098,7 +1100,7 @@ impl InferState {
                     type_: Type::Named(type_name.clone()),
                 })
             }
-            Expr::Match { span, .. } => {
+            Expression::Match { span, .. } => {
                 return Err(self.error(*span, "match expressions not supported yet".to_string()));
             }
         }
@@ -1160,9 +1162,9 @@ impl InferState {
 
     fn infer_if_result_type(
         &mut self,
-        then: &[HirStmt],
-        else_if: &[(HirExpr, Vec<HirStmt>)],
-        else_: &Option<Vec<HirStmt>>,
+        then: &[HirStatement],
+        else_if: &[(HirExpr, Vec<HirStatement>)],
+        else_: &Option<Vec<HirStatement>>,
         span: SourceSpan,
     ) -> Result<Type, TypeError> {
         let then_type = self.block_result_type(then);
@@ -1184,14 +1186,14 @@ impl InferState {
         Ok(self.apply(&result))
     }
 
-    fn block_result_type(&self, stmts: &[HirStmt]) -> Type {
+    fn block_result_type(&self, stmts: &[HirStatement]) -> Type {
         match stmts.last() {
-            Some(HirStmt {
-                kind: HirStmtKind::Value(expr),
+            Some(HirStatement {
+                kind: HirStatementKind::Value(expr),
                 ..
             }) => expr.type_.clone(),
-            Some(HirStmt {
-                kind: HirStmtKind::Return(Some(expr)),
+            Some(HirStatement {
+                kind: HirStatementKind::Return(Some(expr)),
                 ..
             }) => expr.type_.clone(),
             _ => Type::Primitive(Primitive::Unit),
@@ -1302,31 +1304,31 @@ impl InferState {
         }
     }
 
-    fn resolve_hir_stmt(&self, stmt: &HirStmt) -> HirStmt {
-        HirStmt {
+    fn resolve_hir_stmt(&self, stmt: &HirStatement) -> HirStatement {
+        HirStatement {
             kind: match &stmt.kind {
-                HirStmtKind::Let {
+                HirStatementKind::Let {
                     name,
                     mutable,
                     type_,
                     value,
-                } => HirStmtKind::Let {
+                } => HirStatementKind::Let {
                     name: name.clone(),
                     mutable: *mutable,
                     type_: self.resolve_hir_type(type_),
                     value: self.resolve_hir_expr(value),
                 },
-                HirStmtKind::Expr(expr) => HirStmtKind::Expr(self.resolve_hir_expr(expr)),
-                HirStmtKind::Return(expr) => {
-                    HirStmtKind::Return(expr.as_ref().map(|e| self.resolve_hir_expr(e)))
+                HirStatementKind::Expr(expr) => HirStatementKind::Expr(self.resolve_hir_expr(expr)),
+                HirStatementKind::Return(expr) => {
+                    HirStatementKind::Return(expr.as_ref().map(|e| self.resolve_hir_expr(e)))
                 }
-                HirStmtKind::Value(expr) => HirStmtKind::Value(self.resolve_hir_expr(expr)),
-                HirStmtKind::Loop { body } => HirStmtKind::Loop {
+                HirStatementKind::Value(expr) => HirStatementKind::Value(self.resolve_hir_expr(expr)),
+                HirStatementKind::Loop { body } => HirStatementKind::Loop {
                     body: body.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
                 },
-                HirStmtKind::Break => HirStmtKind::Break,
-                HirStmtKind::Continue => HirStmtKind::Continue,
-                HirStmtKind::Assign { target, op, value } => HirStmtKind::Assign {
+                HirStatementKind::Break => HirStatementKind::Break,
+                HirStatementKind::Continue => HirStatementKind::Continue,
+                HirStatementKind::Assign { target, op, value } => HirStatementKind::Assign {
                     target: self.resolve_hir_assign_target(target),
                     op: op.clone(),
                     value: self.resolve_hir_expr(value),
@@ -1352,25 +1354,25 @@ impl InferState {
         }
     }
 
-    fn resolve_hir_stmts(&self, stmts: Vec<HirStmt>) -> Vec<HirStmt> {
+    fn resolve_hir_stmts(&self, stmts: Vec<HirStatement>) -> Vec<HirStatement> {
         stmts.iter().map(|s| self.resolve_hir_stmt(s)).collect()
     }
 
-    fn validate_literal_types_stmt(&self, stmt: &HirStmt, errors: &mut Vec<TypeError>) {
+    fn validate_literal_types_stmt(&self, stmt: &HirStatement, errors: &mut Vec<TypeError>) {
         match &stmt.kind {
-            HirStmtKind::Let { value, .. } => self.validate_literal_types_expr(value, errors),
-            HirStmtKind::Expr(expr) => self.validate_literal_types_expr(expr, errors),
-            HirStmtKind::Return(expr) => {
+            HirStatementKind::Let { value, .. } => self.validate_literal_types_expr(value, errors),
+            HirStatementKind::Expr(expr) => self.validate_literal_types_expr(expr, errors),
+            HirStatementKind::Return(expr) => {
                 if let Some(e) = expr {
                     self.validate_literal_types_expr(e, errors);
                 }
             }
-            HirStmtKind::Value(expr) => self.validate_literal_types_expr(expr, errors),
-            HirStmtKind::Loop { body } => {
+            HirStatementKind::Value(expr) => self.validate_literal_types_expr(expr, errors),
+            HirStatementKind::Loop { body } => {
                 self.validate_literal_types(body, errors);
             }
-            HirStmtKind::Break | HirStmtKind::Continue => {}
-            HirStmtKind::Assign { value, .. } => {
+            HirStatementKind::Break | HirStatementKind::Continue => {}
+            HirStatementKind::Assign { value, .. } => {
                 self.validate_literal_types_expr(value, errors);
             }
         }
@@ -1442,7 +1444,7 @@ impl InferState {
         }
     }
 
-    fn collect_literal_type_errors(&self, stmts: &[HirStmt]) -> Vec<TypeError> {
+    fn collect_literal_type_errors(&self, stmts: &[HirStatement]) -> Vec<TypeError> {
         let mut errors = Vec::new();
         self.validate_literal_types(stmts, &mut errors);
         errors
@@ -1464,7 +1466,7 @@ impl InferState {
         }
     }
 
-    fn validate_literal_types(&self, stmts: &[HirStmt], errors: &mut Vec<TypeError>) {
+    fn validate_literal_types(&self, stmts: &[HirStatement], errors: &mut Vec<TypeError>) {
         for stmt in stmts {
             self.validate_literal_types_stmt(stmt, errors);
         }

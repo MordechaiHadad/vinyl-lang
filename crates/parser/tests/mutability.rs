@@ -1,4 +1,5 @@
-use vinyl_parser::ast::*;
+use vinyl_parser::ast::{expression::Expression, item::Item, operator::AssignOp, statement::{AssignTarget, Statement}, types::{Primitive, Type}};
+
 
 mod common;
 
@@ -24,14 +25,14 @@ fn reference_type_in_let() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
+    if let Statement::Let {
         type_: Some(t),
         value,
         ..
     } = &func.body[0]
     {
         assert_eq!(*t, Type::Ref(Box::new(Type::Primitive(Primitive::Int32))));
-        assert!(matches!(value, Expr::Ref { .. }));
+        assert!(matches!(value, Expression::Ref { .. }));
     } else {
         panic!("expected let with ref type and ref expr");
     }
@@ -46,14 +47,14 @@ fn simple_assignment() {
     };
     assert_eq!(func.body.len(), 2);
     match &func.body[1] {
-        Stmt::Assign {
+        Statement::Assign {
             target: AssignTarget::Ident(name, _),
             op: AssignOp::Eq,
             value,
             ..
         } => {
             assert_eq!(name, "x");
-            assert!(matches!(value.as_ref(), Expr::Int(v, _) if *v == 10));
+            assert!(matches!(value.as_ref(), Expression::Int(v, _) if *v == 10));
         }
         other => panic!("expected assign to ident, got {other:?}"),
     }
@@ -67,7 +68,7 @@ fn compound_assign_add_eq() {
         _ => panic!("expected function"),
     };
     match &func.body[1] {
-        Stmt::Assign {
+        Statement::Assign {
             target: AssignTarget::Ident(name, _),
             op: AssignOp::AddEq,
             ..
@@ -86,9 +87,9 @@ fn ref_expression() {
         _ => panic!("expected function"),
     };
     match &func.body[1] {
-        Stmt::Let { value, .. } => {
+        Statement::Let { value, .. } => {
             assert!(
-                matches!(value, Expr::Ref { operand, .. } if matches!(&**operand, Expr::Ident(n, _) if n == "x"))
+                matches!(value, Expression::Ref { operand, .. } if matches!(&**operand, Expression::Ident(n, _) if n == "x"))
             );
         }
         other => panic!("expected let with ref expr, got {other:?}"),
@@ -116,7 +117,7 @@ fn assign_op_equality() {
             _ => panic!("expected function"),
         };
         match &func.body[1] {
-            Stmt::Assign { op, .. } => assert_eq!(*op, expected_op, "op mismatch for {source}"),
+            Statement::Assign { op, .. } => assert_eq!(*op, expected_op, "op mismatch for {source}"),
             other => panic!("expected assign for {source}, got {other:?}"),
         }
     }
@@ -130,7 +131,7 @@ fn assign_target_index() {
         _ => panic!("expected function"),
     };
     match &func.body[1] {
-        Stmt::Assign {
+        Statement::Assign {
             target:
                 AssignTarget::Index {
                     span: _,
@@ -140,8 +141,8 @@ fn assign_target_index() {
             op: AssignOp::Eq,
             ..
         } => {
-            assert!(matches!(array.as_ref(), Expr::Ident(name, _) if name == "arr"));
-            assert!(matches!(index.as_ref(), Expr::Int(v, _) if *v == 0));
+            assert!(matches!(array.as_ref(), Expression::Ident(name, _) if name == "arr"));
+            assert!(matches!(index.as_ref(), Expression::Int(v, _) if *v == 0));
         }
         other => panic!("expected index assign, got {other:?}"),
     }
