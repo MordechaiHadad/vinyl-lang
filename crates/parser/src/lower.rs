@@ -46,8 +46,17 @@ fn lower_source_file(
                 "comment" => {}
                 kind => {
                     let mut item = lower_item(&child, kind, source, source_name);
-                    if let Ok(Item::Function(f)) = &mut item {
-                        f.attrs = std::mem::take(&mut pending_attrs);
+                    if let Ok(ref mut item) = item {
+                        match item {
+                            Item::Function(f) => f.attrs = std::mem::take(&mut pending_attrs),
+                            Item::Struct(s) => {
+                                s.attrs = std::mem::take(&mut pending_attrs);
+                            }
+                            Item::TupleStruct(t) => {
+                                t.attrs = std::mem::take(&mut pending_attrs);
+                            }
+                            Item::Enum(e) => e.attrs = std::mem::take(&mut pending_attrs),
+                        }
                     }
                     pending_attrs.clear();
                     match item {
@@ -75,10 +84,134 @@ fn lower_item(
         "function_definition" => {
             lower_function(node, Vec::new(), source, source_name).map(Item::Function)
         }
-        "struct_definition" => Err(unimplemented(node, source, source_name, "structs")),
-        "enum_definition" => Err(unimplemented(node, source, source_name, "enums")),
+        "struct_definition" => {
+            lower_struct_definition(node, Vec::new(), source, source_name).map(Item::Struct)
+        }
+        "tuple_definition" => {
+            lower_tuple_definition(node, Vec::new(), source, source_name).map(Item::TupleStruct)
+        }
+        "enum_definition" => {
+            lower_enum_definition(node, Vec::new(), source, source_name).map(Item::Enum)
+        }
         kind => Err(invalid_kind(node, source, source_name, kind, "item")),
     }
+}
+
+fn lower_struct_definition(
+    node: &Node,
+    attrs: Vec<Attr>,
+    source: &str,
+    source_name: &str,
+) -> Result<StructDef, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let name = node_text(&child_by_field(node, "name", source, source_name)?, source);
+    let mut fields = Vec::new();
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32)
+            && child.kind() == "field_definition"
+        {
+            fields.push(lower_field_definition(&child, source, source_name)?);
+        }
+    }
+    Ok(StructDef { span, attrs, name, fields })
+}
+
+fn lower_field_definition(node: &Node, source: &str, source_name: &str) -> Result<Field, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let name = node_text(&child_by_field(node, "name", source, source_name)?, source);
+    let type_ = lower_type_annotation_child(node, source, source_name)?;
+    Ok(Field { span, name, type_ })
+}
+
+fn lower_tuple_definition(
+    node: &Node,
+    attrs: Vec<Attr>,
+    source: &str,
+    source_name: &str,
+) -> Result<TupleStructDef, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let name = node_text(&child_by_field(node, "name", source, source_name)?, source);
+    let mut types = Vec::new();
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32)
+            && child.kind() != "identifier"
+        {
+            types.push(lower_type(&child, source, source_name)?);
+        }
+    }
+    Ok(TupleStructDef { span, attrs, name, types })
+}
+
+fn lower_enum_definition(
+    node: &Node,
+    attrs: Vec<Attr>,
+    source: &str,
+    source_name: &str,
+) -> Result<EnumDef, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let name = node_text(&child_by_field(node, "name", source, source_name)?, source);
+    let mut variants = Vec::new();
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32)
+            && child.kind() == "enum_variant"
+        {
+            variants.push(lower_enum_variant(&child, source, source_name)?);
+        }
+    }
+    Ok(EnumDef { span, attrs, name, variants })
+}
+
+fn lower_enum_variant(node: &Node, source: &str, source_name: &str) -> Result<EnumVariant, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let name = node_text(&child_by_field(node, "name", source, source_name)?, source);
+    let child_count = node.named_child_count();
+    let data = if child_count > 1 {
+        let first_body = node.named_child(1).unwrap();
+        match first_body.kind() {
+            "field_definition" => {
+                let mut fields = Vec::new();
+                for i in 1..child_count {
+                    if let Some(child) = node.named_child(i as u32) {
+                        fields.push(lower_field_definition(&child, source, source_name)?);
+                    }
+                }
+                Some(EnumVariantData::Struct(fields))
+            }
+            _ => {
+                let mut types = Vec::new();
+                for i in 1..child_count {
+                    if let Some(child) = node.named_child(i as u32) {
+                        types.push(lower_type(&child, source, source_name)?);
+                    }
+                }
+                Some(EnumVariantData::Tuple(types))
+            }
+        }
+    } else {
+        None
+    };
+    Ok(EnumVariant { span, name, data })
+}
+
+fn lower_type_annotation_child(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32)
+            && child.kind() == "type_annotation"
+        {
+            return lower_type(&child, source, source_name);
+        }
+    }
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32) {
+            match child.kind() {
+                "simple_type" | "generic_type" | "array_type" | "reference_type" => {
+                    return lower_type(&child, source, source_name);
+                }
+                _ => {}
+            }
+        }
+    }
+    Err(span_error(node, source, source_name, "expected type"))
 }
 
 fn lower_attr(node: &Node, source: &str, source_name: &str) -> Result<Attr, LowerError> {
@@ -156,6 +289,7 @@ fn lower_type(node: &Node, source: &str, source_name: &str) -> Result<Type, Lowe
         "generic_type" => return lower_generic_type(node, source, source_name),
         "array_type" => return lower_array_type(node, source, source_name),
         "reference_type" => return lower_reference_type(node, source, source_name),
+        "tuple_type" => return lower_tuple_type(node, source, source_name),
         _ => {}
     }
     for i in 0..node.named_child_count() {
@@ -165,6 +299,7 @@ fn lower_type(node: &Node, source: &str, source_name: &str) -> Result<Type, Lowe
                 "generic_type" => lower_generic_type(&child, source, source_name),
                 "array_type" => lower_array_type(&child, source, source_name),
                 "reference_type" => lower_reference_type(&child, source, source_name),
+                "tuple_type" => lower_tuple_type(&child, source, source_name),
                 kind => Err(invalid_kind(node, source, source_name, kind, "type")),
             };
         }
@@ -185,6 +320,16 @@ fn lower_reference_type(node: &Node, source: &str, source_name: &str) -> Result<
         source_name,
         "empty reference type",
     ))
+}
+
+fn lower_tuple_type(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
+    let mut elements = Vec::new();
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32) {
+            elements.push(lower_type(&child, source, source_name)?);
+        }
+    }
+    Ok(Type::Tuple(elements))
 }
 
 fn lower_simple_type(node: &Node, source: &str, source_name: &str) -> Result<Type, LowerError> {
@@ -592,6 +737,128 @@ fn lower_if(node: &Node, source: &str, source_name: &str) -> Result<Expr, LowerE
     })
 }
 
+fn lower_match(node: &Node, source: &str, source_name: &str) -> Result<Expr, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let children = children(node);
+    if children.is_empty() {
+        return Err(span_error(node, source, source_name, "incomplete match expression"));
+    }
+    let value = lower_expression(&children[0], source, source_name)?;
+    let mut arms = Vec::new();
+    for i in 1..children.len() {
+        if children[i].kind() == "match_arm" {
+            arms.push(lower_match_arm(&children[i], source, source_name)?);
+        }
+    }
+    Ok(Expr::Match { span, value: Box::new(value), arms })
+}
+
+fn lower_match_arm(node: &Node, source: &str, source_name: &str) -> Result<MatchArm, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let children = children(node);
+    if children.len() < 2 {
+        return Err(span_error(node, source, source_name, "incomplete match arm"));
+    }
+    let pattern = lower_pattern(&children[0], source, source_name)?;
+    let body = Box::new(lower_expression(&children[1], source, source_name)?);
+    Ok(MatchArm { span, pattern, body })
+}
+
+fn lower_pattern(node: &Node, source: &str, source_name: &str) -> Result<Pattern, LowerError> {
+    let span = || SourceSpan::from(node.start_byte()..node.end_byte());
+    match node.kind() {
+        "wildcard_pattern" => Ok(Pattern::Wildcard(span())),
+        "identifier_pattern" => {
+            let name = node_text(&node.named_child(0).unwrap_or(*node), source);
+            Ok(Pattern::Ident(name, span()))
+        }
+        "literal_pattern" => lower_literal_pattern(node, source, source_name),
+        "struct_pattern" => lower_struct_pattern(node, source, source_name),
+        "tuple_pattern" => {
+            let patterns = children(node).iter()
+                .map(|c| lower_pattern(c, source, source_name))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Pattern::Tuple(patterns, span()))
+        }
+        "enum_variant_pattern" => {
+            let children = children(node);
+            if children.is_empty() {
+                return Err(span_error(node, source, source_name, "incomplete enum variant pattern"));
+            }
+            let name = node_text(&children[0], source);
+            let patterns = children[1..].iter()
+                .map(|c| lower_pattern(c, source, source_name))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Pattern::EnumVariant { span: span(), name, patterns })
+        }
+        kind => match node.named_child(0) {
+            Some(child) => lower_pattern(&child, source, source_name),
+            None => Err(invalid_kind(node, source, source_name, kind, "pattern")),
+        },
+    }
+}
+
+fn lower_literal_pattern(node: &Node, source: &str, source_name: &str) -> Result<Pattern, LowerError> {
+    for i in 0..node.named_child_count() {
+        if let Some(child) = node.named_child(i as u32) {
+            return match child.kind() {
+                "integer_literal" => {
+                    let raw = node_text(&child, source);
+                    let val = if let Some(hex) = raw.strip_prefix("0x") {
+                        i128::from_str_radix(hex, 16)
+                    } else if let Some(oct) = raw.strip_prefix("0o") {
+                        i128::from_str_radix(oct, 8)
+                    } else if let Some(bin) = raw.strip_prefix("0b") {
+                        i128::from_str_radix(bin, 2)
+                    } else {
+                        raw.parse()
+                    };
+                    match val {
+                        Ok(v) => Ok(Pattern::Literal(LiteralPattern::Int(v), SourceSpan::from(child.start_byte()..child.end_byte()))),
+                        Err(_) => Err(span_error(&child, source, "", &format!("invalid integer literal `{raw}`"))),
+                    }
+                }
+                "bool_literal" => {
+                    let v = node_text(&child, source) == "true";
+                    Ok(Pattern::Literal(LiteralPattern::Bool(v), SourceSpan::from(child.start_byte()..child.end_byte())))
+                }
+                "char_literal" => {
+                    let raw = node_text(&child, source);
+                    let c = raw.chars().nth(1).unwrap_or('\0');
+                    Ok(Pattern::Literal(LiteralPattern::Char(c), SourceSpan::from(child.start_byte()..child.end_byte())))
+                }
+                "string_literal" => {
+                    let raw = node_text(&child, source);
+                    let content = &raw[1..raw.len() - 1];
+                    Ok(Pattern::Literal(LiteralPattern::String(content.to_string()), SourceSpan::from(child.start_byte()..child.end_byte())))
+                }
+                _ => Err(span_error(&child, source, source_name, &format!("unsupported literal pattern: `{}`", child.kind()))),
+            };
+        }
+    }
+    Err(span_error(node, source, source_name, "empty literal pattern"))
+}
+
+fn lower_struct_pattern(node: &Node, source: &str, source_name: &str) -> Result<Pattern, LowerError> {
+    let span = SourceSpan::from(node.start_byte()..node.end_byte());
+    let children = children(node);
+    if children.is_empty() {
+        return Err(span_error(node, source, source_name, "incomplete struct pattern"));
+    }
+    let name = node_text(&children[0], source);
+    let mut fields = Vec::new();
+    for i in 1..children.len() {
+        let field_node = &children[i];
+        let field_name = node_text(&child_by_field(field_node, "name", source, source_name)?, source);
+        let pattern = match field_node.named_child(1) {
+            Some(sub_pattern) => lower_pattern(&sub_pattern, source, source_name)?,
+            None => Pattern::Ident(field_name.clone(), SourceSpan::from(field_node.start_byte()..field_node.end_byte())),
+        };
+        fields.push((field_name, pattern));
+    }
+    Ok(Pattern::Struct { span, name, fields })
+}
+
 fn lower_expression(node: &Node, source: &str, source_name: &str) -> Result<Expr, LowerError> {
     let span = || SourceSpan::from(node.start_byte()..node.end_byte());
     match node.kind() {
@@ -629,6 +896,49 @@ fn lower_expression(node: &Node, source: &str, source_name: &str) -> Result<Expr
                 .map(|c| lower_expression(c, source, source_name))
                 .collect();
             elements.map(|e| Expr::Array(e, span()))
+        }
+        "tuple_expression" => {
+            let children = children(node);
+            let elements: Result<Vec<Expr>, _> = children
+                .iter()
+                .map(|c| lower_expression(c, source, source_name))
+                .collect();
+            elements.map(|e| Expr::Tuple(e, span()))
+        }
+        "field_access_expression" => {
+            let children = children(node);
+            if children.len() < 2 {
+                return Err(span_error(node, source, source_name, "incomplete field access"));
+            }
+            let object = lower_expression(&children[0], source, source_name)?;
+            let name = node_text(&child_by_field(node, "field", source, source_name)?, source);
+            Ok(Expr::Field { span: span(), object: Box::new(object), name })
+        }
+        "match_expression" => lower_match(node, source, source_name),
+        "enum_variant_expression" => {
+            let type_name = node_text(
+                &child_by_field(node, "type", source, source_name)?,
+                source,
+            );
+            let variant_name = node_text(
+                &child_by_field(node, "variant", source, source_name)?,
+                source,
+            );
+            let args = if let Some(arg_node) = child_by_field_opt(node, "arguments") {
+                let arg_children: Vec<Expr> = children(&arg_node)
+                    .iter()
+                    .map(|c| lower_expression(c, source, source_name))
+                    .collect::<Result<Vec<_>, _>>()?;
+                arg_children
+            } else {
+                Vec::new()
+            };
+            Ok(Expr::EnumVariant {
+                span: span(),
+                type_name,
+                variant_name,
+                args,
+            })
         }
         "index_expression" => {
             let children = children(node);
@@ -891,6 +1201,10 @@ fn child_by_field<'a>(
     })
 }
 
+fn child_by_field_opt<'a>(node: &'a Node<'a>, field: &str) -> Option<Node<'a>> {
+    node.child_by_field_name(field)
+}
+
 fn span_error(node: &Node, source: &str, source_name: &str, message: &str) -> LowerError {
     LowerError {
         message: message.to_string(),
@@ -914,11 +1228,3 @@ fn invalid_kind(
     )
 }
 
-fn unimplemented(node: &Node, source: &str, source_name: &str, feature: &str) -> LowerError {
-    span_error(
-        node,
-        source,
-        source_name,
-        &format!("{feature} not yet implemented"),
-    )
-}

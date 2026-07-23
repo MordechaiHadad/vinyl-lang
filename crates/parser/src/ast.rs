@@ -5,6 +5,7 @@ use std::fmt;
 pub enum Item {
     Function(FunctionDef),
     Struct(StructDef),
+    TupleStruct(TupleStructDef),
     Enum(EnumDef),
 }
 
@@ -13,6 +14,7 @@ impl Item {
         match self {
             Item::Function(f) => f.span,
             Item::Struct(s) => s.span,
+            Item::TupleStruct(t) => t.span,
             Item::Enum(e) => e.span,
         }
     }
@@ -46,6 +48,7 @@ pub struct Param {
 #[derive(Debug)]
 pub struct StructDef {
     pub span: SourceSpan,
+    pub attrs: Vec<Attr>,
     pub name: String,
     pub fields: Vec<Field>,
 }
@@ -58,8 +61,18 @@ pub struct Field {
 }
 
 #[derive(Debug)]
+pub struct TupleStructDef {
+    pub span: SourceSpan,
+    pub attrs: Vec<Attr>,
+    pub name: String,
+    pub types: Vec<Type>,
+}
+
+#[derive(Debug)]
 pub struct EnumDef {
     pub span: SourceSpan,
+    pub attrs: Vec<Attr>,
+    pub name: String,
     pub variants: Vec<EnumVariant>,
 }
 
@@ -83,6 +96,7 @@ pub enum Type {
     Generic { name: String, args: Vec<Type> },
     Ref(Box<Type>),
     Array { element: Box<Type>, size: usize },
+    Tuple(Vec<Type>),
     Var(usize),
 }
 
@@ -136,6 +150,19 @@ impl fmt::Display for Type {
             }
             Type::Ref(inner) => write!(f, "&{inner}"),
             Type::Array { element, size } => write!(f, "[{element}; {size}]"),
+            Type::Tuple(elements) => {
+                write!(f, "(")?;
+                for (i, t) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    fmt::Display::fmt(t, f)?;
+                }
+                if elements.len() == 1 {
+                    write!(f, ",")?;
+                }
+                write!(f, ")")
+            }
             Type::Var(id) => write!(f, "_{id}"),
         }
     }
@@ -358,6 +385,12 @@ pub enum Expr {
     },
     Tuple(Vec<Expr>, SourceSpan),
     Array(Vec<Expr>, SourceSpan),
+    EnumVariant {
+        span: SourceSpan,
+        type_name: String,
+        variant_name: String,
+        args: Vec<Expr>,
+    },
     Paren(Box<Expr>, SourceSpan),
     Ref {
         span: SourceSpan,
@@ -394,6 +427,7 @@ impl Expr {
             Expr::Paren(_, s) => *s,
             Expr::Ref { span, .. } => *span,
             Expr::If { span, .. } => *span,
+            Expr::EnumVariant { span, .. } => *span,
         }
     }
 }
@@ -449,6 +483,11 @@ pub enum Pattern {
         fields: Vec<(String, Pattern)>,
     },
     Tuple(Vec<Pattern>, SourceSpan),
+    EnumVariant {
+        span: SourceSpan,
+        name: String,
+        patterns: Vec<Pattern>,
+    },
 }
 
 impl Pattern {
@@ -459,6 +498,7 @@ impl Pattern {
             Pattern::Literal(_, s) => *s,
             Pattern::Struct { span, .. } => *span,
             Pattern::Tuple(_, s) => *s,
+            Pattern::EnumVariant { span, .. } => *span,
         }
     }
 }

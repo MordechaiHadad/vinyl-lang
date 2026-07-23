@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+
+use crate::layout;
 use std::fmt;
 
 use cranelift_codegen::ir::{
@@ -13,8 +15,8 @@ use target_lexicon::Triple;
 
 use vinyl_parser::ast::{BinaryOp, Primitive, UnaryOp};
 use vinyl_typecheck::hir::{
-    AssignOp, HirAssignTarget, HirExpr, HirExprKind, HirFunction, HirItem, HirItemKind, HirParam,
-    HirStmt, HirStmtKind, Type,
+    AssignOp, HirAssignTarget, HirEnumVariantData, HirExpr,
+    HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
 };
 
 use tracing::debug;
@@ -51,6 +53,7 @@ enum VarSlot {
 struct CodegenCtx<'a> {
     module: &'a mut JITModule,
     decls: &'a [(String, cranelift_module::FuncId, Vec<HirParam>, Type)],
+    types: &'a HashMap<String, HirItemKind>,
     break_target: Option<ir::Block>,
     continue_target: Option<ir::Block>,
     vars: &'a mut HashMap<String, VarInfo>,
@@ -63,6 +66,7 @@ pub struct CraneliftBackend {
     module: JITModule,
     ctx: cranelift_codegen::Context,
     decls: Vec<(String, cranelift_module::FuncId, Vec<HirParam>, Type)>,
+    types: HashMap<String, HirItemKind>,
 }
 
 impl CraneliftBackend {
@@ -80,6 +84,7 @@ impl CraneliftBackend {
             module,
             ctx,
             decls: Vec::new(),
+            types: HashMap::new(),
         })
     }
 }
@@ -89,10 +94,23 @@ impl CodegenBackend for CraneliftBackend {
 
     fn compile(&mut self, items: &[HirItem]) -> Result<(), Self::Error> {
         let pointer_type = self.module.isa().pointer_type();
+
         for item in items {
-            let HirItem {
-                kind: HirItemKind::Function(f),
-            } = item;
+            let name = match &item.kind {
+                HirItemKind::Struct(s) => Some(s.name.clone()),
+                HirItemKind::TupleStruct(t) => Some(t.name.clone()),
+                HirItemKind::Enum(e) => Some(e.name.clone()),
+                _ => None,
+            };
+            if let Some(name) = name {
+                self.types.insert(name, item.kind.clone());
+            }
+        }
+
+        for item in items {
+            let HirItemKind::Function(f) = &item.kind else {
+                continue;
+            };
             let sig = hir_sig_to_clif(f, pointer_type);
             let func_id = self
                 .module
@@ -110,10 +128,11 @@ impl CodegenBackend for CraneliftBackend {
             let func = items
                 .iter()
                 .find_map(|item| {
-                    let HirItem {
-                        kind: HirItemKind::Function(f),
-                    } = item;
-                    if &f.name == name { Some(f) } else { None }
+                    if let HirItemKind::Function(f) = &item.kind {
+                        if &f.name == name { Some(f) } else { None }
+                    } else {
+                        None
+                    }
                 })
                 .ok_or_else(|| CraneliftError::Msg(format!("function {name} not found")))?;
 
@@ -147,6 +166,7 @@ impl CodegenBackend for CraneliftBackend {
                 let mut ctx = CodegenCtx {
                     module: &mut self.module,
                     decls: &self.decls,
+                    types: &self.types,
                     break_target: None,
                     continue_target: None,
                     vars: &mut vars,
@@ -733,6 +753,96 @@ impl<'a> CodegenCtx<'a> {
                 };
                 self.compile_expr_if(if_expr)
             }
+            HirExprKind::Tuple(elements, _) => {
+                let ptr_size = self.pointer_type.bytes();
+                let tuple_type = &expr.type_;
+                let total_size = layout::size_of(tuple_type, ptr_size);
+                let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    total_size,
+                    0,
+                ));
+                let base = self.builder.ins().stack_addr(self.pointer_type, slot, 0);
+                if let Type::Tuple(element_types) = tuple_type {
+                    for (i, element) in elements.iter().enumerate() {
+                        let val = self.compile_expr(element)?;
+                        let offset = layout::tuple_field_offset(i, element_types, ptr_size);
+                        let addr = if offset == 0 {
+                            base
+                        } else {
+                            let off_val = self.builder.ins().iconst(self.pointer_type, offset as i64);
+                            self.builder.ins().iadd(base, off_val)
+                        };
+                        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                        self.builder.ins().store(mflags, val, addr, 0);
+                    }
+                }
+                Ok(base)
+            }
+            HirExprKind::EnumVariant {
+                type_name,
+                variant_index,
+                payload,
+            } => self.compile_enum_variant(type_name, *variant_index, payload, &expr.type_),
+            HirExprKind::FieldAccess { object, name, .. } => {
+                let ptr_size = self.pointer_type.bytes();
+                let obj = self.compile_expr(object)?;
+                let offset = match &object.type_ {
+                    Type::Tuple(element_types) => {
+                        let index: usize = name.parse().map_err(|_| {
+                            CraneliftError::Msg(format!("invalid tuple index `{name}`"))
+                        })?;
+                        layout::tuple_field_offset(index, element_types, ptr_size)
+                    }
+                    Type::Named(type_name) => {
+                        match self.types.get(type_name) {
+                            Some(HirItemKind::Struct(s)) => {
+                                let field_types: Vec<(String, Type)> = s
+                                    .fields
+                                    .iter()
+                                    .map(|f| (f.name.clone(), f.type_.clone()))
+                                    .collect();
+                                let (_, field_layouts) =
+                                    layout::struct_layout(&field_types, s.repr_c, ptr_size);
+                                let field_idx = s.fields.iter().position(|f| f.name == *name).ok_or_else(|| {
+                                    CraneliftError::Msg(format!(
+                                        "struct `{type_name}` has no field `{name}`"
+                                    ))
+                                })?;
+                                field_layouts[field_idx].1.offset
+                            }
+                            Some(HirItemKind::TupleStruct(t)) => {
+                                let index: usize = name.parse().map_err(|_| {
+                                    CraneliftError::Msg(format!(
+                                        "invalid tuple struct field `{name}`"
+                                    ))
+                                })?;
+                                layout::tuple_field_offset(index, &t.types, ptr_size)
+                            }
+                            _ => {
+                                return Err(CraneliftError::Msg(format!(
+                                    "cannot access field on type `{type_name}`"
+                                )));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(CraneliftError::Msg(format!(
+                            "field access not supported for type {:?}",
+                            object.type_
+                        )));
+                    }
+                };
+                let field_clif = ir_type_from_primitive(&expr.type_, self.pointer_type);
+                let addr = if offset == 0 {
+                    obj
+                } else {
+                    let off_val = self.builder.ins().iconst(self.pointer_type, offset as i64);
+                    self.builder.ins().iadd(obj, off_val)
+                };
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                Ok(self.builder.ins().load(field_clif, mflags, addr, 0))
+            }
         }
     }
 
@@ -883,6 +993,68 @@ impl<'a> CodegenCtx<'a> {
         }
         Ok(())
     }
+
+    fn compile_enum_variant(
+        &mut self,
+        type_name: &str,
+        variant_index: usize,
+        payload: &[HirExpr],
+        _result_type: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.pointer_type.bytes();
+        let hir_enum = match self.types.get(type_name) {
+            Some(HirItemKind::Enum(e)) => e,
+            _ => {
+                return Err(CraneliftError::Msg(format!(
+                    "type `{type_name}` is not an enum"
+                )))
+            }
+        };
+        let variant = &hir_enum.variants[variant_index];
+        let payload_types: Vec<Type> = match &variant.data {
+            Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+            Some(HirEnumVariantData::Struct(fields)) => {
+                fields.iter().map(|f| f.type_.clone()).collect()
+            }
+            None => Vec::new(),
+        };
+        let (total_size, data_offset, _disc_size) =
+            layout::enum_layout(&[payload_types.clone()], ptr_size);
+        if total_size > 8 {
+            return Err(CraneliftError::Msg(format!(
+                "enum `{type_name}` is too large (> 8 bytes) for codegen yet"
+            )));
+        }
+        let slot = self.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            8,
+            0,
+        ));
+        let base = self.builder.ins().stack_addr(self.pointer_type, slot, 0);
+        let zero = self.builder.ins().iconst(types::I64, 0);
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        self.builder.ins().store(mflags, zero, base, 0);
+        let disc_val = self.builder.ins().iconst(types::I8, variant_index as i64);
+        self.builder.ins().store(mflags, disc_val, base, 0);
+        let mut data_offset_acc = 0u32;
+        for (i, elem) in payload.iter().enumerate() {
+            let val = self.compile_expr(elem)?;
+            let elem_align = layout::align_of(&payload_types[i], ptr_size);
+            data_offset_acc = layout::align_up(data_offset_acc, elem_align);
+            let field_addr = if data_offset + data_offset_acc == 0 {
+                base
+            } else {
+                let off = self.builder.ins().iconst(
+                    self.pointer_type,
+                    (data_offset + data_offset_acc) as i64,
+                );
+                self.builder.ins().iadd(base, off)
+            };
+            self.builder.ins().store(mflags, val, field_addr, 0);
+            data_offset_acc += layout::size_of(&payload_types[i], ptr_size);
+        }
+        Ok(self.builder.ins().load(types::I64, mflags, base, 0))
+    }
 }
 
 struct IfExprBundle<'a> {
@@ -1018,6 +1190,19 @@ fn prescan_expr(expr: &HirExpr, refed: &mut HashSet<String>) {
             if let Some(block) = else_block {
                 prescan_stmts(block, refed);
             }
+        }
+        HirExprKind::Tuple(elements, _) => {
+            for elem in elements {
+                prescan_expr(elem, refed);
+            }
+        }
+        HirExprKind::EnumVariant { payload, .. } => {
+            for elem in payload {
+                prescan_expr(elem, refed);
+            }
+        }
+        HirExprKind::FieldAccess { object, .. } => {
+            prescan_expr(object, refed);
         }
         HirExprKind::Int(..)
         | HirExprKind::Float(..)

@@ -202,6 +202,41 @@ fn unit_literal() {
 }
 
 #[test]
+fn struct_def_typeck() {
+    let source = "struct Point { x: int32, y: int32 } fn main() {}";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn tuple_struct_def_typeck() {
+    let source = "tuple Point(int32, float64) fn main() {}";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn enum_def_typeck() {
+    let source = "enum Option { None, Some(int32) } fn main() {}";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn tuple_expr_typeck() {
+    let source = "fn main(): int32 { let x = (1, 2); 0 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn field_access_typeck() {
+    let source = "fn main(): int32 { let p: int32 = 0; p.x; 0 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
 fn int_type_alias() {
     let source = "fn main(): int { 42 }";
     let items = common::compile(source);

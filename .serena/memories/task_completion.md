@@ -1,0 +1,1 @@
+For code/example changes, run the focused command first, then `cargo test`. For runnable examples use `cargo run -- run examples/<file>.vnl`; ensure it exits successfully and inspect its numeric output. If grammar.js changes, regenerate generated grammar files with `npx tree-sitter generate` from `grammar/`.

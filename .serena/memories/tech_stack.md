@@ -1,0 +1,1 @@
+Rust workspace, Cargo resolver 3. Tree-sitter grammar source is `grammar/grammar.js`; generated parser files are under `grammar/src/`. Code generation uses Cranelift JIT. CLI binary is `vinyl` in `crates/cli`. Source examples use `.vnl` extension.

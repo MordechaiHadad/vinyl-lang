@@ -350,6 +350,58 @@ greet("World", "Hey");                  // "Hey, World"
 ```
 
 ### Structs
+
+#### Unboxed Value Semantics
+
+User-defined structs are intended to be unboxed value types by default.
+
+- **Storage:** Values are laid out contiguously in stack slots or inside parent layouts. They do not carry GC headers or implicit heap-pointer indirections.
+- **Array Layout:** An array of type `[N]T` is one contiguous block of `N * sizeof(T)` bytes.
+- **Current implementation:** Struct declarations, HIR registration, field layout, and field offset resolution are implemented. Struct literal construction and complete struct value operations are not implemented yet.
+
+#### Field Reordering
+
+By default, struct fields are reordered at compile time to reduce interior padding.
+
+1. **Alignment Sorting:** Fields are sorted by descending alignment requirements (`8 -> 4 -> 2 -> 1` bytes).
+2. **Offset Calculation:** Each field offset is computed as `align_to(current_offset, field_alignment)`.
+3. **Struct Padding:** Total size is rounded up to the maximum field alignment.
+
+```vinyl
+# Source definition:
+struct Character {
+    active: bool,
+    id: uint64,
+    hp: uint32,
+}
+
+# Compiled layout:
+# [ id (8B) | hp (4B) | active (1B) | padding (3B) ]
+```
+
+#### FFI Interoperability (`@repr_c`)
+
+Annotating a struct with `@repr_c` disables field reordering and preserves source declaration order for C-compatible layouts.
+
+#### ABI Parameter Passing Rules
+
+The intended ABI preserves value semantics while avoiding unnecessary copies:
+
+- **Small structs (`<= 16` bytes):** Passed directly in CPU registers where the target ABI permits.
+- **Large structs (`> 16` bytes):** Lowered to pass-by-reference under the hood. The source-level parameter remains a value.
+
+The Cranelift backend does not implement these complete aggregate parameter and return rules yet.
+
+#### TODO
+
+- [ ] Implement struct literal construction: `Character { active: true, id: 1, hp: 100 }`.
+- [ ] Implement tuple-struct construction and field access.
+- [ ] Implement aggregate copying, assignment, parameters, and return values.
+- [ ] Implement the complete small/large aggregate ABI, including values larger than one machine register.
+- [ ] Implement deep equality for structs and tuples.
+- [ ] Implement enum layouts and construction for values larger than 8 bytes.
+- [ ] Implement enum payload extraction and exhaustive pattern matching.
+
 ```
 struct Name {
     field: Type,
@@ -357,7 +409,7 @@ struct Name {
 }
 ```
 
-Field access with `.`. Struct update syntax like Rust: `Name { field: new_value, ..other }`.
+Field access with `.`. Struct update syntax like Rust is planned: `Name { field: new_value, ..other }`.
 
 **Field puns**: when a variable name matches a struct field name, you can omit the value.
 
@@ -376,11 +428,15 @@ enum Name {
 }
 ```
 
+Enum variants are constructed with `Name::Variant(...)`. Unit variants currently use empty parentheses, for example `Name::Variant()`. Small enum values supported by the current Cranelift backend are packed into an `i64` containing a discriminant and payload, and equality is supported for those values.
+
 ### Tuples
 ```
 let pair = (value, value);
 let first = pair.0;
 ```
+
+Tuple literals and numeric field access are currently supported. Tuple-struct construction, aggregate passing/return, and deep tuple equality remain TODO.
 
 ### Match
 ```
@@ -391,7 +447,7 @@ match value {
 }
 ```
 
-Exhaustive. Patterns can destructure structs, enums, tuples.
+Planned to be exhaustive. Patterns will destructure structs, enums, and tuples once match code generation is implemented.
 
 ### Error Propagation
 ```

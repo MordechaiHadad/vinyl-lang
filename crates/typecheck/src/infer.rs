@@ -3,12 +3,14 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use vinyl_parser::ast::{
-    AssignOp, AssignTarget, BinaryOp, Expr, FunctionDef, Item, Primitive, Stmt, UnaryOp,
+    AssignOp, AssignTarget, BinaryOp, EnumVariantData, Expr, FunctionDef, Item, Primitive, Stmt,
+    UnaryOp,
 };
 
 use crate::hir::{
-    AssignOp as HirAssignOp, HirAssignTarget, HirExpr, HirExprKind, HirFunction, HirItem,
-    HirItemKind, HirParam, HirStmt, HirStmtKind, Type,
+    AssignOp as HirAssignOp, HirAssignTarget, HirEnum, HirEnumVariant, HirEnumVariantData, HirExpr,
+    HirExprKind, HirField, HirFunction, HirItem, HirItemKind, HirParam, HirStmt, HirStmtKind,
+    HirStruct, HirTupleStruct, Type,
 };
 
 #[derive(Debug, Diagnostic)]
@@ -66,7 +68,74 @@ pub fn typeck(
         })
         .collect();
 
-    let mut hir_items = Vec::new();
+    let mut hir_items: Vec<HirItem> = Vec::new();
+
+    // First pass: register type definitions
+    for item in items {
+        let hir_item = match item {
+            Item::Struct(s) => Some(HirItem {
+                kind: HirItemKind::Struct(HirStruct {
+                    name: s.name.clone(),
+                    repr_c: s.attrs.iter().any(|a| a.name == "repr_c"),
+                    fields: s
+                        .fields
+                        .iter()
+                        .map(|f| HirField {
+                            name: f.name.clone(),
+                            type_: f.type_.clone(),
+                        })
+                        .collect(),
+                }),
+            }),
+            Item::TupleStruct(t) => Some(HirItem {
+                kind: HirItemKind::TupleStruct(HirTupleStruct {
+                    name: t.name.clone(),
+                    types: t.types.clone(),
+                }),
+            }),
+            Item::Enum(e) => Some(HirItem {
+                kind: HirItemKind::Enum(HirEnum {
+                    name: e.name.clone(),
+                    variants: e
+                        .variants
+                        .iter()
+                        .map(|v| HirEnumVariant {
+                            name: v.name.clone(),
+                            data: v.data.as_ref().map(|d| match d {
+                                EnumVariantData::Tuple(types) => {
+                                    HirEnumVariantData::Tuple(types.clone())
+                                }
+                                EnumVariantData::Struct(fields) => {
+                                    HirEnumVariantData::Struct(
+                                        fields
+                                            .iter()
+                                            .map(|f| HirField {
+                                                name: f.name.clone(),
+                                                type_: f.type_.clone(),
+                                            })
+                                            .collect(),
+                                    )
+                                }
+                            }),
+                        })
+                        .collect(),
+                }),
+            }),
+            Item::Function(_) => None,
+        };
+        if let Some(hir) = hir_item {
+            let name = match &hir.kind {
+                HirItemKind::Struct(s) => s.name.clone(),
+                HirItemKind::TupleStruct(t) => t.name.clone(),
+                HirItemKind::Enum(e) => e.name.clone(),
+                _ => unreachable!(),
+            };
+            state.types.insert(name, hir.kind.clone());
+            hir_items.push(hir);
+        }
+    }
+
+    // Second pass: type-check functions with registered types available
     for item in items {
         if let Item::Function(f) = item {
             match state.infer_function(f, &signatures) {
@@ -97,6 +166,7 @@ struct InferState {
     source: String,
     source_name: String,
     scopes: Vec<HashMap<String, TypeScheme>>,
+    types: HashMap<String, HirItemKind>,
     errors: Vec<TypeError>,
     warnings: Vec<CompileWarning>,
     subs: HashMap<usize, Type>,
@@ -112,6 +182,7 @@ impl InferState {
             source: source.to_string(),
             source_name: source_name.to_string(),
             scopes: vec![HashMap::new()],
+            types: HashMap::new(),
             errors: Vec::new(),
             warnings: Vec::new(),
             subs: HashMap::new(),
@@ -153,6 +224,9 @@ impl InferState {
                 name: name.clone(),
                 args: args.iter().map(|a| self.apply(a)).collect(),
             },
+            Type::Tuple(elements) => {
+                Type::Tuple(elements.iter().map(|e| self.apply(e)).collect())
+            }
             other => other.clone(),
         }
     }
@@ -163,6 +237,7 @@ impl InferState {
             Type::Ref(inner) => self.occurs(id, inner),
             Type::Array { element, .. } => self.occurs(id, element),
             Type::Generic { args, .. } => args.iter().any(|a| self.occurs(id, a)),
+            Type::Tuple(elements) => elements.iter().any(|e| self.occurs(id, e)),
             _ => false,
         }
     }
@@ -211,6 +286,12 @@ impl InferState {
                     size: s2,
                 },
             ) if s1 == s2 => self.unify(e1, e2, span),
+            (Type::Tuple(a), Type::Tuple(b)) if a.len() == b.len() => {
+                for (ai, bi) in a.iter().zip(b) {
+                    self.unify(ai, bi, span)?;
+                }
+                Ok(())
+            }
             _ => Err(self.error(
                 span,
                 format!("type mismatch: expected `{}`, found `{}`", b, a),
@@ -923,7 +1004,151 @@ impl InferState {
                     type_: result_type,
                 })
             }
-            expr => Err(self.error(expr.span(), format!("unsupported expression: `{:?}`", expr))),
+            Expr::Tuple(elements, span) => {
+                let mut hir_elements = Vec::new();
+                let mut element_types = Vec::new();
+                for element in elements {
+                    let hir = self.infer_expr(element, signatures)?;
+                    element_types.push(self.apply(&hir.type_));
+                    hir_elements.push(hir);
+                }
+                Ok(HirExpr {
+                    kind: HirExprKind::Tuple(hir_elements, *span),
+                    type_: Type::Tuple(element_types),
+                })
+            }
+            Expr::Field {
+                span,
+                object,
+                name,
+            } => {
+                let hir_object = self.infer_expr(object, signatures)?;
+                let object_type = self.apply(&hir_object.type_);
+                let field_type = self.resolve_field_type(&object_type, name, *span);
+                Ok(HirExpr {
+                    kind: HirExprKind::FieldAccess {
+                        span: *span,
+                        object: Box::new(hir_object),
+                        name: name.clone(),
+                    },
+                    type_: field_type,
+                })
+            }
+            Expr::EnumVariant {
+                span,
+                type_name,
+                variant_name,
+                args,
+            } => {
+                let variant_info = self.types.get(type_name).and_then(|kind| {
+                    if let HirItemKind::Enum(e) = kind {
+                        e.variants.iter().position(|v| v.name == *variant_name).map(|idx| {
+                            let variant = &e.variants[idx];
+                            let expected: Vec<Type> = match &variant.data {
+                                Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+                                Some(HirEnumVariantData::Struct(fields)) => {
+                                    fields.iter().map(|f| f.type_.clone()).collect()
+                                }
+                                None => Vec::new(),
+                            };
+                            (idx, expected)
+                        })
+                    } else {
+                        None
+                    }
+                });
+                let (variant_index, expected_types) = match variant_info {
+                    Some(info) => info,
+                    None => {
+                        return Err(self.error(
+                            *span,
+                            format!(
+                                "enum `{type_name}` has no variant `{variant_name}`"
+                            ),
+                        ));
+                    }
+                };
+                if args.len() != expected_types.len() {
+                    self.errors.push(self.error(
+                        *span,
+                        format!(
+                            "variant `{variant_name}` expects {} arguments, got {}",
+                            expected_types.len(),
+                            args.len()
+                        ),
+                    ));
+                }
+                let mut payload = Vec::new();
+                for (i, arg) in args.iter().enumerate() {
+                    let hir_arg = self.infer_expr(arg, signatures)?;
+                    if let Some(expected) = expected_types.get(i) {
+                        let arg_type = self.apply(&hir_arg.type_);
+                        if let Err(e) = self.unify(&arg_type, expected, arg.span()) {
+                            self.errors.push(e);
+                        }
+                    }
+                    payload.push(hir_arg);
+                }
+                Ok(HirExpr {
+                    kind: HirExprKind::EnumVariant {
+                        type_name: type_name.clone(),
+                        variant_index,
+                        payload,
+                    },
+                    type_: Type::Named(type_name.clone()),
+                })
+            }
+            Expr::Match { span, .. } => {
+                return Err(self.error(*span, "match expressions not supported yet".to_string()));
+            }
+        }
+    }
+
+    fn resolve_field_type(
+        &mut self,
+        object_type: &Type,
+        field_name: &str,
+        span: SourceSpan,
+    ) -> Type {
+        match object_type {
+            Type::Named(name) => {
+                if let Some(HirItemKind::Struct(s)) = self.types.get(name) {
+                    if let Some(field) = s.fields.iter().find(|f| f.name == field_name) {
+                        return field.type_.clone();
+                    }
+                    self.errors.push(self.error(
+                        span,
+                        format!("struct `{name}` has no field `{field_name}`"),
+                    ));
+                    return self.fresh_var();
+                }
+                if let Some(HirItemKind::TupleStruct(t)) = self.types.get(name) {
+                    if let Ok(index) = field_name.parse::<usize>() {
+                        if index < t.types.len() {
+                            return t.types[index].clone();
+                        }
+                    }
+                    self.errors.push(self.error(
+                        span,
+                        format!("tuple struct `{name}` has no field `{field_name}`"),
+                    ));
+                    return self.fresh_var();
+                }
+                self.fresh_var()
+            }
+            Type::Tuple(elements) => {
+                if let Ok(index) = field_name.parse::<usize>() {
+                    if index < elements.len() {
+                        return elements[index].clone();
+                    }
+                }
+                self.errors.push(self.error(
+                    span,
+                    format!("tuple index out of bounds: `{field_name}`"),
+                ));
+                self.fresh_var()
+            }
+            _ => self.fresh_var(),
         }
     }
 
@@ -993,6 +1218,9 @@ impl InferState {
                 name: name.clone(),
                 args: args.iter().map(|a| self.resolve_hir_type(a)).collect(),
             },
+            Type::Tuple(elements) => {
+                Type::Tuple(elements.iter().map(|e| self.resolve_hir_type(e)).collect())
+            }
             other => other.clone(),
         }
     }
@@ -1050,6 +1278,24 @@ impl InferState {
                 },
                 HirExprKind::Unit => HirExprKind::Unit,
                 HirExprKind::Ref(expr) => HirExprKind::Ref(Box::new(self.resolve_hir_expr(expr))),
+                HirExprKind::Tuple(elements, span) => HirExprKind::Tuple(
+                    elements.iter().map(|e| self.resolve_hir_expr(e)).collect(),
+                    *span,
+                ),
+                HirExprKind::FieldAccess { span, object, name } => HirExprKind::FieldAccess {
+                    span: *span,
+                    object: Box::new(self.resolve_hir_expr(object)),
+                    name: name.clone(),
+                },
+                HirExprKind::EnumVariant {
+                    type_name,
+                    variant_index,
+                    payload,
+                } => HirExprKind::EnumVariant {
+                    type_name: type_name.clone(),
+                    variant_index: *variant_index,
+                    payload: payload.iter().map(|e| self.resolve_hir_expr(e)).collect(),
+                },
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),

@@ -652,3 +652,184 @@ fn unary_precedence() {
         }
     }
 }
+
+#[test]
+fn struct_definition_lower() {
+    let items = common::do_lower("struct Point {\n    x: int32,\n    y: float64,\n}");
+    assert_eq!(items.len(), 1);
+    let s = match &items[0] {
+        Item::Struct(s) => s,
+        other => panic!("expected struct, got {other:?}"),
+    };
+    assert_eq!(s.name, "Point");
+    assert_eq!(s.fields.len(), 2);
+    assert_eq!(s.fields[0].name, "x");
+    assert_eq!(s.fields[0].type_, Type::Primitive(Primitive::Int32));
+    assert_eq!(s.fields[1].name, "y");
+    assert_eq!(s.fields[1].type_, Type::Primitive(Primitive::Float64));
+}
+
+#[test]
+fn struct_empty_lower() {
+    let items = common::do_lower("struct Empty {}");
+    let s = match &items[0] {
+        Item::Struct(s) => s,
+        other => panic!("expected struct, got {other:?}"),
+    };
+    assert_eq!(s.name, "Empty");
+    assert!(s.fields.is_empty());
+}
+
+#[test]
+fn tuple_type_in_param() {
+    let items = common::do_lower("fn f(x: (int32, float64)) {}");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    assert_eq!(func.params.len(), 1);
+    match &func.params[0].type_ {
+        Type::Tuple(elements) => {
+            assert_eq!(elements.len(), 2);
+            assert_eq!(elements[0], Type::Primitive(Primitive::Int32));
+            assert_eq!(elements[1], Type::Primitive(Primitive::Float64));
+        }
+        _ => panic!("expected tuple type"),
+    }
+}
+
+#[test]
+fn tuple_definition_lower() {
+    let items = common::do_lower("tuple Pair(int32, float64)");
+    assert_eq!(items.len(), 1);
+    let t = match &items[0] {
+        Item::TupleStruct(t) => t,
+        other => panic!("expected tuple struct, got {other:?}"),
+    };
+    assert_eq!(t.name, "Pair");
+    assert_eq!(t.types.len(), 2);
+    assert_eq!(t.types[0], Type::Primitive(Primitive::Int32));
+    assert_eq!(t.types[1], Type::Primitive(Primitive::Float64));
+}
+
+#[test]
+fn tuple_empty_lower() {
+    let items = common::do_lower("tuple Unit()");
+    let t = match &items[0] {
+        Item::TupleStruct(t) => t,
+        other => panic!("expected tuple struct, got {other:?}"),
+    };
+    assert_eq!(t.name, "Unit");
+    assert!(t.types.is_empty());
+}
+
+#[test]
+fn enum_definition_lower() {
+    let items = common::do_lower("enum Option {\n    None,\n    Some(int32),\n    Error { code: int32, message: string },\n}");
+    assert_eq!(items.len(), 1);
+    let e = match &items[0] {
+        Item::Enum(e) => e,
+        other => panic!("expected enum, got {other:?}"),
+    };
+    assert_eq!(e.variants.len(), 3);
+
+    assert_eq!(e.variants[0].name, "None");
+    assert!(e.variants[0].data.is_none());
+
+    assert_eq!(e.variants[1].name, "Some");
+    match &e.variants[1].data {
+        Some(EnumVariantData::Tuple(types)) => {
+            assert_eq!(types.len(), 1);
+            assert_eq!(types[0], Type::Primitive(Primitive::Int32));
+        }
+        other => panic!("expected tuple variant, got {other:?}"),
+    }
+
+    assert_eq!(e.variants[2].name, "Error");
+    match &e.variants[2].data {
+        Some(EnumVariantData::Struct(fields)) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].name, "code");
+            assert_eq!(fields[1].name, "message");
+        }
+        other => panic!("expected struct variant, got {other:?}"),
+    }
+}
+
+#[test]
+fn tuple_expression_lower() {
+    let items = common::do_lower("fn f() { let a = (1, 2); let b = (1,); }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &func.body[0] {
+        Stmt::Let { value: Expr::Tuple(elements, _), .. } => {
+            assert_eq!(elements.len(), 2);
+            assert!(matches!(elements[0], Expr::Int(1, _)));
+            assert!(matches!(elements[1], Expr::Int(2, _)));
+        }
+        other => panic!("expected tuple expression, got {other:?}"),
+    }
+    match &func.body[1] {
+        Stmt::Let { value: Expr::Tuple(elements, _), .. } => {
+            assert_eq!(elements.len(), 1);
+            assert!(matches!(elements[0], Expr::Int(1, _)));
+        }
+        other => panic!("expected tuple expression, got {other:?}"),
+    }
+}
+
+#[test]
+fn field_access_lower() {
+    let items = common::do_lower("fn f(p: Point): int32 { p.x }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Field { object, name, .. }, _) => {
+            assert_eq!(name, "x");
+            match object.as_ref() {
+                Expr::Ident(n, _) => assert_eq!(n, "p"),
+                other => panic!("expected ident, got {other:?}"),
+            }
+        }
+        other => panic!("expected field access, got {other:?}"),
+    }
+}
+
+#[test]
+fn match_expression_lower() {
+    let items = common::do_lower("fn f(x: int32): int32 { match x { 1 => 10, _ => 0 } }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Stmt::Value(Expr::Match { value, arms, .. }, _) => {
+            match value.as_ref() {
+                Expr::Ident(n, _) => assert_eq!(n, "x"),
+                other => panic!("expected ident, got {other:?}"),
+            }
+            assert_eq!(arms.len(), 2);
+
+            match &arms[0].pattern {
+                Pattern::Literal(LiteralPattern::Int(1), _) => {}
+                other => panic!("expected int literal pattern, got {other:?}"),
+            }
+            match &arms[0].body.as_ref() {
+                Expr::Int(10, _) => {}
+                other => panic!("expected int body, got {other:?}"),
+            }
+
+            match &arms[1].pattern {
+                Pattern::Wildcard(_) => {}
+                other => panic!("expected wildcard pattern, got {other:?}"),
+            }
+        }
+        other => panic!("expected match expression, got {other:?}"),
+    }
+}
