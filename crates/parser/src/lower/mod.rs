@@ -1,17 +1,15 @@
 pub mod error;
-pub mod item;
-pub mod helpers;
-pub mod types;
-pub mod statement;
 pub mod expression;
+pub mod helpers;
+pub mod item;
 pub mod pattern;
+pub mod statement;
+pub mod types;
 
-use tree_sitter::{Node, Tree};
 use crate::ast::item::{Attribute, Item};
+use tree_sitter::{Node, Tree};
 
 use super::lower::error::LowerError;
-
-
 
 pub struct Lowerer<'a> {
     pub source: &'a str,
@@ -26,10 +24,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_source_file(
-        &self,
-        node: &Node,
-    ) -> Result<Vec<Item>, Vec<LowerError>> {
+    pub(super) fn lower_source_file(&self, node: &Node) -> Result<Vec<Item>, Vec<LowerError>> {
         let mut items = Vec::new();
         let mut errors = Vec::new();
         let mut pending_attrs: Vec<Attribute> = Vec::new();

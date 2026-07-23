@@ -2,7 +2,11 @@ use tree_sitter::Node;
 
 use crate::{
     ast::types::{Primitive, Type},
-    lower::{Lowerer, error::LowerError, helpers::{children, node_text}},
+    lower::{
+        Lowerer,
+        error::LowerError,
+        helpers::{children, node_text},
+    },
 };
 
 impl<'a> Lowerer<'a> {
@@ -51,20 +55,14 @@ impl<'a> Lowerer<'a> {
         Err(self.invalid_kind(node, node.kind(), "type"))
     }
 
-    pub(super) fn lower_reference_type(
-        &self,
-        node: &Node,
-    ) -> Result<Type, LowerError> {
+    pub(super) fn lower_reference_type(&self, node: &Node) -> Result<Type, LowerError> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
                 let inner = self.lower_type(&child)?;
                 return Ok(Type::Ref(Box::new(inner)));
             }
         }
-        Err(self.span_error(
-            node,
-            "empty reference type",
-        ))
+        Err(self.span_error(node, "empty reference type"))
     }
 
     pub(super) fn lower_tuple_type(&self, node: &Node) -> Result<Type, LowerError> {
@@ -106,10 +104,9 @@ impl<'a> Lowerer<'a> {
                     "string" => Type::Primitive(Primitive::String),
                     "unit" => Type::Primitive(Primitive::Unit),
                     _ => {
-                        return Err(self.span_error(
-                            node,
-                            &format!("unknown primitive type `{name}`"),
-                        ));
+                        return Err(
+                            self.span_error(node, &format!("unknown primitive type `{name}`"))
+                        );
                     }
                 })
             }
@@ -117,17 +114,11 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_generic_type(
-        &self,
-        node: &Node,
-    ) -> Result<Type, LowerError> {
+    pub(super) fn lower_generic_type(&self, node: &Node) -> Result<Type, LowerError> {
         let name = node_text(
-            &node.named_child(0).ok_or_else(|| {
-                self.span_error(
-                    node,
-                    "expected identifier in generic type",
-                )
-            })?,
+            &node
+                .named_child(0)
+                .ok_or_else(|| self.span_error(node, "expected identifier in generic type"))?,
             self.source,
         );
         let mut args = Vec::new();
@@ -142,18 +133,12 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_array_type(&self, node: &Node) -> Result<Type, LowerError> {
         let children = children(node);
         if children.len() < 2 {
-            return Err(self.span_error(
-                node,
-                "incomplete array type",
-            ));
+            return Err(self.span_error(node, "incomplete array type"));
         }
         let element = self.lower_type(&children[0])?;
         let size_text = node_text(&children[1], self.source);
         let size: usize = size_text.parse().map_err(|_| {
-            self.span_error(
-                &children[1],
-                &format!("invalid array size `{size_text}`"),
-            )
+            self.span_error(&children[1], &format!("invalid array size `{size_text}`"))
         })?;
         Ok(Type::Array {
             element: Box::new(element),

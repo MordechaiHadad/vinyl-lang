@@ -188,10 +188,7 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn lower_attribute(&self, node: &Node) -> Result<Attribute, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
-        let name = node_text(
-            &self.child_by_field(node, "name")?,
-            self.source,
-        );
+        let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let mut args = Vec::new();
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)

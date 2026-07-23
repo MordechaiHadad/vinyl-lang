@@ -1,18 +1,17 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
+use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fmt;
 use vinyl_parser::ast::expression::Expression;
 use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
 use vinyl_parser::ast::operator::{AssignOp, BinaryOp, UnaryOp};
 use vinyl_parser::ast::statement::{AssignTarget, Statement};
 use vinyl_parser::ast::types::Primitive;
-use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::fmt;
-
 
 use crate::hir::{
     AssignOp as HirAssignOp, HirAssignTarget, HirEnum, HirEnumVariant, HirEnumVariantData, HirExpr,
-    HirExprKind, HirField, HirFunction, HirItem, HirItemKind, HirParam, HirStatement, HirStatementKind,
-    HirStruct, HirTupleStruct, Type,
+    HirExprKind, HirField, HirFunction, HirItem, HirItemKind, HirParam, HirStatement,
+    HirStatementKind, HirStruct, HirTupleStruct, Type,
 };
 
 #[derive(Debug, Diagnostic)]
@@ -107,17 +106,15 @@ pub fn typeck(
                                 EnumVariantData::Tuple(types) => {
                                     HirEnumVariantData::Tuple(types.clone())
                                 }
-                                EnumVariantData::Struct(fields) => {
-                                    HirEnumVariantData::Struct(
-                                        fields
-                                            .iter()
-                                            .map(|f| HirField {
-                                                name: f.name.clone(),
-                                                type_: f.type_.clone(),
-                                            })
-                                            .collect(),
-                                    )
-                                }
+                                EnumVariantData::Struct(fields) => HirEnumVariantData::Struct(
+                                    fields
+                                        .iter()
+                                        .map(|f| HirField {
+                                            name: f.name.clone(),
+                                            type_: f.type_.clone(),
+                                        })
+                                        .collect(),
+                                ),
                             }),
                         })
                         .collect(),
@@ -226,9 +223,7 @@ impl InferState {
                 name: name.clone(),
                 args: args.iter().map(|a| self.apply(a)).collect(),
             },
-            Type::Tuple(elements) => {
-                Type::Tuple(elements.iter().map(|e| self.apply(e)).collect())
-            }
+            Type::Tuple(elements) => Type::Tuple(elements.iter().map(|e| self.apply(e)).collect()),
             other => other.clone(),
         }
     }
@@ -438,7 +433,9 @@ impl InferState {
             }
             hir_stmts.push(self.infer_stmt(stmt, signatures)?);
             match stmt {
-                Statement::Return(..) | Statement::Break(..) | Statement::Continue(..) => terminated = true,
+                Statement::Return(..) | Statement::Break(..) | Statement::Continue(..) => {
+                    terminated = true
+                }
                 _ => {}
             }
         }
@@ -829,7 +826,8 @@ impl InferState {
 
                     for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
                         let arg_type = self.apply(&hir_args[i].type_);
-                        if matches!(&param.type_, Type::Ref(_)) && !matches!(arg, Expression::Ref { .. })
+                        if matches!(&param.type_, Type::Ref(_))
+                            && !matches!(arg, Expression::Ref { .. })
                         {
                             self.errors.push(self.error(
                                 arg.span(),
@@ -1019,11 +1017,7 @@ impl InferState {
                     type_: Type::Tuple(element_types),
                 })
             }
-            Expression::Field {
-                span,
-                object,
-                name,
-            } => {
+            Expression::Field { span, object, name } => {
                 let hir_object = self.infer_expr(object, signatures)?;
                 let object_type = self.apply(&hir_object.type_);
                 let field_type = self.resolve_field_type(&object_type, name, *span);
@@ -1044,17 +1038,20 @@ impl InferState {
             } => {
                 let variant_info = self.types.get(type_name).and_then(|kind| {
                     if let HirItemKind::Enum(e) = kind {
-                        e.variants.iter().position(|v| v.name == *variant_name).map(|idx| {
-                            let variant = &e.variants[idx];
-                            let expected: Vec<Type> = match &variant.data {
-                                Some(HirEnumVariantData::Tuple(types)) => types.clone(),
-                                Some(HirEnumVariantData::Struct(fields)) => {
-                                    fields.iter().map(|f| f.type_.clone()).collect()
-                                }
-                                None => Vec::new(),
-                            };
-                            (idx, expected)
-                        })
+                        e.variants
+                            .iter()
+                            .position(|v| v.name == *variant_name)
+                            .map(|idx| {
+                                let variant = &e.variants[idx];
+                                let expected: Vec<Type> = match &variant.data {
+                                    Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+                                    Some(HirEnumVariantData::Struct(fields)) => {
+                                        fields.iter().map(|f| f.type_.clone()).collect()
+                                    }
+                                    None => Vec::new(),
+                                };
+                                (idx, expected)
+                            })
                     } else {
                         None
                     }
@@ -1064,9 +1061,7 @@ impl InferState {
                     None => {
                         return Err(self.error(
                             *span,
-                            format!(
-                                "enum `{type_name}` has no variant `{variant_name}`"
-                            ),
+                            format!("enum `{type_name}` has no variant `{variant_name}`"),
                         ));
                     }
                 };
@@ -1118,10 +1113,9 @@ impl InferState {
                     if let Some(field) = s.fields.iter().find(|f| f.name == field_name) {
                         return field.type_.clone();
                     }
-                    self.errors.push(self.error(
-                        span,
-                        format!("struct `{name}` has no field `{field_name}`"),
-                    ));
+                    self.errors.push(
+                        self.error(span, format!("struct `{name}` has no field `{field_name}`")),
+                    );
                     return self.fresh_var();
                 }
                 if let Some(HirItemKind::TupleStruct(t)) = self.types.get(name) {
@@ -1144,10 +1138,8 @@ impl InferState {
                         return elements[index].clone();
                     }
                 }
-                self.errors.push(self.error(
-                    span,
-                    format!("tuple index out of bounds: `{field_name}`"),
-                ));
+                self.errors
+                    .push(self.error(span, format!("tuple index out of bounds: `{field_name}`")));
                 self.fresh_var()
             }
             _ => self.fresh_var(),
@@ -1322,7 +1314,9 @@ impl InferState {
                 HirStatementKind::Return(expr) => {
                     HirStatementKind::Return(expr.as_ref().map(|e| self.resolve_hir_expr(e)))
                 }
-                HirStatementKind::Value(expr) => HirStatementKind::Value(self.resolve_hir_expr(expr)),
+                HirStatementKind::Value(expr) => {
+                    HirStatementKind::Value(self.resolve_hir_expr(expr))
+                }
                 HirStatementKind::Loop { body } => HirStatementKind::Loop {
                     body: body.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
                 },

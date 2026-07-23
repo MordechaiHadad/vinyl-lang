@@ -1,5 +1,10 @@
 use vinyl_parser::ast::{
-    expression::Expression, item::{EnumVariantData, Item}, operator::{BinaryOp, UnaryOp}, pattern::{LiteralPattern, Pattern}, statement::Statement, types::{Primitive, Type}
+    expression::Expression,
+    item::{EnumVariantData, Item},
+    operator::{BinaryOp, UnaryOp},
+    pattern::{LiteralPattern, Pattern},
+    statement::Statement,
+    types::{Primitive, Type},
 };
 
 mod common;

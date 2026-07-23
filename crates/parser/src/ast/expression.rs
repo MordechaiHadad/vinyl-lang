@@ -1,6 +1,10 @@
 use miette::SourceSpan;
 
-use crate::ast::{operator::{BinaryOp, UnaryOp}, pattern::Pattern, statement::Statement};
+use crate::ast::{
+    operator::{BinaryOp, UnaryOp},
+    pattern::Pattern,
+    statement::Statement,
+};
 
 #[derive(Debug)]
 pub enum Expression {

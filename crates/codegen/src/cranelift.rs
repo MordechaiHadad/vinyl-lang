@@ -16,8 +16,8 @@ use target_lexicon::Triple;
 use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{
-    AssignOp, HirAssignTarget, HirEnumVariantData, HirExpr,
-    HirExprKind, HirFunction, HirItem, HirItemKind, HirParam, HirStatement, HirStatementKind, Type,
+    AssignOp, HirAssignTarget, HirEnumVariantData, HirExpr, HirExprKind, HirFunction, HirItem,
+    HirItemKind, HirParam, HirStatement, HirStatementKind, Type,
 };
 
 use tracing::debug;
@@ -771,7 +771,8 @@ impl<'a> CodegenCtx<'a> {
                         let addr = if offset == 0 {
                             base
                         } else {
-                            let off_val = self.builder.ins().iconst(self.pointer_type, offset as i64);
+                            let off_val =
+                                self.builder.ins().iconst(self.pointer_type, offset as i64);
                             self.builder.ins().iadd(base, off_val)
                         };
                         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
@@ -795,38 +796,38 @@ impl<'a> CodegenCtx<'a> {
                         })?;
                         layout::tuple_field_offset(index, element_types, ptr_size)
                     }
-                    Type::Named(type_name) => {
-                        match self.types.get(type_name) {
-                            Some(HirItemKind::Struct(s)) => {
-                                let field_types: Vec<(String, Type)> = s
-                                    .fields
-                                    .iter()
-                                    .map(|f| (f.name.clone(), f.type_.clone()))
-                                    .collect();
-                                let (_, field_layouts) =
-                                    layout::struct_layout(&field_types, s.repr_c, ptr_size);
-                                let field_idx = s.fields.iter().position(|f| f.name == *name).ok_or_else(|| {
+                    Type::Named(type_name) => match self.types.get(type_name) {
+                        Some(HirItemKind::Struct(s)) => {
+                            let field_types: Vec<(String, Type)> = s
+                                .fields
+                                .iter()
+                                .map(|f| (f.name.clone(), f.type_.clone()))
+                                .collect();
+                            let (_, field_layouts) =
+                                layout::struct_layout(&field_types, s.repr_c, ptr_size);
+                            let field_idx = s
+                                .fields
+                                .iter()
+                                .position(|f| f.name == *name)
+                                .ok_or_else(|| {
                                     CraneliftError::Msg(format!(
                                         "struct `{type_name}` has no field `{name}`"
                                     ))
                                 })?;
-                                field_layouts[field_idx].1.offset
-                            }
-                            Some(HirItemKind::TupleStruct(t)) => {
-                                let index: usize = name.parse().map_err(|_| {
-                                    CraneliftError::Msg(format!(
-                                        "invalid tuple struct field `{name}`"
-                                    ))
-                                })?;
-                                layout::tuple_field_offset(index, &t.types, ptr_size)
-                            }
-                            _ => {
-                                return Err(CraneliftError::Msg(format!(
-                                    "cannot access field on type `{type_name}`"
-                                )));
-                            }
+                            field_layouts[field_idx].1.offset
                         }
-                    }
+                        Some(HirItemKind::TupleStruct(t)) => {
+                            let index: usize = name.parse().map_err(|_| {
+                                CraneliftError::Msg(format!("invalid tuple struct field `{name}`"))
+                            })?;
+                            layout::tuple_field_offset(index, &t.types, ptr_size)
+                        }
+                        _ => {
+                            return Err(CraneliftError::Msg(format!(
+                                "cannot access field on type `{type_name}`"
+                            )));
+                        }
+                    },
                     _ => {
                         return Err(CraneliftError::Msg(format!(
                             "field access not supported for type {:?}",
@@ -1008,7 +1009,7 @@ impl<'a> CodegenCtx<'a> {
             _ => {
                 return Err(CraneliftError::Msg(format!(
                     "type `{type_name}` is not an enum"
-                )))
+                )));
             }
         };
         let variant = &hir_enum.variants[variant_index];
@@ -1045,10 +1046,10 @@ impl<'a> CodegenCtx<'a> {
             let field_addr = if data_offset + data_offset_acc == 0 {
                 base
             } else {
-                let off = self.builder.ins().iconst(
-                    self.pointer_type,
-                    (data_offset + data_offset_acc) as i64,
-                );
+                let off = self
+                    .builder
+                    .ins()
+                    .iconst(self.pointer_type, (data_offset + data_offset_acc) as i64);
                 self.builder.ins().iadd(base, off)
             };
             self.builder.ins().store(mflags, val, field_addr, 0);

@@ -1,7 +1,6 @@
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::Type;
 
-
 pub struct Layout {
     pub size: u32,
     pub alignment: u32,
@@ -59,13 +58,11 @@ pub fn align_of(t: &Type, pointer_size: u32) -> u32 {
         },
         Type::Ref(_) => pointer_size,
         Type::Array { element, .. } => align_of(element, pointer_size),
-        Type::Tuple(elements) => {
-            elements
-                .iter()
-                .map(|e| align_of(e, pointer_size))
-                .max()
-                .unwrap_or(1)
-        }
+        Type::Tuple(elements) => elements
+            .iter()
+            .map(|e| align_of(e, pointer_size))
+            .max()
+            .unwrap_or(1),
         _ => pointer_size,
     }
 }
@@ -130,10 +127,7 @@ pub fn struct_layout(
     (total_size, result)
 }
 
-pub fn enum_layout(
-    variant_data: &[Vec<Type>],
-    pointer_size: u32,
-) -> (u32, u32, u32) {
+pub fn enum_layout(variant_data: &[Vec<Type>], pointer_size: u32) -> (u32, u32, u32) {
     let num_variants = variant_data.len();
     if num_variants == 0 {
         return (1, 0, 1);

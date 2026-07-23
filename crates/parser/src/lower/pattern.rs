@@ -1,7 +1,14 @@
 use miette::SourceSpan;
 use tree_sitter::Node;
 
-use crate::{ast::pattern::{LiteralPattern, Pattern}, lower::{Lowerer, error::LowerError, helpers::{children, node_text}}};
+use crate::{
+    ast::pattern::{LiteralPattern, Pattern},
+    lower::{
+        Lowerer,
+        error::LowerError,
+        helpers::{children, node_text},
+    },
+};
 
 impl<'a> Lowerer<'a> {
     pub(super) fn lower_pattern(&self, node: &Node) -> Result<Pattern, LowerError> {
@@ -24,10 +31,7 @@ impl<'a> Lowerer<'a> {
             "enum_variant_pattern" => {
                 let children = children(node);
                 if children.is_empty() {
-                    return Err(self.span_error(
-                        node,
-                        "incomplete enum variant pattern",
-                    ));
+                    return Err(self.span_error(node, "incomplete enum variant pattern"));
                 }
                 let name = node_text(&children[0], self.source);
                 let patterns = children[1..]
@@ -47,10 +51,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_literal_pattern(
-        &self,
-        node: &Node,
-    ) -> Result<Pattern, LowerError> {
+    pub(super) fn lower_literal_pattern(&self, node: &Node) -> Result<Pattern, LowerError> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
                 return match child.kind() {
@@ -70,10 +71,8 @@ impl<'a> Lowerer<'a> {
                                 LiteralPattern::Int(v),
                                 SourceSpan::from(child.start_byte()..child.end_byte()),
                             )),
-                            Err(_) => Err(self.span_error(
-                                &child,
-                                &format!("invalid integer literal `{raw}`"),
-                            )),
+                            Err(_) => Err(self
+                                .span_error(&child, &format!("invalid integer literal `{raw}`"))),
                         }
                     }
                     "bool_literal" => {
@@ -106,32 +105,20 @@ impl<'a> Lowerer<'a> {
                 };
             }
         }
-        Err(self.span_error(
-            node,
-            "empty literal pattern",
-        ))
+        Err(self.span_error(node, "empty literal pattern"))
     }
 
-    pub(super) fn lower_struct_pattern(
-        &self,
-        node: &Node,
-    ) -> Result<Pattern, LowerError> {
+    pub(super) fn lower_struct_pattern(&self, node: &Node) -> Result<Pattern, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.is_empty() {
-            return Err(self.span_error(
-                node,
-                "incomplete struct pattern",
-            ));
+            return Err(self.span_error(node, "incomplete struct pattern"));
         }
         let name = node_text(&children[0], self.source);
         let mut fields = Vec::new();
         for i in 1..children.len() {
             let field_node = &children[i];
-            let field_name = node_text(
-                &self.child_by_field(field_node, "name")?,
-                self.source,
-            );
+            let field_name = node_text(&self.child_by_field(field_node, "name")?, self.source);
             let pattern = match field_node.named_child(1) {
                 Some(sub_pattern) => self.lower_pattern(&sub_pattern)?,
                 None => Pattern::Ident(

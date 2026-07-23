@@ -106,10 +106,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_any_expression(
-        &self,
-        node: &Node,
-    ) -> Result<Expression, LowerError> {
+    pub(super) fn lower_any_expression(&self, node: &Node) -> Result<Expression, LowerError> {
         for i in (0..node.named_child_count()).rev() {
             if let Some(child) = node.named_child(i as u32) {
                 match node.field_name_for_named_child(i as u32) {

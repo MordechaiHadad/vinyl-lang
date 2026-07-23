@@ -1,5 +1,10 @@
-use vinyl_parser::ast::{expression::Expression, item::Item, operator::AssignOp, statement::{AssignTarget, Statement}, types::{Primitive, Type}};
-
+use vinyl_parser::ast::{
+    expression::Expression,
+    item::Item,
+    operator::AssignOp,
+    statement::{AssignTarget, Statement},
+    types::{Primitive, Type},
+};
 
 mod common;
 
@@ -117,7 +122,9 @@ fn assign_op_equality() {
             _ => panic!("expected function"),
         };
         match &func.body[1] {
-            Statement::Assign { op, .. } => assert_eq!(*op, expected_op, "op mismatch for {source}"),
+            Statement::Assign { op, .. } => {
+                assert_eq!(*op, expected_op, "op mismatch for {source}")
+            }
             other => panic!("expected assign for {source}, got {other:?}"),
         }
     }

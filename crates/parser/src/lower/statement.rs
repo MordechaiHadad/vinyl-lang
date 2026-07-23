@@ -2,8 +2,17 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ast::{expression::Expression, operator::AssignOp, statement::{AssignTarget, Statement}, types::Type},
-    lower::{Lowerer, error::LowerError, helpers::{children, node_text}},
+    ast::{
+        expression::Expression,
+        operator::AssignOp,
+        statement::{AssignTarget, Statement},
+        types::Type,
+    },
+    lower::{
+        Lowerer,
+        error::LowerError,
+        helpers::{children, node_text},
+    },
 };
 
 impl<'a> Lowerer<'a> {
@@ -62,37 +71,27 @@ impl<'a> Lowerer<'a> {
             "expression_statement" => {
                 for i in 0..node.named_child_count() {
                     if let Some(child) = node.named_child(i as u32) {
-                        return self.lower_expression(&child)
+                        return self
+                            .lower_expression(&child)
                             .map(|e| Some(Statement::Expression(e)));
                     }
                 }
-                Err(self.span_error(
-                    node,
-                    "empty expression statement",
-                ))
+                Err(self.span_error(node, "empty expression statement"))
             }
-            "if_expression" => {
-                self.lower_if(node).map(|e| Some(Statement::Expression(e)))
-            }
+            "if_expression" => self.lower_if(node).map(|e| Some(Statement::Expression(e))),
             "while_statement" => {
                 let span = SourceSpan::from(node.start_byte()..node.end_byte());
                 let named = children(node);
                 let condition = match named.first() {
                     Some(n) => self.lower_expression(n)?,
                     None => {
-                        return Err(self.span_error(
-                            node,
-                            "incomplete while: missing condition",
-                        ));
+                        return Err(self.span_error(node, "incomplete while: missing condition"));
                     }
                 };
                 let body = match named.get(1) {
                     Some(n) => self.lower_block(n)?,
                     None => {
-                        return Err(self.span_error(
-                            node,
-                            "incomplete while: missing body",
-                        ));
+                        return Err(self.span_error(node, "incomplete while: missing body"));
                     }
                 };
                 let break_stmt = Statement::Break(span);
@@ -113,10 +112,7 @@ impl<'a> Lowerer<'a> {
                 let body = match node.named_child(0) {
                     Some(n) => self.lower_block(&n)?,
                     None => {
-                        return Err(self.span_error(
-                            node,
-                            "incomplete loop: missing body",
-                        ));
+                        return Err(self.span_error(node, "incomplete loop: missing body"));
                     }
                 };
                 Ok(Some(Statement::Loop { span, body }))
@@ -148,10 +144,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn find_type_annotation(
-        &self,
-        node: &Node,
-    ) -> Result<Option<Type>, LowerError> {
+    pub(super) fn find_type_annotation(&self, node: &Node) -> Result<Option<Type>, LowerError> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
                 && child.kind() == "type_annotation"
@@ -166,24 +159,19 @@ impl<'a> Lowerer<'a> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
-                return self.lower_expression(&child)
+                return self
+                    .lower_expression(&child)
                     .map(|e| Statement::Return(Some(e), span));
             }
         }
         Ok(Statement::Return(None, span))
     }
 
-    pub(super) fn lower_assignment(
-        &self,
-        node: &Node,
-    ) -> Result<Statement, LowerError> {
+    pub(super) fn lower_assignment(&self, node: &Node) -> Result<Statement, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let named = children(node);
         if named.len() < 2 {
-            return Err(self.span_error(
-                node,
-                "incomplete assignment",
-            ));
+            return Err(self.span_error(node, "incomplete assignment"));
         }
 
         let target = self.lower_assign_target(&named[0])?;
@@ -198,20 +186,14 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_assign_target(
-        &self,
-        node: &Node,
-    ) -> Result<AssignTarget, LowerError> {
+    pub(super) fn lower_assign_target(&self, node: &Node) -> Result<AssignTarget, LowerError> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
             "identifier" => Ok(AssignTarget::Ident(node_text(node, self.source), span())),
             "index_expression" => {
                 let children = children(node);
                 if children.len() < 2 {
-                    return Err(self.span_error(
-                        node,
-                        "incomplete index expression in assignment",
-                    ));
+                    return Err(self.span_error(node, "incomplete index expression in assignment"));
                 }
                 let array = self.lower_expression(&children[0])?;
                 let index = self.lower_expression(&children[1])?;
@@ -228,10 +210,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_assign_op(
-        &self,
-        node: &Node,
-    ) -> Result<AssignOp, LowerError> {
+    pub(super) fn lower_assign_op(&self, node: &Node) -> Result<AssignOp, LowerError> {
         let op_node = node
             .child_by_field_name("operator")
             .ok_or_else(|| self.span_error(node, "missing assignment operator"))?;
@@ -249,10 +228,9 @@ impl<'a> Lowerer<'a> {
             "<<=" => AssignOp::ShlEq,
             ">>=" => AssignOp::ShrEq,
             other => {
-                return Err(self.span_error(
-                    &op_node,
-                    &format!("unknown assignment operator `{other}`"),
-                ));
+                return Err(
+                    self.span_error(&op_node, &format!("unknown assignment operator `{other}`"))
+                );
             }
         })
     }
