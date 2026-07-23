@@ -162,8 +162,17 @@ let mut y = 20; # Mutable
 
 #### Value Assignment & Copy-on-Write (CoW)
 
-- **Immutable Assignment (`let y = x`):** If `x` is immutable, `y` points to `x`'s underlying memory slot internally via Copy-on-Write (CoW).
+- **Immutable Assignment (`let y = x`):** If `x` is immutable, `y` points to `x`'s underlying memory slot internally via static Copy-on-Write (CoW).
 - **Mutable Assignment (`let y = x` when `x` or `y` is `mut`):** Performs an explicit value copy.
+
+```vinyl
+let x = 10;
+let y = x; # Here we will either do the following: if value of x is smaller than the size of a pointer (16 bytes on 64 bits/8 bytes on 32 bits) we will simply copy the value outright, otherwise it will be a literal reference.
+
+let x = 10;
+let mut y = x; # Here we will use a similar strategy but with static CoW (compiler time instead of runtime) instead of a regular reference, so if you later decide to do the following:
+y *= 69; # We will copy the data of x and then modify that data. (Though technically this is smaller than 16 bytes just for demonstration)
+```
 
 #### Reference Semantics (`&`)
 
@@ -233,22 +242,22 @@ read_only(x); # Allowed (Zero-copy internal pointer)
 read_only(y); # Allowed (Value copy)
 ```
 
-##### Reference Return Prohibition
+##### Reference Return
 
-Functions cannot return references under any circumstances.
+Before I decided that vinyl functions cannot return references, but due to the fact that we add GC, there is no problem with this.
 
 ```
-fn get_ref(): &int {} # Compile Error: Functions cannot return references
+fn get_ref(): &int {} # Returns a mutable reference
 ```
 
-#### Collections & Dynamic Data
+#### Dynamic Data
 
-Interior pointers into array elements are strictly disallowed to prevent memory invalidation.
+Interior pointers into elements of heap allocated data are strictly disallowed to prevent memory invalidation.
 
 ```
 let x = [1, 2, 3, 4];
 
-let y = &x[0]; # Compile Error: Cannot take reference to index element
+let y = &x[0]; # If x is a fixed sized array this will pass otherwise you will get: Compile Error: Cannot take reference to index element 
 let y = x[0];  # Allowed (Value copy)
 ```
 
