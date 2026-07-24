@@ -173,14 +173,21 @@ fn pipe_bare_ident() {
 
 #[test]
 fn pipe_type_error() {
-    let source = "fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { \"hello\" |> add(3) }";
+    let source =
+        "fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { \"hello\" |> add(3) }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: string piped to int32 param");
+    assert!(
+        items.is_err(),
+        "typeck should fail: string piped to int32 param"
+    );
 }
 
 #[test]
 fn pipe_chain_type_error() {
     let source = "fn add(a: int32, b: int32): int32 { a + b } fn triple(n: int32): int32 { n * 3 } fn main(): int32 { true |> add(3) |> triple() }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: bool piped to int32 param");
+    assert!(
+        items.is_err(),
+        "typeck should fail: bool piped to int32 param"
+    );
 }

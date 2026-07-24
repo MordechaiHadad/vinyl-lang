@@ -3,7 +3,11 @@ use crate::hir::{HirExpression, HirExpressionKind, HirStatement, HirStatementKin
 use crate::infer::InferState;
 
 impl InferState {
-    pub(super) fn validate_literal_types_stmt(&self, stmt: &HirStatement, errors: &mut Vec<TypeError>) {
+    pub(super) fn validate_literal_types_stmt(
+        &self,
+        stmt: &HirStatement,
+        errors: &mut Vec<TypeError>,
+    ) {
         match &stmt.kind {
             HirStatementKind::Let { value, .. } => self.validate_literal_types_expr(value, errors),
             HirStatementKind::Expr(expr) => self.validate_literal_types_expr(expr, errors),

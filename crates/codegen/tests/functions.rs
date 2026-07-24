@@ -88,8 +88,10 @@ fn pipe_first_arg() {
 #[test]
 fn pipe_last_arg() {
     assert_eq!(
-        common::run("fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { 3 |>> add(5) }")
-            .unwrap(),
+        common::run(
+            "fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { 3 |>> add(5) }"
+        )
+        .unwrap(),
         8
     );
 }

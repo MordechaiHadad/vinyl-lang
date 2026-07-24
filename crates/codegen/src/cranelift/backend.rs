@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::mem;
 
 use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind, types};
-use cranelift_codegen::{isa, settings, Context};
+use cranelift_codegen::{Context, isa, settings};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
@@ -11,11 +11,11 @@ use target_lexicon::Triple;
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{HirItem, HirItemKind, HirParam, Type};
 
-use super::state::{CodegenCtx, FuncEnv, ModuleEnv, VarInfo, VarSlot};
+use super::CraneliftError;
 use super::prescan::prescan_function_body;
+use super::state::{CodegenCtx, FuncEnv, ModuleEnv, VarInfo, VarSlot};
 use super::types::{hir_sig_to_clif, param_type_to_clif};
 use super::variable::{build_var_info, var_mode};
-use super::CraneliftError;
 
 use tracing::debug;
 
@@ -112,16 +112,28 @@ impl crate::CodegenBackend for CraneliftBackend {
                     other => crate::layout::size_of(other, &self.types, pointer_type.bytes()) > 8,
                 };
                 if needs_sret {
-                    let _sret_ptr = builder.append_block_param(entry, pointer_type);
+                    builder.append_block_param(entry, pointer_type);
                 }
+                let entry_values = params
+                    .iter()
+                    .map(|param| {
+                        let ptr_size = pointer_type.bytes();
+                        let param_size =
+                            crate::layout::size_of(&param.type_, &self.types, ptr_size);
+                        let param_type = if param_size > 8 {
+                            pointer_type
+                        } else {
+                            param_type_to_clif(&param.type_, pointer_type)
+                        };
+                        builder.append_block_param(entry, param_type)
+                    })
+                    .collect::<Vec<_>>();
 
-                for param in params.iter() {
+                for (param, val) in params.iter().zip(entry_values) {
                     let ptr_size = pointer_type.bytes();
-                    let param_size =
-                        crate::layout::size_of(&param.type_, &self.types, ptr_size);
+                    let param_size = crate::layout::size_of(&param.type_, &self.types, ptr_size);
                     if param_size > 8 {
                         // todo: baseline by-ref, multi-register decomposition replaces this
-                        let ptr = builder.append_block_param(entry, pointer_type);
                         let slot = builder.create_sized_stack_slot(StackSlotData::new(
                             StackSlotKind::ExplicitSlot,
                             param_size,
@@ -131,9 +143,8 @@ impl crate::CodegenBackend for CraneliftBackend {
                         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                         // Inline byte-by-byte copy from ptr to slot
                         for byte_offset in 0..param_size {
-                            let off =
-                                builder.ins().iconst(pointer_type, byte_offset as i64);
-                            let src = builder.ins().iadd(ptr, off);
+                            let off = builder.ins().iconst(pointer_type, byte_offset as i64);
+                            let src = builder.ins().iadd(val, off);
                             let b = builder.ins().load(types::I8, mflags, src, 0);
                             let dst = builder.ins().iadd(dest, off);
                             builder.ins().store(mflags, b, dst, 0);
@@ -147,16 +158,9 @@ impl crate::CodegenBackend for CraneliftBackend {
                         );
                     } else {
                         let ty = param_type_to_clif(&param.type_, pointer_type);
-                        let val = builder.append_block_param(entry, ty);
                         let mode = var_mode(&param.name, param.mutable, &ref_vars);
-                        let (slot, _) = build_var_info(
-                            &mut builder,
-                            &param.type_,
-                            ty,
-                            val,
-                            mode,
-                            pointer_type,
-                        );
+                        let (slot, _) =
+                            build_var_info(&mut builder, &param.type_, ty, val, mode, pointer_type);
                         vars.insert(
                             param.name.clone(),
                             VarInfo {

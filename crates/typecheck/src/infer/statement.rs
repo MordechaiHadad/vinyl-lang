@@ -9,8 +9,8 @@ use vinyl_parser::ast::types::Primitive;
 
 use crate::error::TypeError;
 use crate::hir::{
-    HirAssignTarget, HirExpression, HirExpressionKind, HirFunction, HirParam, HirStatement, HirStatementKind,
-    Type,
+    HirAssignTarget, HirExpression, HirExpressionKind, HirFunction, HirParam, HirStatement,
+    HirStatementKind, Type,
 };
 use crate::infer::{InferState, TypeScheme};
 
@@ -63,7 +63,10 @@ impl InferState {
         {
             let value_type = self.subs.apply(&expr.type_);
             let ret_type = self.subs.apply(&return_type);
-            if let Err(e) = self.subs.unify(&self.source, &value_type, &ret_type, func.span) {
+            if let Err(e) = self
+                .subs
+                .unify(&self.source, &value_type, &ret_type, func.span)
+            {
                 self.errors.push(e);
             }
         }
@@ -98,8 +101,10 @@ impl InferState {
         let mut terminated = false;
         for stmt in stmts {
             if terminated {
-                self.warnings
-                    .push(self.source.warn(stmt.span(), "unreachable statement".to_string()));
+                self.warnings.push(
+                    self.source
+                        .warn(stmt.span(), "unreachable statement".to_string()),
+                );
             }
             hir_stmts.push(self.infer_stmt(stmt, signatures)?);
             match stmt {
@@ -165,14 +170,20 @@ impl InferState {
                 if let Some(return_type) = self.current_return_type.clone() {
                     match &hir_expr {
                         Some(val) => {
-                            if let Err(e) = self.subs.unify(&self.source, &val.type_, &return_type, *span) {
+                            if let Err(e) =
+                                self.subs
+                                    .unify(&self.source, &val.type_, &return_type, *span)
+                            {
                                 self.errors.push(e);
                             }
                         }
                         None => {
-                            if let Err(e) =
-                                self.subs.unify(&self.source, &Type::Primitive(Primitive::Unit), &return_type, *span)
-                            {
+                            if let Err(e) = self.subs.unify(
+                                &self.source,
+                                &Type::Primitive(Primitive::Unit),
+                                &return_type,
+                                *span,
+                            ) {
                                 self.errors.push(e);
                             }
                         }
@@ -207,7 +218,9 @@ impl InferState {
             }
             Statement::Break(span) => {
                 if self.loop_depth == 0 {
-                    return Err(self.source.error(*span, "break outside of loop".to_string()));
+                    return Err(self
+                        .source
+                        .error(*span, "break outside of loop".to_string()));
                 }
                 Ok(HirStatement {
                     kind: HirStatementKind::Break,
@@ -215,7 +228,9 @@ impl InferState {
             }
             Statement::Continue(span) => {
                 if self.loop_depth == 0 {
-                    return Err(self.source.error(*span, "continue outside of loop".to_string()));
+                    return Err(self
+                        .source
+                        .error(*span, "continue outside of loop".to_string()));
                 }
                 Ok(HirStatement {
                     kind: HirStatementKind::Continue,
@@ -259,11 +274,13 @@ impl InferState {
         match target {
             AssignTarget::Ident(name, name_span) => {
                 let scheme = self.scope.lookup(name).cloned().ok_or_else(|| {
-                    self.source.error(*name_span, format!("undefined variable `{name}`"))
+                    self.source
+                        .error(*name_span, format!("undefined variable `{name}`"))
                 })?;
                 let resolved_type = self.subs.apply(&scheme.type_);
 
-                self.scope.check_assign_mutability(&self.source, name, *name_span)?;
+                self.scope
+                    .check_assign_mutability(&self.source, name, *name_span)?;
 
                 if let Expression::Ref { operand, .. } = value_expr
                     && let Expression::Ident(ref_name, ref_span) = operand.as_ref()
@@ -281,7 +298,8 @@ impl InferState {
 
                 if let Type::Ref(inner) = &resolved_type {
                     if *ast_op == AssignOp::Eq && matches!(value_expr, Expression::Ref { .. }) {
-                        self.subs.unify(&self.source, value_type, &resolved_type, span)?;
+                        self.subs
+                            .unify(&self.source, value_type, &resolved_type, span)?;
                         return Ok(HirAssignTarget::Ident(name.clone()));
                     }
                     self.subs.unify(&self.source, value_type, inner, span)?;
@@ -291,7 +309,8 @@ impl InferState {
                     })));
                 }
 
-                self.subs.unify(&self.source, value_type, &resolved_type, span)?;
+                self.subs
+                    .unify(&self.source, value_type, &resolved_type, span)?;
                 Ok(HirAssignTarget::Ident(name.clone()))
             }
             AssignTarget::Index {

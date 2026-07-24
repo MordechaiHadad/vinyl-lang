@@ -49,17 +49,17 @@ impl InferState {
                     function: Box::new(self.resolve_hir_expr(function)),
                     args: args.iter().map(|a| self.resolve_hir_expr(a)).collect(),
                 },
-                HirExpressionKind::Block(stmts) => {
-                    HirExpressionKind::Block(stmts.iter().map(|s| self.resolve_hir_stmt(s)).collect())
-                }
+                HirExpressionKind::Block(stmts) => HirExpressionKind::Block(
+                    stmts.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
+                ),
                 HirExpressionKind::Index { span, array, index } => HirExpressionKind::Index {
                     span: *span,
                     array: Box::new(self.resolve_hir_expr(array)),
                     index: Box::new(self.resolve_hir_expr(index)),
                 },
-                HirExpressionKind::Array(elements) => {
-                    HirExpressionKind::Array(elements.iter().map(|e| self.resolve_hir_expr(e)).collect())
-                }
+                HirExpressionKind::Array(elements) => HirExpressionKind::Array(
+                    elements.iter().map(|e| self.resolve_hir_expr(e)).collect(),
+                ),
                 HirExpressionKind::If {
                     condition,
                     then_block,
@@ -85,16 +85,20 @@ impl InferState {
                         .map(|b| b.iter().map(|s| self.resolve_hir_stmt(s)).collect()),
                 },
                 HirExpressionKind::Unit => HirExpressionKind::Unit,
-                HirExpressionKind::Ref(expr) => HirExpressionKind::Ref(Box::new(self.resolve_hir_expr(expr))),
+                HirExpressionKind::Ref(expr) => {
+                    HirExpressionKind::Ref(Box::new(self.resolve_hir_expr(expr)))
+                }
                 HirExpressionKind::Tuple(elements, span) => HirExpressionKind::Tuple(
                     elements.iter().map(|e| self.resolve_hir_expr(e)).collect(),
                     *span,
                 ),
-                HirExpressionKind::FieldAccess { span, object, name } => HirExpressionKind::FieldAccess {
-                    span: *span,
-                    object: Box::new(self.resolve_hir_expr(object)),
-                    name: name.clone(),
-                },
+                HirExpressionKind::FieldAccess { span, object, name } => {
+                    HirExpressionKind::FieldAccess {
+                        span: *span,
+                        object: Box::new(self.resolve_hir_expr(object)),
+                        name: name.clone(),
+                    }
+                }
                 HirExpressionKind::EnumVariant {
                     type_name,
                     variant_index,
@@ -104,15 +108,13 @@ impl InferState {
                     variant_index: *variant_index,
                     payload: payload.iter().map(|e| self.resolve_hir_expr(e)).collect(),
                 },
-                HirExpressionKind::Struct { type_name, fields } => {
-                    HirExpressionKind::Struct {
-                        type_name: type_name.clone(),
-                        fields: fields
-                            .iter()
-                            .map(|(n, e)| (n.clone(), self.resolve_hir_expr(e)))
-                            .collect(),
-                    }
-                }
+                HirExpressionKind::Struct { type_name, fields } => HirExpressionKind::Struct {
+                    type_name: type_name.clone(),
+                    fields: fields
+                        .iter()
+                        .map(|(n, e)| (n.clone(), self.resolve_hir_expr(e)))
+                        .collect(),
+                },
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),

@@ -1,4 +1,6 @@
-use cranelift_codegen::ir::{self, InstBuilder, StackSlotData, StackSlotKind, condcodes::IntCC, types};
+use cranelift_codegen::ir::{
+    self, InstBuilder, StackSlotData, StackSlotKind, condcodes::IntCC, types,
+};
 use cranelift_module::Module;
 
 use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
@@ -8,9 +10,9 @@ use vinyl_typecheck::hir::{
     HirStatementKind, Type,
 };
 
+use super::CraneliftError;
 use super::state::CodegenCtx;
 use super::types::{element_byte_size, ir_type_from_primitive, is_large_aggregate};
-use super::CraneliftError;
 
 pub struct IfExprBundle<'a> {
     pub condition: &'a HirExpression,
@@ -49,27 +51,34 @@ impl<'a> CodegenCtx<'a> {
                     BinaryOp::Mul => self.func.builder.ins().imul(left_val, right_val),
                     BinaryOp::Div => self.func.builder.ins().sdiv(left_val, right_val),
                     BinaryOp::Rem => self.func.builder.ins().srem(left_val, right_val),
-                    BinaryOp::Eq => self.func.builder.ins().icmp(IntCC::Equal, left_val, right_val),
-                    BinaryOp::Ne => self
+                    BinaryOp::Eq => self
                         .func
                         .builder
                         .ins()
-                        .icmp(IntCC::NotEqual, left_val, right_val),
-                    BinaryOp::Lt => self
-                        .func
-                        .builder
-                        .ins()
-                        .icmp(IntCC::SignedLessThan, left_val, right_val),
-                    BinaryOp::Gt => self
-                        .func
-                        .builder
-                        .ins()
-                        .icmp(IntCC::SignedGreaterThan, left_val, right_val),
-                    BinaryOp::Le => self
-                        .func
-                        .builder
-                        .ins()
-                        .icmp(IntCC::SignedLessThanOrEqual, left_val, right_val),
+                        .icmp(IntCC::Equal, left_val, right_val),
+                    BinaryOp::Ne => {
+                        self.func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::NotEqual, left_val, right_val)
+                    }
+                    BinaryOp::Lt => {
+                        self.func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::SignedLessThan, left_val, right_val)
+                    }
+                    BinaryOp::Gt => {
+                        self.func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::SignedGreaterThan, left_val, right_val)
+                    }
+                    BinaryOp::Le => self.func.builder.ins().icmp(
+                        IntCC::SignedLessThanOrEqual,
+                        left_val,
+                        right_val,
+                    ),
                     BinaryOp::Ge => self.func.builder.ins().icmp(
                         IntCC::SignedGreaterThanOrEqual,
                         left_val,
@@ -77,14 +86,30 @@ impl<'a> CodegenCtx<'a> {
                     ),
                     BinaryOp::And => {
                         let zero = self.func.builder.ins().iconst(types::I8, 0);
-                        let l = self.func.builder.ins().icmp(IntCC::NotEqual, left_val, zero);
-                        let r = self.func.builder.ins().icmp(IntCC::NotEqual, right_val, zero);
+                        let l = self
+                            .func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::NotEqual, left_val, zero);
+                        let r = self
+                            .func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::NotEqual, right_val, zero);
                         self.func.builder.ins().band(l, r)
                     }
                     BinaryOp::Or => {
                         let zero = self.func.builder.ins().iconst(types::I8, 0);
-                        let l = self.func.builder.ins().icmp(IntCC::NotEqual, left_val, zero);
-                        let r = self.func.builder.ins().icmp(IntCC::NotEqual, right_val, zero);
+                        let l = self
+                            .func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::NotEqual, left_val, zero);
+                        let r = self
+                            .func
+                            .builder
+                            .ins()
+                            .icmp(IntCC::NotEqual, right_val, zero);
                         self.func.builder.ins().bor(l, r)
                     }
                     BinaryOp::BitAnd => self.func.builder.ins().band(left_val, right_val),
@@ -100,11 +125,11 @@ impl<'a> CodegenCtx<'a> {
                         let r = self.func.builder.ins().srem(left_val, right_val);
                         let r_ne_zero = self.func.builder.ins().icmp(IntCC::NotEqual, r, zero);
                         let sign_xor = self.func.builder.ins().bxor(left_val, right_val);
-                        let signs_differ = self
-                            .func
-                            .builder
-                            .ins()
-                            .icmp(IntCC::SignedLessThan, sign_xor, zero);
+                        let signs_differ =
+                            self.func
+                                .builder
+                                .ins()
+                                .icmp(IntCC::SignedLessThan, sign_xor, zero);
                         let adjust = self.func.builder.ins().band(r_ne_zero, signs_differ);
                         let q_minus_1 = self.func.builder.ins().isub(q, one);
                         self.func.builder.ins().select(adjust, q_minus_1, q)
@@ -150,19 +175,27 @@ impl<'a> CodegenCtx<'a> {
                     if let Some((_, callee_id, callee_params, callee_ret_type)) = callee_info {
                         let ptr_size = self.module.pointer_type.bytes();
                         let mut call_args = Vec::new();
-                        let ret_size = crate::layout::size_of(callee_ret_type, self.module.types, ptr_size);
-                        let needs_sret = !matches!(callee_ret_type, Type::Primitive(Primitive::Unit)) && ret_size > 8;
+                        let ret_size =
+                            crate::layout::size_of(callee_ret_type, self.module.types, ptr_size);
+                        let needs_sret =
+                            !matches!(callee_ret_type, Type::Primitive(Primitive::Unit))
+                                && ret_size > 8;
                         // SRet: allocate return slot, push its address first
                         // todo: baseline sret, multi-register return replaces this
                         let sret_slot = if needs_sret {
-                            let slot = self.func.builder.create_sized_stack_slot(
-                                StackSlotData::new(StackSlotKind::ExplicitSlot, ret_size, 0),
+                            let slot =
+                                self.func
+                                    .builder
+                                    .create_sized_stack_slot(StackSlotData::new(
+                                        StackSlotKind::ExplicitSlot,
+                                        ret_size,
+                                        0,
+                                    ));
+                            let addr = self.func.builder.ins().stack_addr(
+                                self.module.pointer_type,
+                                slot,
+                                0,
                             );
-                            let addr = self
-                                .func
-                                .builder
-                                .ins()
-                                .stack_addr(self.module.pointer_type, slot, 0);
                             call_args.push(addr);
                             Some((slot, addr))
                         } else {
@@ -170,7 +203,8 @@ impl<'a> CodegenCtx<'a> {
                         };
                         for (i, arg) in args.iter().enumerate() {
                             let param_type = &callee_params[i].type_;
-                            let param_size = crate::layout::size_of(param_type, self.module.types, ptr_size);
+                            let param_size =
+                                crate::layout::size_of(param_type, self.module.types, ptr_size);
                             if param_size > 8 {
                                 let val = self.compile_expr(arg)?;
                                 // todo: baseline by-ref, multi-register decomposition replaces this
@@ -217,11 +251,14 @@ impl<'a> CodegenCtx<'a> {
                 };
                 let elem_size = element_byte_size(element_type, self.module.pointer_type);
                 let num_elements = elements.len() as u32;
-                let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
-                    StackSlotKind::ExplicitSlot,
-                    elem_size * num_elements,
-                    0,
-                ));
+                let slot = self
+                    .func
+                    .builder
+                    .create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        elem_size * num_elements,
+                        0,
+                    ));
                 let base = self
                     .func
                     .builder
@@ -269,21 +306,19 @@ impl<'a> CodegenCtx<'a> {
                     HirExpression {
                         kind: HirExpressionKind::Ident(name),
                         ..
-                    } => {
-                        match self.func.vars.get(name) {
-                            Some(crate::cranelift::state::VarInfo {
-                                slot: crate::cranelift::state::VarSlot::StackSlot(slot, _),
-                                ..
-                            }) => Ok(self
-                                .func
-                                .builder
-                                .ins()
-                                .stack_addr(self.module.pointer_type, *slot, 0)),
-                            _ => Err(CraneliftError::Msg(format!(
-                                "cannot take reference of variable `{name}`: not stored in a stack slot"
-                            ))),
-                        }
-                    }
+                    } => match self.func.vars.get(name) {
+                        Some(crate::cranelift::state::VarInfo {
+                            slot: crate::cranelift::state::VarSlot::StackSlot(slot, _),
+                            ..
+                        }) => Ok(self.func.builder.ins().stack_addr(
+                            self.module.pointer_type,
+                            *slot,
+                            0,
+                        )),
+                        _ => Err(CraneliftError::Msg(format!(
+                            "cannot take reference of variable `{name}`: not stored in a stack slot"
+                        ))),
+                    },
                     _ => Err(CraneliftError::Msg(
                         "reference operator only supports identifiers".to_string(),
                     )),
@@ -323,7 +358,12 @@ impl<'a> CodegenCtx<'a> {
                         let index: usize = name.parse().map_err(|_| {
                             CraneliftError::Msg(format!("invalid tuple index `{name}`"))
                         })?;
-                        crate::layout::tuple_field_offset(index, element_types, self.module.types, ptr_size)
+                        crate::layout::tuple_field_offset(
+                            index,
+                            element_types,
+                            self.module.types,
+                            ptr_size,
+                        )
                     }
                     Type::Named(type_name) => match self.module.types.get(type_name) {
                         Some(HirItemKind::Struct(s)) => {
@@ -332,8 +372,12 @@ impl<'a> CodegenCtx<'a> {
                                 .iter()
                                 .map(|f| (f.name.clone(), f.type_.clone()))
                                 .collect();
-                            let (_, field_layouts) =
-                                crate::layout::struct_layout(&field_types, s.repr_c, self.module.types, ptr_size);
+                            let (_, field_layouts) = crate::layout::struct_layout(
+                                &field_types,
+                                s.repr_c,
+                                self.module.types,
+                                ptr_size,
+                            );
                             let field_idx = s
                                 .fields
                                 .iter()
@@ -347,11 +391,14 @@ impl<'a> CodegenCtx<'a> {
                         }
                         Some(HirItemKind::TupleStruct(t)) => {
                             let index: usize = name.parse().map_err(|_| {
-                                CraneliftError::Msg(format!(
-                                    "invalid tuple struct field `{name}`"
-                                ))
+                                CraneliftError::Msg(format!("invalid tuple struct field `{name}`"))
                             })?;
-                            crate::layout::tuple_field_offset(index, &t.types, self.module.types, ptr_size)
+                            crate::layout::tuple_field_offset(
+                                index,
+                                &t.types,
+                                self.module.types,
+                                ptr_size,
+                            )
                         }
                         _ => {
                             return Err(CraneliftError::Msg(format!(
@@ -384,14 +431,19 @@ impl<'a> CodegenCtx<'a> {
                 } else {
                     // Small aggregate packed as i64: materialize on stack to extract fields
                     // todo: avoid temp stack slot, use bit extraction for small offsets
-                    let slot = self.func.builder.create_sized_stack_slot(
-                        StackSlotData::new(StackSlotKind::ExplicitSlot, 8, 0),
-                    );
-                    let base = self
+                    let slot = self
                         .func
                         .builder
-                        .ins()
-                        .stack_addr(self.module.pointer_type, slot, 0);
+                        .create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            8,
+                            0,
+                        ));
+                    let base =
+                        self.func
+                            .builder
+                            .ins()
+                            .stack_addr(self.module.pointer_type, slot, 0);
                     self.func.builder.ins().store(mflags, obj, base, 0);
                     let addr = if offset == 0 {
                         base
@@ -425,11 +477,14 @@ impl<'a> CodegenCtx<'a> {
 
         let result_slot = if !matches!(result_type, Type::Primitive(Primitive::Unit)) {
             let result_type = ir_type_from_primitive(result_type, self.module.pointer_type);
-            let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
-                StackSlotKind::ExplicitSlot,
-                result_type.bytes(),
-                0,
-            ));
+            let slot = self
+                .func
+                .builder
+                .create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    result_type.bytes(),
+                    0,
+                ));
             let result_ptr = self
                 .func
                 .builder
@@ -570,11 +625,14 @@ impl<'a> CodegenCtx<'a> {
         let ptr_size = self.module.pointer_type.bytes();
         let total_size = crate::layout::size_of(result_type, self.module.types, ptr_size);
         let is_large = is_large_aggregate(result_type, self.module.types, ptr_size);
-        let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            if is_large { total_size } else { 8 },
-            0,
-        ));
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                if is_large { total_size } else { 8 },
+                0,
+            ));
         let base = self
             .func
             .builder
@@ -646,11 +704,14 @@ impl<'a> CodegenCtx<'a> {
         let (enum_total_size, data_offset, _disc_size) =
             crate::layout::enum_layout(&all_variant_data, self.module.types, ptr_size);
         let is_large = is_large_aggregate(result_type, self.module.types, ptr_size);
-        let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            if is_large { enum_total_size } else { 8 },
-            0,
-        ));
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                if is_large { enum_total_size } else { 8 },
+                0,
+            ));
         let base = self
             .func
             .builder
@@ -678,20 +739,21 @@ impl<'a> CodegenCtx<'a> {
         let mut data_offset_acc = 0u32;
         for (i, elem) in payload.iter().enumerate() {
             let val = self.compile_expr(elem)?;
-            let elem_align = crate::layout::align_of(&payload_types[i], self.module.types, ptr_size);
+            let elem_align =
+                crate::layout::align_of(&payload_types[i], self.module.types, ptr_size);
             data_offset_acc = crate::layout::align_up(data_offset_acc, elem_align);
             let field_addr = if data_offset + data_offset_acc == 0 {
                 base
             } else {
-                let off = self
-                    .func
-                    .builder
-                    .ins()
-                    .iconst(self.module.pointer_type, (data_offset + data_offset_acc) as i64);
+                let off = self.func.builder.ins().iconst(
+                    self.module.pointer_type,
+                    (data_offset + data_offset_acc) as i64,
+                );
                 self.func.builder.ins().iadd(base, off)
             };
             self.func.builder.ins().store(mflags, val, field_addr, 0);
-            data_offset_acc += crate::layout::size_of(&payload_types[i], self.module.types, ptr_size);
+            data_offset_acc +=
+                crate::layout::size_of(&payload_types[i], self.module.types, ptr_size);
         }
         if is_large {
             Ok(base)
@@ -720,14 +782,21 @@ impl<'a> CodegenCtx<'a> {
             .iter()
             .map(|f| (f.name.clone(), f.type_.clone()))
             .collect();
-        let (total_size, field_layouts) =
-            crate::layout::struct_layout(&field_types, hir_struct.repr_c, self.module.types, ptr_size);
+        let (total_size, field_layouts) = crate::layout::struct_layout(
+            &field_types,
+            hir_struct.repr_c,
+            self.module.types,
+            ptr_size,
+        );
         let is_large = is_large_aggregate(result_type, self.module.types, ptr_size);
-        let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            if is_large { total_size } else { 8 },
-            0,
-        ));
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                if is_large { total_size } else { 8 },
+                0,
+            ));
         let base = self
             .func
             .builder

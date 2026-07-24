@@ -5,9 +5,9 @@ use cranelift_frontend::FunctionBuilder;
 
 use vinyl_typecheck::hir::Type;
 
+use super::CraneliftError;
 use super::state::{CodegenCtx, VarSlot};
 use super::types::ir_type_from_primitive;
-use super::CraneliftError;
 
 pub enum VarMode {
     Value,
@@ -88,7 +88,8 @@ impl<'a> CodegenCtx<'a> {
                     .ins()
                     .stack_addr(self.module.pointer_type, slot, 0);
                 let ptr_size = self.module.pointer_type.bytes();
-                let is_large = crate::layout::size_of(&info.vinyl_type, self.module.types, ptr_size) > 8;
+                let is_large =
+                    crate::layout::size_of(&info.vinyl_type, self.module.types, ptr_size) > 8;
                 if is_large {
                     return Ok(addr);
                 }

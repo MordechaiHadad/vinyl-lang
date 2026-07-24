@@ -13,11 +13,7 @@ pub struct FieldLayout {
     pub size: u32,
 }
 
-pub fn size_of(
-    t: &Type,
-    types: &HashMap<String, HirItemKind>,
-    pointer_size: u32,
-) -> u32 {
+pub fn size_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
     match t {
         Type::Primitive(p) => match p {
             Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,
@@ -30,9 +26,7 @@ pub fn size_of(
         },
         Type::Named(name) => named_type_size_of(name, types, pointer_size),
         Type::Ref(_) => pointer_size,
-        Type::Array { element, size } => {
-            size_of(element, types, pointer_size) * (*size as u32)
-        }
+        Type::Array { element, size } => size_of(element, types, pointer_size) * (*size as u32),
         Type::Tuple(elements) => {
             if elements.is_empty() {
                 return 0;
@@ -54,11 +48,7 @@ pub fn size_of(
     }
 }
 
-pub fn align_of(
-    t: &Type,
-    types: &HashMap<String, HirItemKind>,
-    pointer_size: u32,
-) -> u32 {
+pub fn align_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
     match t {
         Type::Primitive(p) => match p {
             Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,
@@ -81,11 +71,7 @@ pub fn align_of(
     }
 }
 
-fn named_type_size_of(
-    name: &str,
-    types: &HashMap<String, HirItemKind>,
-    pointer_size: u32,
-) -> u32 {
+fn named_type_size_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
     match types.get(name) {
         Some(HirItemKind::Struct(s)) => {
             let field_types: Vec<(String, Type)> = s
@@ -119,11 +105,7 @@ fn named_type_size_of(
     }
 }
 
-fn named_type_align_of(
-    name: &str,
-    types: &HashMap<String, HirItemKind>,
-    pointer_size: u32,
-) -> u32 {
+fn named_type_align_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
     match types.get(name) {
         Some(HirItemKind::Struct(s)) => {
             let max_field_align = s

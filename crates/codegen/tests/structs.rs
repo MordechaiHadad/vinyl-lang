@@ -46,6 +46,15 @@ fn small_struct_return() {
 }
 
 #[test]
+fn large_struct_param_before_scalar_param() {
+    assert_eq!(
+        common::run("struct Test { a: int32, b: int32, c: int32 } fn test(value: Test, extra: int32): int32 { value.a + value.b + value.c + extra } fn main(): int32 { let value = Test { a: 10, b: 20, c: 30 }; test(value, 9) }")
+            .unwrap(),
+        69
+    );
+}
+
+#[test]
 fn large_struct_field_access() {
     assert_eq!(
         common::run("struct Triple { a: int32, b: int32, c: int32 } fn main(): int32 { let t = Triple { a: 1, b: 2, c: 3 }; t.a + t.b + t.c }")

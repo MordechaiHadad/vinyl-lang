@@ -103,10 +103,8 @@ pub fn hir_sig_to_clif(
         match &func.return_type {
             Type::Primitive(Primitive::Unit) => {}
             other => {
-                sig.returns.push(AbiParam::new(param_type_to_clif(
-                    other,
-                    pointer_type,
-                )));
+                sig.returns
+                    .push(AbiParam::new(param_type_to_clif(other, pointer_type)));
             }
         }
     }

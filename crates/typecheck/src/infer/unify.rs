@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use miette::SourceSpan;
 
 use crate::error::TypeError;
-use crate::infer::SourceContext;
 use crate::hir::types::Type;
+use crate::infer::SourceContext;
 
 pub(super) struct SubstitutionState {
     pub(super) subs: HashMap<usize, Type>,
