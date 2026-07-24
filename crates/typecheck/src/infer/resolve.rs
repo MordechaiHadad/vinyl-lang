@@ -104,6 +104,15 @@ impl InferState {
                     variant_index: *variant_index,
                     payload: payload.iter().map(|e| self.resolve_hir_expr(e)).collect(),
                 },
+                HirExpressionKind::Struct { type_name, fields } => {
+                    HirExpressionKind::Struct {
+                        type_name: type_name.clone(),
+                        fields: fields
+                            .iter()
+                            .map(|(n, e)| (n.clone(), self.resolve_hir_expr(e)))
+                            .collect(),
+                    }
+                }
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),

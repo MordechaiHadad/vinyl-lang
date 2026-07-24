@@ -52,6 +52,10 @@ pub enum HirExpressionKind {
         payload: Vec<HirExpression>,
     },
     Tuple(Vec<HirExpression>, SourceSpan),
+    Struct {
+        type_name: String,
+        fields: Vec<(String, HirExpression)>,
+    },
     FieldAccess {
         span: SourceSpan,
         object: Box<HirExpression>,

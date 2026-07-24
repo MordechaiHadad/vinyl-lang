@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::mem;
 
-use cranelift_codegen::ir::InstBuilder;
+use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind, types};
 use cranelift_codegen::{isa, settings, Context};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
@@ -11,7 +11,7 @@ use target_lexicon::Triple;
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{HirItem, HirItemKind, HirParam, Type};
 
-use super::state::{CodegenCtx, FuncEnv, ModuleEnv, VarInfo};
+use super::state::{CodegenCtx, FuncEnv, ModuleEnv, VarInfo, VarSlot};
 use super::prescan::prescan_function_body;
 use super::types::{hir_sig_to_clif, param_type_to_clif};
 use super::variable::{build_var_info, var_mode};
@@ -68,7 +68,7 @@ impl crate::CodegenBackend for CraneliftBackend {
             let HirItemKind::Function(f) = &item.kind else {
                 continue;
             };
-            let sig = hir_sig_to_clif(f, pointer_type);
+            let sig = hir_sig_to_clif(f, &self.types, pointer_type);
             let func_id = self
                 .module
                 .declare_function(&f.name, Linkage::Export, &sig)
@@ -94,7 +94,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                 .ok_or_else(|| CraneliftError::Msg(format!("function {name} not found")))?;
 
             self.ctx.clear();
-            self.ctx.func.signature = hir_sig_to_clif(func, pointer_type);
+            self.ctx.func.signature = hir_sig_to_clif(func, &self.types, pointer_type);
 
             {
                 let mut builder_ctx = FunctionBuilderContext::new();
@@ -105,19 +105,66 @@ impl crate::CodegenBackend for CraneliftBackend {
                 let ref_vars = prescan_function_body(&func.body);
                 let mut vars = HashMap::new();
 
+                // Skip sret param slot if present
+                // todo: baseline sret, multi-register return replaces this
+                let needs_sret = match &func.return_type {
+                    Type::Primitive(Primitive::Unit) => false,
+                    other => crate::layout::size_of(other, &self.types, pointer_type.bytes()) > 8,
+                };
+                if needs_sret {
+                    let _sret_ptr = builder.append_block_param(entry, pointer_type);
+                }
+
                 for param in params.iter() {
-                    let ty = param_type_to_clif(&param.type_, pointer_type);
-                    let val = builder.append_block_param(entry, ty);
-                    let mode = var_mode(&param.name, param.mutable, &ref_vars);
-                    let (slot, _) =
-                        build_var_info(&mut builder, &param.type_, ty, val, mode, pointer_type);
-                    vars.insert(
-                        param.name.clone(),
-                        VarInfo {
-                            slot,
-                            vinyl_type: param.type_.clone(),
-                        },
-                    );
+                    let ptr_size = pointer_type.bytes();
+                    let param_size =
+                        crate::layout::size_of(&param.type_, &self.types, ptr_size);
+                    if param_size > 8 {
+                        // todo: baseline by-ref, multi-register decomposition replaces this
+                        let ptr = builder.append_block_param(entry, pointer_type);
+                        let slot = builder.create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            param_size,
+                            0,
+                        ));
+                        let dest = builder.ins().stack_addr(pointer_type, slot, 0);
+                        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                        // Inline byte-by-byte copy from ptr to slot
+                        for byte_offset in 0..param_size {
+                            let off =
+                                builder.ins().iconst(pointer_type, byte_offset as i64);
+                            let src = builder.ins().iadd(ptr, off);
+                            let b = builder.ins().load(types::I8, mflags, src, 0);
+                            let dst = builder.ins().iadd(dest, off);
+                            builder.ins().store(mflags, b, dst, 0);
+                        }
+                        vars.insert(
+                            param.name.clone(),
+                            VarInfo {
+                                slot: VarSlot::StackSlot(slot, pointer_type),
+                                vinyl_type: param.type_.clone(),
+                            },
+                        );
+                    } else {
+                        let ty = param_type_to_clif(&param.type_, pointer_type);
+                        let val = builder.append_block_param(entry, ty);
+                        let mode = var_mode(&param.name, param.mutable, &ref_vars);
+                        let (slot, _) = build_var_info(
+                            &mut builder,
+                            &param.type_,
+                            ty,
+                            val,
+                            mode,
+                            pointer_type,
+                        );
+                        vars.insert(
+                            param.name.clone(),
+                            VarInfo {
+                                slot,
+                                vinyl_type: param.type_.clone(),
+                            },
+                        );
+                    }
                 }
 
                 let mut ctx = CodegenCtx {

@@ -89,6 +89,11 @@ fn prescan_expr(expr: &HirExpression, refed: &mut HashSet<String>) {
                 prescan_expr(elem, refed);
             }
         }
+        HirExpressionKind::Struct { fields, .. } => {
+            for (_, expr) in fields {
+                prescan_expr(expr, refed);
+            }
+        }
         HirExpressionKind::FieldAccess { object, .. } => {
             prescan_expr(object, refed);
         }

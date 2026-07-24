@@ -203,6 +203,19 @@ impl<'a> Lowerer<'a> {
                     index: Box::new(index),
                 })
             }
+            "field_access_expression" => {
+                let children = children(node);
+                if children.len() < 2 {
+                    return Err(self.span_error(node, "incomplete field access in assignment"));
+                }
+                let object = self.lower_expression(&children[0])?;
+                let name = node_text(&self.child_by_field(node, "field")?, self.source);
+                Ok(AssignTarget::Field {
+                    span: span(),
+                    object: Box::new(object),
+                    name,
+                })
+            }
             _ => Err(self.span_error(
                 node,
                 &format!("invalid assignment target: `{}`", node.kind()),

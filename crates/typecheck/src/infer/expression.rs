@@ -443,6 +443,63 @@ impl InferState {
                     type_: Type::Named(type_name.clone()),
                 })
             }
+            Expression::Struct { span, type_name, fields } => {
+                let mut hir_fields = Vec::new();
+                for (name, expr) in fields {
+                    let hir = self.infer_expr(expr, signatures)?;
+                    match self.types.get(type_name) {
+                        Some(HirItemKind::Struct(s)) => {
+                            if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
+                                let field_type = self.subs.apply(&hir.type_);
+                                if let Err(e) = self.subs.unify(
+                                    &self.source,
+                                    &field_type,
+                                    &field.type_,
+                                    expr.span(),
+                                ) {
+                                    self.errors.push(e);
+                                }
+                            } else {
+                                self.errors.push(self.source.error(
+                                    expr.span(),
+                                    format!("struct `{type_name}` has no field `{name}`"),
+                                ));
+                            }
+                        }
+                        _ => {}
+                    }
+                    hir_fields.push((name.clone(), hir));
+                }
+                let struct_type = match self.types.get(type_name) {
+                    Some(HirItemKind::Struct(s)) => {
+                        for field in &s.fields {
+                            if !hir_fields.iter().any(|(n, _)| n == &field.name) {
+                                self.errors.push(self.source.error(
+                                    *span,
+                                    format!(
+                                        "struct `{type_name}` is missing field `{}`",
+                                        field.name
+                                    ),
+                                ));
+                            }
+                        }
+                        Type::Named(type_name.clone())
+                    }
+                    _ => {
+                        return Err(self.source.error(
+                            *span,
+                            format!("`{type_name}` is not a struct"),
+                        ));
+                    }
+                };
+                Ok(HirExpression {
+                    kind: HirExpressionKind::Struct {
+                        type_name: type_name.clone(),
+                        fields: hir_fields,
+                    },
+                    type_: struct_type,
+                })
+            }
             Expression::Match { span, .. } => {
                 Err(self.source.error(*span, "match expressions not supported yet".to_string()))
             }

@@ -55,6 +55,11 @@ pub enum Expression {
         variant_name: String,
         args: Vec<Expression>,
     },
+    Struct {
+        span: SourceSpan,
+        type_name: String,
+        fields: Vec<(String, Expression)>,
+    },
     Paren(Box<Expression>, SourceSpan),
     Ref {
         span: SourceSpan,
@@ -92,6 +97,7 @@ impl Expression {
             Expression::Ref { span, .. } => *span,
             Expression::If { span, .. } => *span,
             Expression::EnumVariant { span, .. } => *span,
+            Expression::Struct { span, .. } => *span,
         }
     }
 }

@@ -88,6 +88,33 @@ impl<'a> Lowerer<'a> {
                     args,
                 })
             }
+            "struct_literal_expression" => {
+                let type_name = node_text(&self.child_by_field(node, "name")?, self.source);
+                let fields_node = self.child_by_field(node, "fields")?;
+                let mut fields = Vec::new();
+                let mut current_key: Option<String> = None;
+                for i in 0..fields_node.named_child_count() as u32 {
+                    if let Some(child) = fields_node.named_child(i) {
+                        match fields_node.field_name_for_named_child(i) {
+                            Some("name") => {
+                                current_key = Some(node_text(&child, self.source));
+                            }
+                            Some("value") => {
+                                if let Some(key) = current_key.take() {
+                                    let value = self.lower_expression(&child)?;
+                                    fields.push((key, value));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(Expression::Struct {
+                    span: span(),
+                    type_name,
+                    fields,
+                })
+            }
             "index_expression" => {
                 let children = children(node);
                 if children.len() < 2 {

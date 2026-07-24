@@ -25,6 +25,7 @@ export default grammar({
     [$._statement, $._expression],
     [$.unary_expression, $.index_expression],
     [$.enum_variant_expression],
+    [$._expression, $.struct_literal_expression],
   ],
 
   rules: {
@@ -215,6 +216,7 @@ export default grammar({
       $.block,
       $.if_expression,
       $.enum_variant_expression,
+      $.struct_literal_expression,
     ),
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -328,6 +330,17 @@ export default grammar({
       $._expression,
       "{",
       repeat($.match_arm),
+      "}",
+    ),
+
+    struct_literal_expression: $ => seq(
+      field("name", $.identifier),
+      field("fields", $.struct_literal_fields),
+    ),
+
+    struct_literal_fields: $ => seq(
+      "{",
+      commaSep(seq(field("name", $.identifier), ":", field("value", $._expression))),
       "}",
     ),
 

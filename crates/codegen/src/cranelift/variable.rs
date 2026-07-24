@@ -87,6 +87,11 @@ impl<'a> CodegenCtx<'a> {
                     .builder
                     .ins()
                     .stack_addr(self.module.pointer_type, slot, 0);
+                let ptr_size = self.module.pointer_type.bytes();
+                let is_large = crate::layout::size_of(&info.vinyl_type, self.module.types, ptr_size) > 8;
+                if is_large {
+                    return Ok(addr);
+                }
                 let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                 let val = self.func.builder.ins().load(ty, mflags, addr, 0);
                 Ok(val)
