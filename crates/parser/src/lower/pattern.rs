@@ -116,8 +116,7 @@ impl<'a> Lowerer<'a> {
         }
         let name = node_text(&children[0], self.source);
         let mut fields = Vec::new();
-        for i in 1..children.len() {
-            let field_node = &children[i];
+        for field_node in children.iter().skip(1) {
             let field_name = node_text(&self.child_by_field(field_node, "name")?, self.source);
             let pattern = match field_node.named_child(1) {
                 Some(sub_pattern) => self.lower_pattern(&sub_pattern)?,

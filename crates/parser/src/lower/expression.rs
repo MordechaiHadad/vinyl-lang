@@ -244,9 +244,9 @@ impl<'a> Lowerer<'a> {
         }
         let value = self.lower_expression(&children[0])?;
         let mut arms = Vec::new();
-        for i in 1..children.len() {
-            if children[i].kind() == "match_arm" {
-                arms.push(self.lower_match_arm(&children[i])?);
+        for child in children.iter().skip(1) {
+            if child.kind() == "match_arm" {
+                arms.push(self.lower_match_arm(child)?);
             }
         }
         Ok(Expression::Match {
