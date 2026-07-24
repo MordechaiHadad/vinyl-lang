@@ -1,0 +1,47 @@
+# Struct, tuple, and enum examples
+# Run: vinyl run examples/data_types.vnl
+
+# Struct declarations describe named fields. Struct construction is not
+# implemented yet, so this example uses the declaration as documentation.
+struct Point {
+    x: int,
+    y: int,
+}
+
+# Tuple structs are declarations with positional fields.
+tuple Color(int32, int32, int32)
+
+enum Shape {
+    Empty,
+    Circle(int32),
+    Square(int32),
+}
+
+fn tuple_total(): int {
+    let coordinates = (10, 20, 30);
+    coordinates.0 + coordinates.1 + coordinates.2
+}
+
+fn tuple_expression(): int {
+    (100, 200).0 + (300, 400).1
+}
+
+fn enum_units(): int {
+    if Shape::Empty() == Shape::Empty() { 1 } else { 0 }
+}
+
+fn enum_payloads(): int {
+    let circle = Shape::Circle(7);
+    let same_circle = Shape::Circle(7);
+    let different_circle = Shape::Circle(9);
+
+    let same = if circle == same_circle { 1 } else { 0 };
+    let different = if circle == different_circle { 1 } else { 0 };
+    let different_variant = if circle == Shape::Square(7) { 1 } else { 0 };
+
+    same + different + different_variant
+}
+
+fn main(): int {
+    tuple_total() + tuple_expression() + enum_units() + enum_payloads()
+}

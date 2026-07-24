@@ -11,7 +11,10 @@ fn string_index_returns_char() {
 fn string_index_non_int32() {
     let source = "fn f() { let c = \"abc\"[true]; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: index must be an integer");
+    assert!(
+        items.is_err(),
+        "typeck should fail: index must be an integer"
+    );
 }
 
 #[test]

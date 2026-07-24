@@ -59,6 +59,26 @@ fn nested_if_else() {
 }
 
 #[test]
+fn nested_if_in_else() {
+    let src = r#"
+        fn main(): int32 {
+            if false { 0 } else {
+                if true { 10 } else { 20 }
+            }
+        }
+    "#;
+    assert_eq!(common::run(src).unwrap(), 10);
+}
+
+#[test]
+fn else_if_expression() {
+    assert_eq!(
+        common::run("fn main(): int { if false { 1 } else if true { 2 } else { 3 } }").unwrap(),
+        2
+    );
+}
+
+#[test]
 fn cmp_eq_true() {
     assert_eq!(
         common::run("fn main(): int32 { if 3 == 3 { return 1; } 0 }").unwrap(),

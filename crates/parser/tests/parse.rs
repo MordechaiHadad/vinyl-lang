@@ -265,6 +265,15 @@ fn paren_expression() {
 }
 
 #[test]
+fn tuple_type_annotation() {
+    let source = r#"
+fn f(x: (int32, float64)) {}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
 fn type_annotations() {
     let source = r#"
 fn f(x: int32, y: float64, z: string, w: bool, c: char): uint8 {
@@ -296,6 +305,190 @@ fn let_without_equals() {
     let source = "fn main() { let x int32; }";
     let result = vinyl_parser::parse(source);
     assert!(result.is_err(), "parse should fail: let without =");
+}
+
+#[test]
+fn struct_definition() {
+    let source = r#"
+struct Point {
+    x: int32,
+    y: int32,
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn struct_empty() {
+    let source = "struct Empty {}";
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn tuple_definition() {
+    let source = "tuple Pair(int32, float64)";
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn tuple_empty_parens() {
+    let source = "tuple Unit()";
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn enum_definition() {
+    let source = r#"
+enum Option {
+    None,
+    Some(int32),
+    Error { code: int32, message: string },
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn enum_empty() {
+    let source = "enum Empty {}";
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn struct_with_comment() {
+    let source = r#"
+struct Point {
+    # comment inside struct
+    x: int32,
+    y: int32,
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn tuple_expression() {
+    let source = r#"
+fn f() {
+    let a = (1, 2);
+    let b = (1,);
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn field_access_expression() {
+    let source = r#"
+fn f(p: Point): int32 {
+    p.x
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn match_expression() {
+    let source = r#"
+fn f(x: int32): int32 {
+    match x {
+        1 => 10,
+        2 => 20,
+        _ => 0,
+    }
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn match_with_block_arms() {
+    let source = r#"
+fn f(x: int32): int32 {
+    match x {
+        1 => { let y = 10; y },
+        _ => 0,
+    }
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn match_struct_pattern() {
+    let source = r#"
+fn f(p: Point): int32 {
+    match p {
+        Point { x, y } => x + y,
+        _ => 0,
+    }
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn match_tuple_pattern() {
+    let source = r#"
+fn f(): int32 {
+    let pair = (1, 2);
+    match pair {
+        (a, b) => a + b,
+        _ => 0,
+    }
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn match_multiple_arms() {
+    let source = r#"
+fn f(x: int32): int32 {
+    match x {
+        1 => 10,
+        2 => 20,
+        3 => 30,
+        _ => 0,
+    }
+}
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn struct_and_fn_together() {
+    let source = r#"
+struct Point { x: int32, y: int32 }
+
+fn f(p: Point): int32 { p.x }
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
+}
+
+#[test]
+fn tuple_and_struct_defs() {
+    let source = r#"
+tuple Pair(int32, int32)
+struct Point { x: int32, y: int32 }
+"#;
+    let result = vinyl_parser::parse(source);
+    assert!(result.is_ok(), "parse should succeed: {:?}", result.err());
 }
 
 #[test]

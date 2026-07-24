@@ -148,6 +148,134 @@ let mut name: Type = value;
 
 Variables declared at module scope (outside functions) are always **immutable** — the `mut` keyword is not permitted on globals.
 
+### Mutability & References
+
+#### Variable Binding & Mutability
+
+- **Immutable by Default:** Variable declarations using `let` are immutable.
+- **Explicit Mutability:** To allow reassignment, `mut` must be explicitly provided.
+
+```
+let x = 10;     # Immutable
+let mut y = 20; # Mutable
+```
+
+#### Value Assignment & Copy-on-Write (CoW)
+
+- **Immutable Assignment (`let y = x`):** If `x` is immutable, `y` points to `x`'s underlying memory slot internally via static Copy-on-Write (CoW).
+- **Mutable Assignment (`let y = x` when `x` or `y` is `mut`):** Performs an explicit value copy.
+
+```vinyl
+let x = 10;
+let y = x; # Here we will either do the following: if value of x is smaller than the size of a pointer (16 bytes on 64 bits/8 bytes on 32 bits) we will simply copy the value outright, otherwise it will be a literal reference.
+
+let x = 10;
+let mut y = x; # Here we will use a similar strategy but with static CoW (compiler time instead of runtime) instead of a regular reference, so if you later decide to do the following:
+y *= 69; # We will copy the data of x and then modify that data. (Though technically this is smaller than 16 bytes just for demonstration)
+```
+
+#### Reference Semantics (`&`)
+
+References are explicit address bindings that avoid copying memory.
+
+##### One-Way Mutability (Read-Only Reference)
+
+```
+let mut x = 10;
+let y = &x; # 'y' references 'x'
+
+x = 69;     # Allowed: Both 'x' and 'y' now evaluate to 69
+y = 420;    # Compile Error: 'y' is not a mutable reference
+
+# x doesn't have to be mutable in order to be referenced like so:
+let x = 10;
+let y = &x; // Allowed
+```
+
+##### Two-Way Mutability (Read/Write Reference)
+
+```
+let mut x = 10;
+let mut y = &x; # 'y' is a mutable reference to 'x'
+
+y = 420;    # Allowed: Updates the value at 'x' to 420 (x and y are both 420)
+```
+
+##### Value Writing vs. Reference Re-binding
+
+- **Value Store (`y = z`):** Copies the value of `z` into the memory target currently referenced by `y`.
+- **Re-pointing (`y = &z`):** Updates `y` to point to the address of `z`.
+
+```
+let mut x = 10;
+let mut z = 69;
+let mut y = &x;
+
+y = z;  # Overwrites 'x' with 69 (x = 69, y = 69)
+y = &z; # 'y' now points to 'z'
+```
+
+#### Function Semantics & Parameter Passing
+
+##### References Are Exclusively for Side Effects (`&T`)
+
+Passing a reference (`&`) into a function requires a mutable variable argument. This guarantees functions cannot introduce implicit side effects on immutable data.
+
+```
+fn modify(param: &int) {}
+
+let x = 10;
+let mut y = 10;
+
+modify(&x); # Compile Error: Cannot pass immutable binding as '&' reference
+modify(&y); # Allowed
+```
+
+##### Pass-by-Value Defaults (`T`)
+
+When passing arguments by value (`param: int`), immutable data is automatically passed via internal read-only pointers for zero-copy efficiency.
+
+```
+fn read_only(param: int) {}
+
+read_only(x); # Allowed (Zero-copy internal pointer)
+read_only(y); # Allowed (Value copy)
+```
+
+##### Reference Return
+
+Before I decided that vinyl functions cannot return references, but due to the fact that we add GC, there is no problem with this.
+
+```
+fn get_ref(): &int {} # Returns a mutable reference
+```
+
+#### Dynamic Data
+
+Interior pointers into elements of heap allocated data are strictly disallowed to prevent memory invalidation.
+
+```
+let x = [1, 2, 3, 4];
+
+let y = &x[0]; # If x is a fixed sized array this will pass otherwise you will get: Compile Error: Cannot take reference to index element 
+let y = x[0];  # Allowed (Value copy)
+```
+
+#### Lexical Scope & Lifetime Boundaries
+
+References cannot escape their lexical scope. Attempting to point an outer-scope reference to an inner-scope variable is illegal; only value copies are permitted across scope depth boundaries.
+
+```
+{ # Scope Depth 0
+    let mut x = 10;
+    { # Scope Depth 1
+        let y = 69;
+        x = &y; # Compile Error: Cannot reference inner scope variable 'y'
+        x = y;  # Allowed (Value copy)
+    }
+}
+```
+
 ### Comments
 ```
 # line comment
@@ -222,6 +350,58 @@ greet("World", "Hey");                  // "Hey, World"
 ```
 
 ### Structs
+
+#### Unboxed Value Semantics
+
+User-defined structs are intended to be unboxed value types by default.
+
+- **Storage:** Values are laid out contiguously in stack slots or inside parent layouts. They do not carry GC headers or implicit heap-pointer indirections.
+- **Array Layout:** An array of type `[N]T` is one contiguous block of `N * sizeof(T)` bytes.
+- **Current implementation:** Struct declarations, HIR registration, field layout, and field offset resolution are implemented. Struct literal construction and complete struct value operations are not implemented yet.
+
+#### Field Reordering
+
+By default, struct fields are reordered at compile time to reduce interior padding.
+
+1. **Alignment Sorting:** Fields are sorted by descending alignment requirements (`8 -> 4 -> 2 -> 1` bytes).
+2. **Offset Calculation:** Each field offset is computed as `align_to(current_offset, field_alignment)`.
+3. **Struct Padding:** Total size is rounded up to the maximum field alignment.
+
+```vinyl
+# Source definition:
+struct Character {
+    active: bool,
+    id: uint64,
+    hp: uint32,
+}
+
+# Compiled layout:
+# [ id (8B) | hp (4B) | active (1B) | padding (3B) ]
+```
+
+#### FFI Interoperability (`@repr_c`)
+
+Annotating a struct with `@repr_c` disables field reordering and preserves source declaration order for C-compatible layouts.
+
+#### ABI Parameter Passing Rules
+
+The intended ABI preserves value semantics while avoiding unnecessary copies:
+
+- **Small structs (`<= 16` bytes):** Passed directly in CPU registers where the target ABI permits.
+- **Large structs (`> 16` bytes):** Lowered to pass-by-reference under the hood. The source-level parameter remains a value.
+
+The Cranelift backend does not implement these complete aggregate parameter and return rules yet.
+
+#### TODO
+
+- [ ] Implement struct literal construction: `Character { active: true, id: 1, hp: 100 }`.
+- [ ] Implement tuple-struct construction and field access.
+- [ ] Implement aggregate copying, assignment, parameters, and return values.
+- [ ] Implement the complete small/large aggregate ABI, including values larger than one machine register.
+- [ ] Implement deep equality for structs and tuples.
+- [ ] Implement enum layouts and construction for values larger than 8 bytes.
+- [ ] Implement enum payload extraction and exhaustive pattern matching.
+
 ```
 struct Name {
     field: Type,
@@ -229,7 +409,7 @@ struct Name {
 }
 ```
 
-Field access with `.`. Struct update syntax like Rust: `Name { field: new_value, ..other }`.
+Field access with `.`. Struct update syntax like Rust is planned: `Name { field: new_value, ..other }`.
 
 **Field puns**: when a variable name matches a struct field name, you can omit the value.
 
@@ -248,11 +428,15 @@ enum Name {
 }
 ```
 
+Enum variants are constructed with `Name::Variant(...)`. Unit variants currently use empty parentheses, for example `Name::Variant()`. Small enum values supported by the current Cranelift backend are packed into an `i64` containing a discriminant and payload, and equality is supported for those values.
+
 ### Tuples
 ```
 let pair = (value, value);
 let first = pair.0;
 ```
+
+Tuple literals and numeric field access are currently supported. Tuple-struct construction, aggregate passing/return, and deep tuple equality remain TODO.
 
 ### Match
 ```
@@ -263,7 +447,7 @@ match value {
 }
 ```
 
-Exhaustive. Patterns can destructure structs, enums, tuples.
+Planned to be exhaustive. Patterns will destructure structs, enums, and tuples once match code generation is implemented.
 
 ### Error Propagation
 ```
@@ -318,6 +502,16 @@ impl Type {
 
 instance.method();
 ```
+
+## Mutability & Reference TODOs
+
+- [ ] Implement Copy-on-Write for immutable bindings such as `let y = x`, including the copy-on-write transition when a mutable write occurs.
+- [ ] Implement the specified by-value calling convention: immutable arguments use internal read-only pointers, while mutable arguments are copied by value.
+- [ ] Extend reference lifetime validation beyond direct identifier assignments to nested expressions, function arguments, and every reference-producing path.
+- [ ] Reject or fully support references to non-identifiers consistently at typecheck time instead of deferring errors to codegen.
+- [ ] Reject references to parenthesized array elements, such as `&(x[0])`, with the same diagnostic as `&x[0]`.
+- [ ] Support compound assignment through reference parameters, such as `p += 1` for `p: &int32`.
+- [ ] Enforce mutability and type rules for array-element assignment during typechecking.
 
 ## Editions
 

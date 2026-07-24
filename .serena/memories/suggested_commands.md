@@ -1,0 +1,1 @@
+Windows workspace commands: `cargo test`; run an example with `cargo run -- run examples/data_types.vnl`; typecheck with `cargo run -- check <file>`; grammar regeneration from `grammar/` with `tree-sitter generate`. Existing examples document the installed CLI form `vinyl run examples/<name>.vnl`.

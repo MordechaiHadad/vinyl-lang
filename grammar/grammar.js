@@ -1,6 +1,8 @@
 const PREC = {
+  CALL: 14,
   UNARY: 12,
   INDEX: 12,
+  FIELD: 15,
   POWER: 11,
   MULTIPLICATIVE: 10,
   ADDITIVE: 9,
@@ -19,7 +21,11 @@ export default grammar({
 
   extras: $ => [/\s/, $.comment],
 
-  conflicts: $ => [[$._statement, $._expression], [$.unary_expression, $.index_expression]],
+  conflicts: $ => [
+    [$._statement, $._expression],
+    [$.unary_expression, $.index_expression],
+    [$.enum_variant_expression],
+  ],
 
   rules: {
     source_file: $ => repeat($._definition),
@@ -28,6 +34,9 @@ export default grammar({
       repeat($.attribute),
       choice(
         $.function_definition,
+        $.struct_definition,
+        $.tuple_definition,
+        $.enum_definition,
       ),
     ),
 
@@ -44,13 +53,63 @@ export default grammar({
       field("body", $.block),
     ),
 
+    struct_definition: $ => seq(
+      "struct",
+      field("name", $.identifier),
+      "{",
+      commaSep($.field_definition),
+      optional(","),
+      "}",
+    ),
+
+    field_definition: $ => seq(
+      field("name", $.identifier),
+      ":",
+      $._type,
+    ),
+
+    tuple_definition: $ => seq(
+      "tuple",
+      field("name", $.identifier),
+      "(",
+      commaSep($._type),
+      ")",
+    ),
+
+    enum_definition: $ => seq(
+      "enum",
+      field("name", $.identifier),
+      "{",
+      commaSep($.enum_variant),
+      optional(","),
+      "}",
+    ),
+
+    enum_variant: $ => seq(
+      field("name", $.identifier),
+      optional(choice(
+        seq("(", commaSep($._type), ")"),
+        seq("{", commaSep($.field_definition), optional(","), "}"),
+      )),
+    ),
+
     type_annotation: $ => seq(":", $._type),
 
     _type: $ => choice(
       $.simple_type,
       $.generic_type,
       $.array_type,
+      $.reference_type,
+      $.tuple_type,
     ),
+
+    tuple_type: $ => seq(
+      "(",
+      commaSep($._type),
+      ")",
+    ),
+
+    reference_type: $ => seq("&", $._type),
 
     primitive_type: $ => choice(
       'int8', 'int16', 'int32', 'int64', 'int128', 'isize',
@@ -83,7 +142,7 @@ export default grammar({
     ),
 
     parameter: $ => seq(
-      optional("mut"),
+      optional(field("mut", "mut")),
       field("name", $.identifier),
       field("type", $.type_annotation),
     ),
@@ -97,6 +156,7 @@ export default grammar({
 
     _statement: $ => choice(
       $.let_declaration,
+      $.assignment_statement,
       $.expression_statement,
       $.return_statement,
       $.if_expression,
@@ -108,7 +168,7 @@ export default grammar({
 
     let_declaration: $ => seq(
       "let",
-      optional("mut"),
+      optional(field("mut", "mut")),
       field("name", $.identifier),
       optional($.type_annotation),
       "=",
@@ -119,6 +179,13 @@ export default grammar({
     return_statement: $ => seq(
       "return",
       optional($._expression),
+      ";",
+    ),
+
+    assignment_statement: $ => seq(
+      $._expression,
+      field("operator", choice("=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=")),
+      $._expression,
       ";",
     ),
 
@@ -140,10 +207,14 @@ export default grammar({
       $.binary_expression,
       $.unary_expression,
       $.index_expression,
+      $.field_access_expression,
       $.array_expression,
+      $.tuple_expression,
+      $.match_expression,
       $.parenthesized_expression,
       $.block,
       $.if_expression,
+      $.enum_variant_expression,
     ),
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
@@ -191,10 +262,10 @@ export default grammar({
 
     unit_literal: $ => "unit",
 
-    call_expression: $ => seq(
+    call_expression: $ => prec(PREC.CALL, seq(
       field("function", $.identifier),
       field("arguments", $.arguments),
-    ),
+    )),
 
     arguments: $ => seq(
       "(",
@@ -203,7 +274,7 @@ export default grammar({
     ),
 
     unary_expression: $ => prec(PREC.UNARY, seq(
-      field("operator", choice("-", "!", "not")),
+      field("operator", choice("-", "!", "not", "&")),
       $._expression
     )),
 
@@ -228,10 +299,95 @@ export default grammar({
       "]",
     )),
 
+    field_access_expression: $ => prec(PREC.FIELD, seq(
+      $._expression,
+      ".",
+      field("field", choice($.identifier, $.integer_literal)),
+    )),
+
     array_expression: $ => seq(
       "[",
       commaSep($._expression),
       "]",
+    ),
+
+    tuple_expression: $ => seq(
+      "(",
+      $._expression,
+      ",",
+      optional(seq(
+        $._expression,
+        repeat(seq(",", $._expression)),
+      )),
+      optional(","),
+      ")",
+    ),
+
+    match_expression: $ => seq(
+      "match",
+      $._expression,
+      "{",
+      repeat($.match_arm),
+      "}",
+    ),
+
+    enum_variant_expression: $ => prec(PREC.FIELD, seq(
+      field("type", $.identifier),
+      "::",
+      field("variant", $.identifier),
+      optional(field("arguments", $.arguments)),
+    )),
+
+    match_arm: $ => seq(
+      $.pattern,
+      "=>",
+      $._expression,
+      optional(","),
+    ),
+
+    pattern: $ => choice(
+      $.wildcard_pattern,
+      $.identifier_pattern,
+      $.literal_pattern,
+      $.struct_pattern,
+      $.tuple_pattern,
+      $.enum_variant_pattern,
+    ),
+
+    wildcard_pattern: $ => "_",
+
+    identifier_pattern: $ => $.identifier,
+
+    literal_pattern: $ => choice(
+      $.integer_literal,
+      $.bool_literal,
+      $.char_literal,
+      $.string_literal,
+    ),
+
+    struct_pattern: $ => seq(
+      $.identifier,
+      "{",
+      commaSep($.field_pattern),
+      "}",
+    ),
+
+    field_pattern: $ => seq(
+      field("name", $.identifier),
+      optional(seq(":", $.pattern)),
+    ),
+
+    tuple_pattern: $ => seq(
+      "(",
+      commaSep1($.pattern),
+      ")",
+    ),
+
+    enum_variant_pattern: $ => seq(
+      $.identifier,
+      "(",
+      commaSep1($.pattern),
+      ")",
     ),
 
     parenthesized_expression: $ => seq("(", $._expression, ")"),

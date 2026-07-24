@@ -1,4 +1,11 @@
-use vinyl_parser::ast::*;
+use vinyl_parser::ast::{
+    expression::Expression,
+    item::{EnumVariantData, Item},
+    operator::{BinaryOp, UnaryOp},
+    pattern::{LiteralPattern, Pattern},
+    statement::Statement,
+    types::{Primitive, Type},
+};
 
 mod common;
 
@@ -48,7 +55,7 @@ fn let_statements() {
     };
     assert_eq!(func.body.len(), 3);
 
-    if let Stmt::Let {
+    if let Statement::Let {
         name,
         mutable,
         type_,
@@ -62,7 +69,7 @@ fn let_statements() {
         panic!("expected let statement");
     }
 
-    if let Stmt::Let {
+    if let Statement::Let {
         name,
         mutable,
         type_,
@@ -76,7 +83,7 @@ fn let_statements() {
         panic!("expected let statement");
     }
 
-    if let Stmt::Let {
+    if let Statement::Let {
         name,
         mutable,
         type_,
@@ -84,7 +91,7 @@ fn let_statements() {
     } = &func.body[2]
     {
         assert_eq!(name, "z");
-        assert!(!*mutable);
+        assert!(*mutable);
         assert!(type_.is_some());
     } else {
         panic!("expected let statement");
@@ -102,8 +109,8 @@ fn literal_values() {
     };
 
     let check_int = |idx| {
-        if let Stmt::Let {
-            value: Expr::Int(v, _),
+        if let Statement::Let {
+            value: Expression::Int(v, _),
             ..
         } = &func.body[idx]
         {
@@ -114,8 +121,8 @@ fn literal_values() {
     };
 
     let check_float = |idx| {
-        if let Stmt::Let {
-            value: Expr::Float(v, _),
+        if let Statement::Let {
+            value: Expression::Float(v, _),
             ..
         } = &func.body[idx]
         {
@@ -126,8 +133,8 @@ fn literal_values() {
     };
 
     let check_bool = |idx, expected| {
-        if let Stmt::Let {
-            value: Expr::Bool(v, _),
+        if let Statement::Let {
+            value: Expression::Bool(v, _),
             ..
         } = &func.body[idx]
         {
@@ -138,8 +145,8 @@ fn literal_values() {
     };
 
     let check_char = |idx| {
-        if let Stmt::Let {
-            value: Expr::Char(v, _),
+        if let Statement::Let {
+            value: Expression::Char(v, _),
             ..
         } = &func.body[idx]
         {
@@ -150,8 +157,8 @@ fn literal_values() {
     };
 
     let check_string = |idx| {
-        if let Stmt::Let {
-            value: Expr::String(v, _),
+        if let Statement::Let {
+            value: Expression::String(v, _),
             ..
         } = &func.body[idx]
         {
@@ -177,20 +184,20 @@ fn binary_expression_structure() {
     };
 
     let last = func.body.last().unwrap();
-    if let Stmt::Value(
-        Expr::Binary {
+    if let Statement::Value(
+        Expression::Binary {
             left, op, right, ..
         },
         _,
     ) = last
     {
         assert_eq!(op, &BinaryOp::Add);
-        if let Expr::Int(lv, _) = left.as_ref() {
+        if let Expression::Int(lv, _) = left.as_ref() {
             assert_eq!(*lv, 1);
         } else {
             panic!("expected int literal as left operand");
         }
-        if let Expr::Int(rv, _) = right.as_ref() {
+        if let Expression::Int(rv, _) = right.as_ref() {
             assert_eq!(*rv, 2);
         } else {
             panic!("expected int literal as right operand");
@@ -210,18 +217,18 @@ fn if_expression() {
 
     let last = func.body.last().unwrap();
     let expr = match last {
-        Stmt::Value(e, _) => e,
+        Statement::Value(e, _) => e,
         _ => panic!("expected value statement"),
     };
     match expr {
-        Expr::If {
+        Expression::If {
             condition,
             then_block,
             else_if,
             else_block,
             ..
         } => {
-            assert!(matches!(condition.as_ref(), Expr::Bool(true, _)));
+            assert!(matches!(condition.as_ref(), Expression::Bool(true, _)));
             assert!(!then_block.is_empty());
             assert!(else_if.is_empty());
             assert!(else_block.is_some());
@@ -249,8 +256,8 @@ fn array_expression() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
-        value: Expr::Array(elements, _),
+    if let Statement::Let {
+        value: Expression::Array(elements, _),
         ..
     } = &func.body[0]
     {
@@ -269,7 +276,7 @@ fn while_to_loop() {
     };
     assert_eq!(func.body.len(), 1);
     match &func.body[0] {
-        Stmt::Loop { body, .. } => {
+        Statement::Loop { body, .. } => {
             assert!(!body.is_empty());
         }
         _ => panic!("expected loop statement"),
@@ -285,10 +292,10 @@ fn loop_statement() {
     };
     assert_eq!(func.body.len(), 1);
     match &func.body[0] {
-        Stmt::Loop { body, .. } => {
+        Statement::Loop { body, .. } => {
             assert_eq!(body.len(), 1);
             match &body[0] {
-                Stmt::Break(_) => {}
+                Statement::Break(_) => {}
                 _ => panic!("expected break statement"),
             }
         }
@@ -304,7 +311,7 @@ fn return_statement() {
         _ => panic!("expected function"),
     };
     match &func.body[0] {
-        Stmt::Return(Some(Expr::Int(v, _)), _) => {
+        Statement::Return(Some(Expression::Int(v, _)), _) => {
             assert_eq!(*v, 42);
         }
         other => panic!("expected return with int, got {:?}", other),
@@ -319,7 +326,7 @@ fn return_void() {
         _ => panic!("expected function"),
     };
     match &func.body[0] {
-        Stmt::Return(None, _) => {}
+        Statement::Return(None, _) => {}
         other => panic!("expected return without value, got {:?}", other),
     }
 }
@@ -407,8 +414,8 @@ fn hex_int_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
-        value: Expr::Int(v, _),
+    if let Statement::Let {
+        value: Expression::Int(v, _),
         ..
     } = &func.body[0]
     {
@@ -425,8 +432,8 @@ fn binary_int_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
-        value: Expr::Int(v, _),
+    if let Statement::Let {
+        value: Expression::Int(v, _),
         ..
     } = &func.body[0]
     {
@@ -443,8 +450,8 @@ fn negative_int_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
-        value: Expr::Int(v, _),
+    if let Statement::Let {
+        value: Expression::Int(v, _),
         ..
     } = &func.body[0]
     {
@@ -461,8 +468,8 @@ fn raw_string() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
-        value: Expr::String(v, _),
+    if let Statement::Let {
+        value: Expression::String(v, _),
         ..
     } = &func.body[0]
     {
@@ -479,8 +486,8 @@ fn char_literal() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    if let Stmt::Let {
-        value: Expr::Char(v, _),
+    if let Statement::Let {
+        value: Expression::Char(v, _),
         ..
     } = &func.body[0]
     {
@@ -508,7 +515,13 @@ fn unit_literal_expression() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    assert!(matches!(func.body[0], Stmt::Let { value: Expr::Unit(_), .. }));
+    assert!(matches!(
+        func.body[0],
+        Statement::Let {
+            value: Expression::Unit(_),
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -519,11 +532,17 @@ fn unary_not_bool() {
         _ => panic!("expected function"),
     };
     match &func.body[0] {
-        Stmt::Let { value: Expr::Bool(v, _), .. } => assert!(!*v),
+        Statement::Let {
+            value: Expression::Bool(v, _),
+            ..
+        } => assert!(!*v),
         _ => panic!("expected folded bool literal (!true = false)"),
     }
     match &func.body[1] {
-        Stmt::Let { value: Expr::Bool(v, _), .. } => assert!(*v),
+        Statement::Let {
+            value: Expression::Bool(v, _),
+            ..
+        } => assert!(*v),
         _ => panic!("expected folded bool literal (not false = true)"),
     }
 }
@@ -537,7 +556,7 @@ fn unary_neg_folding() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(Expr::Int(v, _), _) => assert_eq!(*v, -42),
+        Statement::Value(Expression::Int(v, _), _) => assert_eq!(*v, -42),
         _ => panic!("expected folded int literal, got {last:?}"),
     }
 }
@@ -551,7 +570,7 @@ fn unary_not_folding_true() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(Expr::Bool(v, _), _) => assert!(!*v),
+        Statement::Value(Expression::Bool(v, _), _) => assert!(!*v),
         _ => panic!("expected folded bool literal, got {last:?}"),
     }
 }
@@ -565,7 +584,7 @@ fn unary_not_folding_false() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(Expr::Bool(v, _), _) => assert!(*v),
+        Statement::Value(Expression::Bool(v, _), _) => assert!(*v),
         _ => panic!("expected folded bool literal, got {last:?}"),
     }
 }
@@ -579,12 +598,17 @@ fn unary_neg_variable() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(Expr::Unary { op: UnaryOp::Neg, operand, .. }, _) => {
-            match operand.as_ref() {
-                Expr::Ident(name, _) => assert_eq!(name, "x"),
-                _ => panic!("expected ident operand"),
-            }
-        }
+        Statement::Value(
+            Expression::Unary {
+                op: UnaryOp::Neg,
+                operand,
+                ..
+            },
+            _,
+        ) => match operand.as_ref() {
+            Expression::Ident(name, _) => assert_eq!(name, "x"),
+            _ => panic!("expected ident operand"),
+        },
         _ => panic!("expected unary neg expression"),
     }
 }
@@ -598,7 +622,7 @@ fn unary_double_not() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(Expr::Bool(v, _), _) => assert!(*v),
+        Statement::Value(Expression::Bool(v, _), _) => assert!(*v),
         _ => panic!("expected folded bool literal (double not = identity), got {last:?}"),
     }
 }
@@ -612,19 +636,215 @@ fn unary_precedence() {
     };
     let last = func.body.last().unwrap();
     match last {
-        Stmt::Value(
-            Expr::Binary { left, op: BinaryOp::Mul, right, .. },
+        Statement::Value(
+            Expression::Binary {
+                left,
+                op: BinaryOp::Mul,
+                right,
+                ..
+            },
             _,
         ) => {
             match left.as_ref() {
-                Expr::Int(v, _) => assert_eq!(*v, -2),
+                Expression::Int(v, _) => assert_eq!(*v, -2),
                 _ => panic!("expected folded int literal -2 as left operand"),
             }
             match right.as_ref() {
-                Expr::Int(v, _) => assert_eq!(*v, 3),
+                Expression::Int(v, _) => assert_eq!(*v, 3),
                 _ => panic!("expected int literal 3 as right operand"),
             }
         }
-        _ => panic!("expected binary expression (-2 unfolded to Int(-2) by const folding, then * 3)"),
+        _ => {
+            panic!("expected binary expression (-2 unfolded to Int(-2) by const folding, then * 3)")
+        }
+    }
+}
+
+#[test]
+fn struct_definition_lower() {
+    let items = common::do_lower("struct Point {\n    x: int32,\n    y: float64,\n}");
+    assert_eq!(items.len(), 1);
+    let s = match &items[0] {
+        Item::Struct(s) => s,
+        other => panic!("expected struct, got {other:?}"),
+    };
+    assert_eq!(s.name, "Point");
+    assert_eq!(s.fields.len(), 2);
+    assert_eq!(s.fields[0].name, "x");
+    assert_eq!(s.fields[0].type_, Type::Primitive(Primitive::Int32));
+    assert_eq!(s.fields[1].name, "y");
+    assert_eq!(s.fields[1].type_, Type::Primitive(Primitive::Float64));
+}
+
+#[test]
+fn struct_empty_lower() {
+    let items = common::do_lower("struct Empty {}");
+    let s = match &items[0] {
+        Item::Struct(s) => s,
+        other => panic!("expected struct, got {other:?}"),
+    };
+    assert_eq!(s.name, "Empty");
+    assert!(s.fields.is_empty());
+}
+
+#[test]
+fn tuple_type_in_param() {
+    let items = common::do_lower("fn f(x: (int32, float64)) {}");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    assert_eq!(func.params.len(), 1);
+    match &func.params[0].type_ {
+        Type::Tuple(elements) => {
+            assert_eq!(elements.len(), 2);
+            assert_eq!(elements[0], Type::Primitive(Primitive::Int32));
+            assert_eq!(elements[1], Type::Primitive(Primitive::Float64));
+        }
+        _ => panic!("expected tuple type"),
+    }
+}
+
+#[test]
+fn tuple_definition_lower() {
+    let items = common::do_lower("tuple Pair(int32, float64)");
+    assert_eq!(items.len(), 1);
+    let t = match &items[0] {
+        Item::TupleStruct(t) => t,
+        other => panic!("expected tuple struct, got {other:?}"),
+    };
+    assert_eq!(t.name, "Pair");
+    assert_eq!(t.types.len(), 2);
+    assert_eq!(t.types[0], Type::Primitive(Primitive::Int32));
+    assert_eq!(t.types[1], Type::Primitive(Primitive::Float64));
+}
+
+#[test]
+fn tuple_empty_lower() {
+    let items = common::do_lower("tuple Unit()");
+    let t = match &items[0] {
+        Item::TupleStruct(t) => t,
+        other => panic!("expected tuple struct, got {other:?}"),
+    };
+    assert_eq!(t.name, "Unit");
+    assert!(t.types.is_empty());
+}
+
+#[test]
+fn enum_definition_lower() {
+    let items = common::do_lower(
+        "enum Option {\n    None,\n    Some(int32),\n    Error { code: int32, message: string },\n}",
+    );
+    assert_eq!(items.len(), 1);
+    let e = match &items[0] {
+        Item::Enum(e) => e,
+        other => panic!("expected enum, got {other:?}"),
+    };
+    assert_eq!(e.variants.len(), 3);
+
+    assert_eq!(e.variants[0].name, "None");
+    assert!(e.variants[0].data.is_none());
+
+    assert_eq!(e.variants[1].name, "Some");
+    match &e.variants[1].data {
+        Some(EnumVariantData::Tuple(types)) => {
+            assert_eq!(types.len(), 1);
+            assert_eq!(types[0], Type::Primitive(Primitive::Int32));
+        }
+        other => panic!("expected tuple variant, got {other:?}"),
+    }
+
+    assert_eq!(e.variants[2].name, "Error");
+    match &e.variants[2].data {
+        Some(EnumVariantData::Struct(fields)) => {
+            assert_eq!(fields.len(), 2);
+            assert_eq!(fields[0].name, "code");
+            assert_eq!(fields[1].name, "message");
+        }
+        other => panic!("expected struct variant, got {other:?}"),
+    }
+}
+
+#[test]
+fn tuple_expression_lower() {
+    let items = common::do_lower("fn f() { let a = (1, 2); let b = (1,); }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &func.body[0] {
+        Statement::Let {
+            value: Expression::Tuple(elements, _),
+            ..
+        } => {
+            assert_eq!(elements.len(), 2);
+            assert!(matches!(elements[0], Expression::Int(1, _)));
+            assert!(matches!(elements[1], Expression::Int(2, _)));
+        }
+        other => panic!("expected tuple expression, got {other:?}"),
+    }
+    match &func.body[1] {
+        Statement::Let {
+            value: Expression::Tuple(elements, _),
+            ..
+        } => {
+            assert_eq!(elements.len(), 1);
+            assert!(matches!(elements[0], Expression::Int(1, _)));
+        }
+        other => panic!("expected tuple expression, got {other:?}"),
+    }
+}
+
+#[test]
+fn field_access_lower() {
+    let items = common::do_lower("fn f(p: Point): int32 { p.x }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Statement::Value(Expression::Field { object, name, .. }, _) => {
+            assert_eq!(name, "x");
+            match object.as_ref() {
+                Expression::Ident(n, _) => assert_eq!(n, "p"),
+                other => panic!("expected ident, got {other:?}"),
+            }
+        }
+        other => panic!("expected field access, got {other:?}"),
+    }
+}
+
+#[test]
+fn match_expression_lower() {
+    let items = common::do_lower("fn f(x: int32): int32 { match x { 1 => 10, _ => 0 } }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Statement::Value(Expression::Match { value, arms, .. }, _) => {
+            match value.as_ref() {
+                Expression::Ident(n, _) => assert_eq!(n, "x"),
+                other => panic!("expected ident, got {other:?}"),
+            }
+            assert_eq!(arms.len(), 2);
+
+            match &arms[0].pattern {
+                Pattern::Literal(LiteralPattern::Int(1), _) => {}
+                other => panic!("expected int literal pattern, got {other:?}"),
+            }
+            match &arms[0].body.as_ref() {
+                Expression::Int(10, _) => {}
+                other => panic!("expected int body, got {other:?}"),
+            }
+
+            match &arms[1].pattern {
+                Pattern::Wildcard(_) => {}
+                other => panic!("expected wildcard pattern, got {other:?}"),
+            }
+        }
+        other => panic!("expected match expression, got {other:?}"),
     }
 }

@@ -1,0 +1,1 @@
+Vinyl is a Rust workspace compiler for `.vnl` source. Main flow: grammar/tree-sitter parser -> AST lowering in `crates/parser` -> HIR/typechecking in `crates/typecheck` -> Cranelift JIT in `crates/codegen` -> CLI in `crates/cli`. Examples live under `examples/`. Read `mem:tech_stack` for tooling and `mem:suggested_commands` for Windows commands.

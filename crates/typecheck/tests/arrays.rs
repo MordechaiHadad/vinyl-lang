@@ -39,7 +39,10 @@ fn array_index_int32() {
 fn array_index_non_int32() {
     let source = "fn main() { let arr = [1, 2]; arr[true]; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: index must be an integer");
+    assert!(
+        items.is_err(),
+        "typeck should fail: index must be an integer"
+    );
 }
 
 #[test]
@@ -60,14 +63,20 @@ fn array_index_int_var() {
 fn array_index_float() {
     let source = "fn main() { let arr = [1, 2]; arr[1.5]; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: index must be an integer");
+    assert!(
+        items.is_err(),
+        "typeck should fail: index must be an integer"
+    );
 }
 
 #[test]
 fn array_index_string() {
     let source = "fn main() { let arr = [1, 2]; arr[\"hello\"]; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: index must be an integer");
+    assert!(
+        items.is_err(),
+        "typeck should fail: index must be an integer"
+    );
 }
 
 #[test]

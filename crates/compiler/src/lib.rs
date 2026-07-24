@@ -2,7 +2,7 @@ use miette::Diagnostic;
 use std::error::Error;
 use std::fmt;
 use tracing::instrument;
-use vinyl_parser::lower::LowerError;
+use vinyl_parser::lower::error::LowerError;
 use vinyl_typecheck::CompileWarning;
 use vinyl_typecheck::TypeError;
 
