@@ -1,20 +1,60 @@
 # Struct, tuple, and enum examples
 # Run: vinyl run examples/data_types.vnl
 
-# Struct declarations describe named fields. Struct construction is not
-# implemented yet, so this example uses the declaration as documentation.
 struct Point {
     x: int,
     y: int,
 }
 
-# Tuple structs are declarations with positional fields.
-tuple Color(int32, int32, int32)
+struct Triple {
+    a: int,
+    b: int,
+    c: int,
+}
+
+struct Inner {
+    value: int,
+}
+
+struct Outer {
+    inner: Inner,
+    extra: int,
+}
 
 enum Shape {
     Empty,
     Circle(int32),
     Square(int32),
+}
+
+fn struct_fields(): int {
+    let p = Point { x: 10, y: 20 };
+    p.x + p.y
+}
+
+fn struct_field_assign(): int {
+    let mut p = Point { x: 10, y: 20 };
+    p.x = 30;
+    p.x
+}
+
+fn struct_param(p: Point): int {
+    p.x + p.y
+}
+
+fn large_struct_fields(): int {
+    let t = Triple { a: 1, b: 2, c: 3 };
+    t.a + t.b + t.c
+}
+
+fn nested_struct(): int {
+    let o = Outer { inner: Inner { value: 42 }, extra: 10 };
+    o.inner.value + o.extra
+}
+
+fn large_tuple(): int {
+    let t = (1, 2, 3);
+    t.0 + t.1 + t.2
 }
 
 fn tuple_total(): int {
@@ -43,5 +83,16 @@ fn enum_payloads(): int {
 }
 
 fn main(): int {
-    tuple_total() + tuple_expression() + enum_units() + enum_payloads()
+    let a = struct_fields();
+    let b = struct_field_assign();
+    let c = struct_param(Point { x: 3, y: 4 });
+    let d = large_struct_fields();
+    let e = nested_struct();
+    let g = large_tuple();
+    let h = tuple_total();
+    let i = tuple_expression();
+    let j = enum_units();
+    let k = enum_payloads();
+
+    a + b + c + d + e + g + h + i + j + k
 }
