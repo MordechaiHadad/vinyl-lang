@@ -128,6 +128,7 @@ impl<'a> Lowerer<'a> {
                     index: Box::new(index),
                 })
             }
+            "pipe_expression" => self.lower_pipe(node),
             "if_expression" => self.lower_if(node),
             kind => Err(self.invalid_kind(node, kind, "expression")),
         }
@@ -348,6 +349,56 @@ impl<'a> Lowerer<'a> {
             op,
             right: Box::new(right),
         })
+    }
+
+    pub(super) fn lower_pipe(&self, node: &Node) -> Result<Expression, LowerError> {
+        let span = SourceSpan::from(node.start_byte()..node.end_byte());
+        let children = children(node);
+        if children.len() < 2 {
+            return Err(self.span_error(node, "incomplete pipe expression"));
+        }
+        let left = self.lower_expression(&children[0])?;
+        let op = self.child_by_field(node, "operator")?;
+        let pipe_to_first = match node_text(&op, self.source).as_str() {
+            "|>" => true,
+            "|>>" => false,
+            other => return Err(self.span_error(node, &format!("unknown pipe operator `{other}`"))),
+        };
+        let right = &children[1];
+        match right.kind() {
+            "call_expression" => {
+                let func_node = self.child_by_field(right, "function")?;
+                let function = self.lower_expression(&func_node)?;
+                let args_node = self.child_by_field(right, "arguments")?;
+                let mut args = Vec::new();
+                for i in 0..args_node.named_child_count() {
+                    if let Some(child) = args_node.named_child(i as u32) {
+                        args.push(self.lower_expression(&child)?);
+                    }
+                }
+                if pipe_to_first {
+                    args.insert(0, left);
+                } else {
+                    args.push(left);
+                }
+                Ok(Expression::Call {
+                    span,
+                    function: Box::new(function),
+                    args,
+                })
+            }
+            "identifier" => {
+                let name = node_text(right, self.source);
+                let name_span = SourceSpan::from(right.start_byte()..right.end_byte());
+                let function = Expression::Ident(name, name_span);
+                Ok(Expression::Call {
+                    span,
+                    function: Box::new(function),
+                    args: vec![left],
+                })
+            }
+            _ => Err(self.span_error(right, "pipe target must be a function call or identifier")),
+        }
     }
 
     pub(super) fn lower_binary_op(&self, node: &Node) -> Result<BinaryOp, LowerError> {

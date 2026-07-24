@@ -1,4 +1,5 @@
 const PREC = {
+  PIPE: 0,
   CALL: 14,
   UNARY: 12,
   INDEX: 12,
@@ -212,6 +213,7 @@ export default grammar({
       $.array_expression,
       $.tuple_expression,
       $.match_expression,
+      $.pipe_expression,
       $.parenthesized_expression,
       $.block,
       $.if_expression,
@@ -402,6 +404,12 @@ export default grammar({
       commaSep1($.pattern),
       ")",
     ),
+
+    pipe_expression: $ => prec.left(PREC.PIPE, seq(
+      field("left", $._expression),
+      field("operator", choice("|>", "|>>")),
+      field("right", $._expression),
+    )),
 
     parenthesized_expression: $ => seq("(", $._expression, ")"),
 

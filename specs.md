@@ -130,6 +130,7 @@ Bitwise:    &  |  ^  ~  <<  >>
 Assignment: =  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 Range:      ..  ..=  (exclusive/inclusive)
 Access:     .  ?.  (optional chaining on Option)
+Pipe:       |>  |>>  (forward pipe: first / last argument)
 Error prop: ?  (unwraps Result/Option, propagates error/None)
 Unwrap:     ??  (unwrap `Option`/`Result` with a fallback or early return)
 ```
@@ -137,6 +138,33 @@ Unwrap:     ??  (unwrap `Option`/`Result` with a fallback or early return)
 Unary `-` negates a numeric value. Unary `!` / `not` perform logical NOT on a `bool` -- no truthiness coercion.
 
 No `++` or `--`. Use `+= 1` / `-= 1`.
+
+### Pipe Operators
+
+The pipe operators `|>` and `|>>` provide a forward-pipeline syntax for chaining function calls. They are syntactic sugar — the compiler desugars them into nested function calls at parse time. No new AST node, HIR node, or runtime representation is introduced.
+
+- `|>` pipes the left operand as the **first** argument to the function on the right.
+- `|>>` pipes the left operand as the **last** argument to the function on the right.
+
+```
+x |> f()          // → f(x)
+x |> f(a, b)      // → f(x, a, b)
+x |> f            // → f(x)          (bare identifier treated as function call)
+x |>> f(a, b)     // → f(a, b, x)
+x |>> f()         // → f(x)
+5 |> int_func()   // → int_func(5)    (works with literals too)
+```
+
+**Chaining** — multiple pipes associate left-to-right:
+
+```
+x |> f |> g       // → g(f(x))
+x |> f(a) |> g(b) // → g(f(x, a), b)
+```
+
+**Type inference** — the first function in a pipe chain infers its type normally. The piped result is then unified with the parameter of the next function, propagating the type through the chain. Type errors are reported at the point of mismatch in the chain.
+
+The right side of a pipe must be a function call (with or without arguments) or a bare identifier referencing a function. Piping into non-callable expressions produces a compile error.
 
 ### Variable Declaration
 

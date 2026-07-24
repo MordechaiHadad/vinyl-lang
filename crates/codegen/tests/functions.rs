@@ -75,3 +75,40 @@ fn unit_return_unit() {
 fn int_default_literal() {
     assert_eq!(common::run("fn main(): int { 42 }").unwrap(), 42);
 }
+
+#[test]
+fn pipe_first_arg() {
+    assert_eq!(
+        common::run("fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { 5 |> add(3) }")
+            .unwrap(),
+        8
+    );
+}
+
+#[test]
+fn pipe_last_arg() {
+    assert_eq!(
+        common::run("fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { 3 |>> add(5) }")
+            .unwrap(),
+        8
+    );
+}
+
+#[test]
+fn pipe_chain() {
+    let src = r#"
+        fn add(a: int32, b: int32): int32 { a + b }
+        fn triple(n: int32): int32 { n * 3 }
+        fn main(): int32 { 2 |> add(3) |> triple() }
+    "#;
+    assert_eq!(common::run(src).unwrap(), 15);
+}
+
+#[test]
+fn pipe_bare_ident() {
+    assert_eq!(
+        common::run("fn double(n: int32): int32 { n * 2 } fn main(): int32 { 7 |> double }")
+            .unwrap(),
+        14
+    );
+}

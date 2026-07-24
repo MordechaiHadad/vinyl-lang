@@ -142,3 +142,45 @@ fn function_call_in_binary() {
     let items = common::compile(source);
     assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
 }
+
+#[test]
+fn pipe_first_arg() {
+    let source = "fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { 5 |> add(3) }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn pipe_last_arg() {
+    let source = "fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { 3 |>> add(5) }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn pipe_chain() {
+    let source = "fn add(a: int32, b: int32): int32 { a + b } fn triple(n: int32): int32 { n * 3 } fn main(): int32 { 2 |> add(3) |> triple() }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn pipe_bare_ident() {
+    let source = "fn double(n: int32): int32 { n * 2 } fn main(): int32 { 5 |> double }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn pipe_type_error() {
+    let source = "fn add(a: int32, b: int32): int32 { a + b } fn main(): int32 { \"hello\" |> add(3) }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: string piped to int32 param");
+}
+
+#[test]
+fn pipe_chain_type_error() {
+    let source = "fn add(a: int32, b: int32): int32 { a + b } fn triple(n: int32): int32 { n * 3 } fn main(): int32 { true |> add(3) |> triple() }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: bool piped to int32 param");
+}
