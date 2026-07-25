@@ -5,23 +5,19 @@
 
 fn clamp(value: int, low: int, high: int): int {
     if value < low { low }
-    else {
-        if value > high { high } else { value }
-    }
+    else if value > high { high }
+    else { value }
 }
 
 fn rating(score: int): int {
     if score >= 90 { 3 }
-    else {
-        if score >= 60 { 2 }
-        else {
-            if score >= 30 { 1 } else { 0 }
-        }
-    }
+    else if score >= 60 { 2 }
+    else if score >= 30 { 1 }
+    else { 0 }
 }
 
 fn absolute(n: int): int {
-    if n < 0 { 0 - n } else { n }
+    if n < 0 { -n } else { n }
 }
 
 fn min(a: int, b: int): int {
@@ -42,7 +38,7 @@ fn quadrant(x: int, y: int): int {
 # --- If inside arithmetic ---
 
 fn sum_abs(a: int, b: int): int {
-    (if a < 0 { 0 - a } else { a }) + (if b < 0 { 0 - b } else { b })
+    (if a < 0 { -a } else { a }) + (if b < 0 { -b } else { b })
 }
 
 # --- Recursion (functional iteration without mutation) ---
@@ -69,10 +65,8 @@ fn count_digits(n: int): int {
 
 fn collatz_steps(n: int): int {
     if n == 1 { 0 }
-    else {
-        if n % 2 == 0 { 1 + collatz_steps(n / 2) }
-        else { 1 + collatz_steps(3 * n + 1) }
-    }
+    else if n % 2 == 0 { 1 + collatz_steps(n / 2) }
+    else { 1 + collatz_steps(3 * n + 1) }
 }
 
 # --- While (condition checked each iteration) ---
@@ -104,6 +98,31 @@ fn loop_cond_break(n: int): int {
     n
 }
 
+# --- Working while loop (sum 1 to n) ---
+
+fn sum_while(n: int): int {
+    let mut sum = 0;
+    let mut i = 1;
+    while i <= n {
+        sum += i;
+        i += 1;
+    }
+    sum
+}
+
+# --- Working loop with break (countdown) ---
+
+fn countdown_loop(n: int): int {
+    let mut result = 0;
+    let mut i = n;
+    loop {
+        if i <= 0 { break; }
+        result += i;
+        i -= 1;
+    }
+    result
+}
+
 # --- Loop with continue (syntactic demonstration) ---
 
 fn loop_with_continue(): int {
@@ -130,7 +149,9 @@ fn main(): int {
     let wib = while_immediate_break();
     let lib = loop_immediate_break();
     let lcb = loop_cond_break(0);
+    let sw = sum_while(10);
+    let cdl = countdown_loop(5);
     let lwc = loop_with_continue();
 
-    c + r + a + m + q + sa + fact + fib + g + sr + cd + cs + wne + wib + lib + lcb + lwc
+    c + r + a + m + q + sa + fact + fib + g + sr + cd + cs + wne + wib + lib + lcb + sw + cdl + lwc
 }
