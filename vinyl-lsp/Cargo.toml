@@ -1,0 +1,16 @@
+[package]
+name = "vinyl-lsp"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vinyl-lsp"
+path = "src/main.rs"
+
+[dependencies]
+eyre = "0.6"
+tokio = { version = "1", features = ["full"] }
+tower-lsp = "0.20"
+vinyl-formatter = { path = "../compiler/crates/formatter" }
+vinyl-parser = { path = "../compiler/crates/parser" }
+vinyl-typecheck = { path = "../compiler/crates/typecheck" }
