@@ -1,7 +1,9 @@
-use vinyl_parser::ast::{item::Item, types::{Primitive, Type}};
+use vinyl_parser::ast::{
+    item::Item,
+    types::{Primitive, Type},
+};
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 #[test]
 fn struct_definition_lower() {

@@ -1,3 +1,4 @@
+mod common;
 #[path = "lower/attributes.rs"]
 mod attributes;
 #[path = "lower/control_flow.rs"]

@@ -8,7 +8,7 @@
 
 ## Architecture
 
-File extension: `.vnl`
+File extension: `.vn`
 
 ### Memory
 - Automatic GC heap, no borrow checker, no manual memory management

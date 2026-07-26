@@ -33,12 +33,14 @@ export default grammar({
     source_file: $ => repeat($._definition),
 
     _definition: $ => seq(
+      optional("public"),
       repeat($.attribute),
       choice(
         $.function_definition,
         $.struct_definition,
         $.tuple_definition,
         $.enum_definition,
+        $.import_statement,
       ),
     ),
 
@@ -166,6 +168,7 @@ export default grammar({
       $.loop_statement,
       $.break_statement,
       $.continue_statement,
+      $.import_statement,
     ),
 
     let_declaration: $ => seq(
@@ -242,6 +245,14 @@ export default grammar({
       repeat(/[^"]/),
       '"',
     )),
+
+    import_statement: $ => seq(
+      "import",
+      field("path", $.import_path),
+      ";",
+    ),
+
+    import_path: $ => sep1($.identifier, "::"),
 
     attribute: $ => seq(
       "@",
@@ -444,4 +455,8 @@ function commaSep(rule) {
 
 function commaSep1(rule) {
   return seq(rule, repeat(seq(",", rule)));
+}
+
+function sep1(rule, separator) {
+  return seq(rule, repeat(seq(separator, rule)));
 }

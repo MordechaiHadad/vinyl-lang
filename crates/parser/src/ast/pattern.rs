@@ -1,6 +1,6 @@
 use miette::SourceSpan;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Pattern {
     Wildcard(SourceSpan),
     Ident(String, SourceSpan),
@@ -31,7 +31,7 @@ impl Pattern {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum LiteralPattern {
     Int(i128),
     Bool(bool),

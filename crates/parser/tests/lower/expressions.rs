@@ -5,8 +5,7 @@ use vinyl_parser::ast::{
     statement::Statement,
 };
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 #[test]
 fn if_expression() {

@@ -763,6 +763,10 @@
           "named": true
         },
         {
+          "type": "import_statement",
+          "named": true
+        },
+        {
           "type": "index_expression",
           "named": true
         },
@@ -1472,6 +1476,37 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "import_path",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "import_statement",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "import_path",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2514,6 +2549,10 @@
           "named": true
         },
         {
+          "type": "import_statement",
+          "named": true
+        },
+        {
           "type": "struct_definition",
           "named": true
         },
@@ -3400,6 +3439,10 @@
     "named": false
   },
   {
+    "type": "import",
+    "named": false
+  },
+  {
     "type": "int",
     "named": false
   },
@@ -3453,6 +3496,10 @@
   },
   {
     "type": "or",
+    "named": false
+  },
+  {
+    "type": "public",
     "named": false
   },
   {

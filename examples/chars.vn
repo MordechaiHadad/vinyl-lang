@@ -1,5 +1,5 @@
 # Char type examples
-# Run: vinyl run examples/chars.vnl
+# Run: vinyl run examples/chars.vn
 
 fn is_letter(c: char): int {
     if c >= 'a' && c <= 'z' { 1 } else { 0 }

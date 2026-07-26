@@ -28,8 +28,15 @@ impl<'a> Lowerer<'a> {
         let mut items = Vec::new();
         let mut errors = Vec::new();
         let mut pending_attrs: Vec<Attribute> = Vec::new();
-        for i in 0..node.named_child_count() {
-            if let Some(child) = node.named_child(i as u32) {
+        let mut pending_public = false;
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i as u32) {
+                if !child.is_named() {
+                    if child.kind() == "public" {
+                        pending_public = true;
+                    }
+                    continue;
+                }
                 match child.kind() {
                     "attribute" => match self.lower_attribute(&child) {
                         Ok(attr) => pending_attrs.push(attr),
@@ -37,7 +44,7 @@ impl<'a> Lowerer<'a> {
                     },
                     "comment" => {}
                     kind => {
-                        let mut item = self.lower_item(&child, kind);
+                        let mut item = self.lower_item(&child, kind, pending_public);
                         if let Ok(ref mut item) = item {
                             match item {
                                 Item::Function(f) => f.attrs = std::mem::take(&mut pending_attrs),
@@ -48,9 +55,11 @@ impl<'a> Lowerer<'a> {
                                     t.attrs = std::mem::take(&mut pending_attrs);
                                 }
                                 Item::Enum(e) => e.attrs = std::mem::take(&mut pending_attrs),
+                                Item::Import(_) => {}
                             }
                         }
                         pending_attrs.clear();
+                        pending_public = false;
                         match item {
                             Ok(item) => items.push(item),
                             Err(e) => errors.push(e),

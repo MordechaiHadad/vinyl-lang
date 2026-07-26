@@ -3,8 +3,7 @@ use vinyl_parser::ast::{
     types::{Primitive, Type},
 };
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 #[test]
 fn enum_definition_lower() {

@@ -22,12 +22,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Parse, type check, and JIT compile a Vinyl file
-    Run { file: PathBuf },
+    Run { file: Option<PathBuf> },
     /// Parse and type check a Vinyl file without generating code
-    Check { file: PathBuf },
+    Check { file: Option<PathBuf> },
     /// Parse, type check, and AOT compile a Vinyl file to a native binary
     Build {
-        file: PathBuf,
+        file: Option<PathBuf>,
         #[arg(short, long, default_value = "a.out")]
         output: PathBuf,
     },
@@ -53,12 +53,10 @@ fn init_tracing(verbose: u8) -> eyre::Result<()> {
     Ok(())
 }
 
-fn compile_and_report(
-    source: &str,
-    source_name: &str,
-) -> eyre::Result<Vec<vinyl_typecheck::hir::HirItem>> {
+fn compile_and_report(file: &std::path::Path) -> eyre::Result<Vec<vinyl_typecheck::hir::HirItem>> {
     let mut warnings = Vec::new();
-    let result = vinyl_compiler::compile(source, source_name, &mut warnings);
+    let result =
+        vinyl_compiler::compile_entry(file, None, &mut warnings).map(|compiled| compiled.items);
     for w in warnings {
         eprintln!("{:?}", Report::from(w));
     }
@@ -70,6 +68,7 @@ fn compile_and_report(
                     CompileError::Parse(e) => eprintln!("{:?}", Report::from(e)),
                     CompileError::Lower(e) => eprintln!("{:?}", Report::from(e)),
                     CompileError::TypeError(e) => eprintln!("{:?}", Report::from(e)),
+                    other => eprintln!("{:?}", Report::from(other)),
                 }
             }
             std::process::exit(1);
@@ -106,20 +105,17 @@ fn main() -> eyre::Result<()> {
 
     match cli.command {
         Command::Check { file } => {
-            let source_name = file.to_string_lossy();
-            let source = std::fs::read_to_string(&file)?;
-            let _items = compile_and_report(&source, &source_name)?;
+            let file = file.unwrap_or_else(|| PathBuf::from("src"));
+            let _items = compile_and_report(&file)?;
         }
         Command::Run { file } => {
-            let source_name = file.to_string_lossy();
-            let source = std::fs::read_to_string(&file)?;
-            let items = compile_and_report(&source, &source_name)?;
+            let file = file.unwrap_or_else(|| PathBuf::from("src"));
+            let items = compile_and_report(&file)?;
             jit_and_run(&items)?;
         }
         Command::Build { file, output } => {
-            let source_name = file.to_string_lossy();
-            let source = std::fs::read_to_string(&file)?;
-            let items = compile_and_report(&source, &source_name)?;
+            let file = file.unwrap_or_else(|| PathBuf::from("src"));
+            let items = compile_and_report(&file)?;
             println!(
                 "compiled {} -> {} ({} items, codegen not yet implemented)",
                 file.display(),

@@ -1,5 +1,5 @@
 # Control flow examples
-# Run: vinyl run examples/control_flow.vnl
+# Run: vinyl run examples/control_flow.vn
 
 # --- If / else as expression ---
 

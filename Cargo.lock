@@ -1031,6 +1031,7 @@ dependencies = [
  "miette",
  "tracing",
  "vinyl-parser",
+ "vinyl-resolver",
  "vinyl-typecheck",
 ]
 
@@ -1042,6 +1043,10 @@ dependencies = [
  "miette",
  "tree-sitter",
 ]
+
+[[package]]
+name = "vinyl-resolver"
+version = "0.1.0"
 
 [[package]]
 name = "vinyl-runtime"

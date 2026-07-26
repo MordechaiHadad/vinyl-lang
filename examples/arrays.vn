@@ -1,5 +1,5 @@
 # Array examples
-# Run: vinyl run examples/arrays.vnl
+# Run: vinyl run examples/arrays.vn
 
 fn sum5(arr: [int; 5]): int {
     arr[0] + arr[1] + arr[2] + arr[3] + arr[4]

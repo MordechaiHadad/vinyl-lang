@@ -6,7 +6,7 @@ use crate::ast::{
     statement::Statement,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Int(i128, SourceSpan),
     Float(f64, SourceSpan),
@@ -102,7 +102,7 @@ impl Expression {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MatchArm {
     pub span: SourceSpan,
     pub pattern: Pattern,

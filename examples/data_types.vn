@@ -1,5 +1,5 @@
 # Struct, tuple, and enum examples
-# Run: vinyl run examples/data_types.vnl
+# Run: vinyl run examples/data_types.vn
 
 struct Point {
     x: int,

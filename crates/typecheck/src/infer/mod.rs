@@ -8,6 +8,7 @@ use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
     HirTupleStruct, Type,
 };
+use crate::module::ModuleTable;
 
 pub mod expression;
 pub mod literal;
@@ -64,10 +65,11 @@ struct InferState {
     loop_depth: usize,
     errors: Vec<TypeError>,
     warnings: Vec<CompileWarning>,
+    module_table: ModuleTable,
 }
 
 impl InferState {
-    fn new(source: &str, source_name: &str) -> Self {
+    fn new(source: &str, source_name: &str, module_table: &ModuleTable) -> Self {
         InferState {
             source: SourceContext::new(source, source_name),
             scope: ScopeState::new(),
@@ -77,6 +79,7 @@ impl InferState {
             loop_depth: 0,
             errors: Vec::new(),
             warnings: Vec::new(),
+            module_table: module_table.clone(),
         }
     }
 }
@@ -87,7 +90,17 @@ pub fn typeck(
     source_name: &str,
     warnings: &mut Vec<CompileWarning>,
 ) -> Result<Vec<HirItem>, Vec<TypeError>> {
-    let mut state = InferState::new(source, source_name);
+    typeck_with_modules(items, source, source_name, warnings, &ModuleTable::new())
+}
+
+pub fn typeck_with_modules(
+    items: &[Item],
+    source: &str,
+    source_name: &str,
+    warnings: &mut Vec<CompileWarning>,
+    module_table: &ModuleTable,
+) -> Result<Vec<HirItem>, Vec<TypeError>> {
+    let mut state = InferState::new(source, source_name, module_table);
 
     let signatures: HashMap<&str, &FunctionDef> = items
         .iter()
@@ -151,6 +164,7 @@ pub fn typeck(
                 }),
             }),
             Item::Function(_) => None,
+            Item::Import(_) => None,
         };
         if let Some(hir) = hir_item {
             let name = match &hir.kind {

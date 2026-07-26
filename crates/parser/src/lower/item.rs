@@ -3,23 +3,34 @@ use tree_sitter::Node;
 
 use crate::{
     ast::item::{
-        Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, Item,
-        StructDef, StructField, TupleDef,
+        Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, ImportDef,
+        Item, StructDef, StructField, TupleDef,
     },
-    lower::{Lowerer, error::LowerError, helpers::node_text},
+    lower::error::LowerError,
+    lower::{Lowerer, helpers::node_text},
 };
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn lower_item(&self, node: &Node, kind: &str) -> Result<Item, LowerError> {
+    pub(super) fn lower_item(
+        &self,
+        node: &Node,
+        kind: &str,
+        public: bool,
+    ) -> Result<Item, LowerError> {
         match kind {
-            "function_definition" => self.lower_function(node, Vec::new()).map(Item::Function),
+            "function_definition" => self
+                .lower_function(node, Vec::new(), public)
+                .map(Item::Function),
             "struct_definition" => self
-                .lower_struct_definition(node, Vec::new())
+                .lower_struct_definition(node, Vec::new(), public)
                 .map(Item::Struct),
             "tuple_definition" => self
-                .lower_tuple_definition(node, Vec::new())
+                .lower_tuple_definition(node, Vec::new(), public)
                 .map(Item::TupleStruct),
-            "enum_definition" => self.lower_enum_definition(node, Vec::new()).map(Item::Enum),
+            "enum_definition" => self
+                .lower_enum_definition(node, Vec::new(), public)
+                .map(Item::Enum),
+            "import_statement" => self.lower_import(node).map(Item::Import),
             kind => Err(self.invalid_kind(node, kind, "item")),
         }
     }
@@ -28,6 +39,7 @@ impl<'a> Lowerer<'a> {
         &self,
         node: &Node,
         attrs: Vec<Attribute>,
+        public: bool,
     ) -> Result<StructDef, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
@@ -41,6 +53,7 @@ impl<'a> Lowerer<'a> {
         }
         Ok(StructDef {
             span,
+            public,
             attrs,
             name,
             fields,
@@ -58,6 +71,7 @@ impl<'a> Lowerer<'a> {
         &self,
         node: &Node,
         attrs: Vec<Attribute>,
+        public: bool,
     ) -> Result<TupleDef, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
@@ -71,6 +85,7 @@ impl<'a> Lowerer<'a> {
         }
         Ok(TupleDef {
             span,
+            public,
             attrs,
             name,
             types,
@@ -81,6 +96,7 @@ impl<'a> Lowerer<'a> {
         &self,
         node: &Node,
         attrs: Vec<Attribute>,
+        public: bool,
     ) -> Result<EnumDef, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
@@ -94,6 +110,7 @@ impl<'a> Lowerer<'a> {
         }
         Ok(EnumDef {
             span,
+            public,
             attrs,
             name,
             variants,
@@ -136,6 +153,7 @@ impl<'a> Lowerer<'a> {
         &self,
         node: &Node,
         attrs: Vec<Attribute>,
+        public: bool,
     ) -> Result<FunctionDef, LowerError> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
@@ -152,12 +170,25 @@ impl<'a> Lowerer<'a> {
 
         Ok(FunctionDef {
             span,
+            public,
             attrs,
             name,
             params,
             return_type,
             body,
         })
+    }
+
+    pub(super) fn lower_import(&self, node: &Node) -> Result<ImportDef, LowerError> {
+        let span = SourceSpan::from(node.start_byte()..node.end_byte());
+        let path_node = self.child_by_field(node, "path")?;
+        let mut path = Vec::new();
+        for i in 0..path_node.named_child_count() {
+            if let Some(child) = path_node.named_child(i as u32) {
+                path.push(node_text(&child, self.source));
+            }
+        }
+        Ok(ImportDef { span, path })
     }
 
     pub(super) fn lower_params(&self, node: &Node) -> Result<Vec<FunctionParam>, LowerError> {

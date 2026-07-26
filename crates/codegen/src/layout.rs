@@ -108,13 +108,12 @@ fn named_type_size_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_
 fn named_type_align_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
     match types.get(name) {
         Some(HirItemKind::Struct(s)) => {
-            let max_field_align = s
+            s
                 .fields
                 .iter()
                 .map(|f| align_of(&f.type_, types, pointer_size))
                 .max()
-                .unwrap_or(1);
-            max_field_align
+                .unwrap_or(1)
         }
         Some(HirItemKind::Enum(e)) => {
             let mut max_align = 1u32;

@@ -1,7 +1,6 @@
 use vinyl_parser::ast::item::Item;
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 #[test]
 fn function_def() {

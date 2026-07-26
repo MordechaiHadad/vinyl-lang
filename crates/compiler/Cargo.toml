@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 vinyl-parser = { path = "../parser" }
 vinyl-typecheck = { path = "../typecheck" }
+vinyl-resolver = { path = "../resolver" }
 miette = { version = "7", features = ["derive"] }
 tracing = "0.1"

@@ -2,7 +2,7 @@ use miette::SourceSpan;
 
 use crate::ast::{expression::Expression, operator::AssignOp, types::Type};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Let {
         span: SourceSpan,
@@ -57,7 +57,7 @@ impl Statement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AssignTarget {
     Ident(String, SourceSpan),
     Index {

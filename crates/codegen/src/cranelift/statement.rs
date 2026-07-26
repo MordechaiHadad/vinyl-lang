@@ -210,7 +210,7 @@ impl<'a> CodegenCtx<'a> {
                     let offset = self.resolve_field_offset(&object.type_, name, ptr_size)?;
                     let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                     let obj_is_ptr = is_large_aggregate(&object.type_, self.module.types, ptr_size);
-                    let current = if obj_is_ptr {
+                    if obj_is_ptr {
                         let addr = if offset == 0 {
                             val
                         } else {
@@ -252,8 +252,7 @@ impl<'a> CodegenCtx<'a> {
                         let field_ty = self.resolve_field_type(&object.type_, name, ptr_size)?;
                         let clif_ty = ir_type_from_primitive(&field_ty, self.module.pointer_type);
                         self.func.builder.ins().load(clif_ty, mflags, addr, 0)
-                    };
-                    current
+                    }
                 }
             };
             self.apply_compound_op(current, value, op)

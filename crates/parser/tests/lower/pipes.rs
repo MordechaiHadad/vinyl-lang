@@ -1,7 +1,6 @@
 use vinyl_parser::ast::{expression::Expression, item::Item, statement::Statement};
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 fn assert_call(source: &str, expected_function: &str, check_args: impl FnOnce(&[Expression])) {
     let items = common::do_lower(source);

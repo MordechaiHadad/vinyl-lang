@@ -404,6 +404,58 @@ impl InferState {
                 variant_name,
                 args,
             } => {
+                if let Some(function) = self
+                    .module_table
+                    .get(type_name)
+                    .and_then(|module| module.functions.iter().find(|f| f.name == *variant_name))
+                    .cloned()
+                {
+                    let mut hir_args = Vec::new();
+                    for (index, arg) in args.iter().enumerate() {
+                        let hir_arg = self.infer_expr(arg, signatures)?;
+                        if let Some(param) = function.params.get(index) {
+                            let arg_type = self.subs.apply(&hir_arg.type_);
+                            if let Err(error) =
+                                self.subs
+                                    .unify(&self.source, &arg_type, &param.type_, arg.span())
+                            {
+                                self.errors.push(error);
+                            }
+                        }
+                        hir_args.push(hir_arg);
+                    }
+                    if args.len() != function.params.len() {
+                        self.errors.push(self.source.error(
+                            *span,
+                            format!(
+                                "function `{type_name}::{variant_name}` expects {} arguments, got {}",
+                                function.params.len(),
+                                args.len()
+                            ),
+                        ));
+                    }
+                    return Ok(HirExpression {
+                        kind: HirExpressionKind::Call {
+                            function: Box::new(HirExpression {
+                                kind: HirExpressionKind::Ident(format!(
+                                    "{type_name}::{variant_name}"
+                                )),
+                                type_: Type::Primitive(Primitive::Unit),
+                            }),
+                            args: hir_args,
+                        },
+                        type_: function
+                            .return_type
+                            .clone()
+                            .unwrap_or(Type::Primitive(Primitive::Unit)),
+                    });
+                }
+                if self.module_table.contains_key(type_name) {
+                    return Err(self.source.error(
+                        *span,
+                        format!("item `{type_name}::{variant_name}` is private or not found"),
+                    ));
+                }
                 let variant_info = self.types.get(type_name).and_then(|kind| {
                     if let HirItemKind::Enum(e) = kind {
                         e.variants
@@ -474,26 +526,23 @@ impl InferState {
                 let mut hir_fields = Vec::new();
                 for (name, expr) in fields {
                     let hir = self.infer_expr(expr, signatures)?;
-                    match self.types.get(type_name) {
-                        Some(HirItemKind::Struct(s)) => {
-                            if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
-                                let field_type = self.subs.apply(&hir.type_);
-                                if let Err(e) = self.subs.unify(
-                                    &self.source,
-                                    &field_type,
-                                    &field.type_,
-                                    expr.span(),
-                                ) {
-                                    self.errors.push(e);
-                                }
-                            } else {
-                                self.errors.push(self.source.error(
-                                    expr.span(),
-                                    format!("struct `{type_name}` has no field `{name}`"),
-                                ));
+                    if let Some(HirItemKind::Struct(s)) = self.types.get(type_name) {
+                        if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
+                            let field_type = self.subs.apply(&hir.type_);
+                            if let Err(e) = self.subs.unify(
+                                &self.source,
+                                &field_type,
+                                &field.type_,
+                                expr.span(),
+                            ) {
+                                self.errors.push(e);
                             }
+                        } else {
+                            self.errors.push(self.source.error(
+                                expr.span(),
+                                format!("struct `{type_name}` has no field `{name}`"),
+                            ));
                         }
-                        _ => {}
                     }
                     hir_fields.push((name.clone(), hir));
                 }

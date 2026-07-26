@@ -1,7 +1,6 @@
 use vinyl_parser::ast::{item::Item, statement::Statement};
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 #[test]
 fn while_to_loop() {

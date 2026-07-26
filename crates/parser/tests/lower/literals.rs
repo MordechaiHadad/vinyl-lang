@@ -1,7 +1,6 @@
 use vinyl_parser::ast::{expression::Expression, item::Item, statement::Statement};
 
-#[path = "../common/mod.rs"]
-mod common;
+use super::common;
 
 #[test]
 fn literal_values() {
