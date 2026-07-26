@@ -1,0 +1,360 @@
+use std::io::{BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use serde_json::{Value, json};
+
+struct LspProcess {
+    child: Child,
+    input: ChildStdin,
+    output: BufReader<ChildStdout>,
+}
+
+impl LspProcess {
+    fn start() -> Self {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_vinyl-lsp"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .unwrap();
+        let input = child.stdin.take().unwrap();
+        let output = BufReader::new(child.stdout.take().unwrap());
+        Self {
+            child,
+            input,
+            output,
+        }
+    }
+
+    fn send(&mut self, message: Value) {
+        let body = serde_json::to_vec(&message).unwrap();
+        write!(self.input, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
+        self.input.write_all(&body).unwrap();
+        self.input.flush().unwrap();
+    }
+
+    fn receive(&mut self) -> Value {
+        let mut content_length = 0;
+        loop {
+            let mut line = String::new();
+            self.output.read_line(&mut line).unwrap();
+            assert!(!line.is_empty(), "LSP exited before sending a response");
+            if line == "\r\n" {
+                break;
+            }
+            if let Some(length) = line.strip_prefix("Content-Length: ") {
+                content_length = length.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0; content_length];
+        self.output.read_exact(&mut body).unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    fn response(&mut self, id: u64) -> Value {
+        loop {
+            let message = self.receive();
+            if message.get("id") == Some(&json!(id)) {
+                return message;
+            }
+        }
+    }
+
+    fn notification(&mut self, method: &str) -> Value {
+        loop {
+            let message = self.receive();
+            if message.get("method") == Some(&json!(method)) {
+                return message;
+            }
+        }
+    }
+}
+
+impl Drop for LspProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
+struct TestProject {
+    root: PathBuf,
+    main: PathBuf,
+    math: PathBuf,
+}
+
+impl TestProject {
+    fn new() -> Self {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("vinyl_lsp_test_{suffix}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let main = root.join("main.vn");
+        let math = root.join("math.vn");
+        std::fs::write(
+            &main,
+            "import math;\nfn main(): int {\n    math::answer()\n}\n",
+        )
+        .unwrap();
+        std::fs::write(&math, "public fn answer(): int { 42 }\n").unwrap();
+        Self { root, main, math }
+    }
+
+    fn uri(path: &PathBuf) -> String {
+        tower_lsp::lsp_types::Url::from_file_path(path)
+            .unwrap()
+            .to_string()
+    }
+}
+
+impl Drop for TestProject {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
+#[test]
+fn serves_core_lsp_features_over_stdio() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "rootUri": root_uri,
+            "capabilities": {}
+        }
+    }));
+    let initialize = lsp.response(1);
+    assert_eq!(initialize["result"]["capabilities"]["hoverProvider"], true);
+    assert_eq!(
+        initialize["result"]["capabilities"]["definitionProvider"],
+        true
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "initialized",
+        "params": {}
+    }));
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": math_uri,
+                "languageId": "vinyl",
+                "version": 1,
+                "text": "public fn answer(): int { 42 }\n"
+            }
+        }
+    }));
+    assert!(
+        lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": main_uri,
+                "languageId": "vinyl",
+                "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n"
+            }
+        }
+    }));
+    assert!(
+        lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "textDocument/hover",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    let hover = lsp.response(2);
+    assert!(
+        hover["result"]["contents"]
+            .as_str()
+            .unwrap()
+            .contains("type:")
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    let definition = lsp.response(3);
+    assert_eq!(definition["result"]["uri"], math_uri);
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let formatting = lsp.response(4);
+    assert_eq!(
+        formatting["result"][0]["range"]["start"],
+        json!({"line": 0, "character": 0})
+    );
+    assert_eq!(
+        formatting["result"][0]["newText"],
+        "import math;\n\nfn main(): int {\n    math::answer()\n}"
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 6,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 },
+            "context": { "triggerKind": 1 }
+        }
+    }));
+    assert!(
+        lsp.response(6)["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["label"] == "main")
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "textDocument/references",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 },
+            "context": { "includeDeclaration": true }
+        }
+    }));
+    assert!(!lsp.response(7)["result"].as_array().unwrap().is_empty());
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "textDocument/rename",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 },
+            "newName": "answer_new"
+        }
+    }));
+    let rename = lsp.response(8);
+    assert!(rename["result"]["changes"][&main_uri].is_array());
+    assert!(!rename["result"]["changes"].as_object().unwrap().is_empty());
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "textDocument/documentSymbol",
+        "params": { "textDocument": { "uri": main_uri } }
+    }));
+    assert!(!lsp.response(9)["result"].as_array().unwrap().is_empty());
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 10,
+        "method": "textDocument/signatureHelp",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    assert!(
+        !lsp.response(10)["result"]["signatures"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 11,
+        "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 3, "character": 1 }
+            },
+            "context": { "diagnostics": [] }
+        }
+    }));
+    assert_eq!(lsp.response(11)["result"][0]["title"], "Format document");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": math_uri, "version": 2 },
+            "contentChanges": [{ "text": "public fn answer(): int {\n" }]
+        }
+    }));
+    assert!(
+        lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 2 },
+            "contentChanges": [{ "text": "import math;\nfn main(): int {\n" }]
+        }
+    }));
+    let diagnostics = lsp.notification("textDocument/publishDiagnostics");
+    assert!(
+        !diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        diagnostics["params"]["diagnostics"][0]["range"]["end"]["line"]
+            .as_u64()
+            .is_some()
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 5,
+        "method": "shutdown",
+        "params": null
+    }));
+    assert!(lsp.response(5)["result"].is_null());
+}
