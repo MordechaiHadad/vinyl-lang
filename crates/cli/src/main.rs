@@ -31,6 +31,9 @@ enum Command {
         #[arg(short, long, default_value = "a.out")]
         output: PathBuf,
     },
+    /// Format Vinyl source files
+    #[command(alias = "format")]
+    Fmt { path: Option<PathBuf> },
 }
 
 fn init_tracing(verbose: u8) -> eyre::Result<()> {
@@ -122,6 +125,24 @@ fn main() -> eyre::Result<()> {
                 output.display(),
                 items.len()
             );
+        }
+        Command::Fmt { path } => {
+            let path = path.unwrap_or_else(|| PathBuf::from("."));
+            if path.is_file() {
+                vinyl_formatter::format_path(&path).map_err(|errors| {
+                    for e in &errors {
+                        eprintln!("{e}");
+                    }
+                    eyre::eyre!("formatting failed")
+                })?;
+            } else {
+                vinyl_formatter::format_project(&path).map_err(|errors| {
+                    for e in &errors {
+                        eprintln!("{e}");
+                    }
+                    eyre::eyre!("formatting failed")
+                })?;
+            }
         }
     }
     Ok(())

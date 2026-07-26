@@ -76,6 +76,10 @@ impl InferState {
                         .error(*span, format!("undefined variable `{name}`"))),
                 }
             }
+            Expression::ValuePath { segments, .. } => Ok(HirExpression {
+                kind: HirExpressionKind::Ident(segments.join("::")),
+                type_: Type::Primitive(Primitive::Unit),
+            }),
             Expression::Binary {
                 span,
                 left,
@@ -164,6 +168,56 @@ impl InferState {
                     .map(|a| self.infer_expr(a, signatures))
                     .collect();
                 let hir_args = hir_args?;
+
+                if let Expression::ValuePath { segments, .. } = function.as_ref()
+                    && segments.len() == 2
+                    && let Some(module_function) = self
+                        .module_table
+                        .get(&segments[0])
+                        .and_then(|module| {
+                            module.functions.iter().find(|f| f.name == segments[1])
+                        })
+                        .cloned()
+                {
+                    if hir_args.len() != module_function.params.len() {
+                        self.errors.push(self.source.error(
+                            *span,
+                            format!(
+                                "function `{}::{}` expects {} arguments, got {}",
+                                segments[0],
+                                segments[1],
+                                module_function.params.len(),
+                                hir_args.len()
+                            ),
+                        ));
+                    }
+                    for (index, (argument, parameter)) in
+                        args.iter().zip(&module_function.params).enumerate()
+                    {
+                        let argument_type = self.subs.apply(&hir_args[index].type_);
+                        if let Err(error) = self.subs.unify(
+                            &self.source,
+                            &argument_type,
+                            &parameter.type_,
+                            argument.span(),
+                        ) {
+                            self.errors.push(error);
+                        }
+                    }
+                    return Ok(HirExpression {
+                        kind: HirExpressionKind::Call {
+                            function: Box::new(HirExpression {
+                                kind: HirExpressionKind::Ident(segments.join("::")),
+                                type_: Type::Primitive(Primitive::Unit),
+                            }),
+                            args: hir_args,
+                        },
+                        type_: module_function
+                            .return_type
+                            .clone()
+                            .unwrap_or(Type::Primitive(Primitive::Unit)),
+                    });
+                }
 
                 if let HirExpressionKind::Ident(name) = &hir_func.kind
                     && let Some(sig) = signatures.get(name.as_str())

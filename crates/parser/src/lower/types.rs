@@ -110,7 +110,8 @@ impl<'a> Lowerer<'a> {
                     }
                 })
             }
-            _ => Ok(Type::Named(node_text(&child, self.source))),
+            "type_identifier" => Ok(Type::Named(node_text(&child, self.source))),
+            kind => Err(self.invalid_kind(&child, kind, "type")),
         }
     }
 

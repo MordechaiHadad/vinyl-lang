@@ -1,0 +1,9 @@
+[package]
+name = "vinyl-formatter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter = "0.26.3"
+vinyl-parser = { version = "0.1.0", path = "../parser" }
+vinyl-resolver = { version = "0.1.0", path = "../resolver" }

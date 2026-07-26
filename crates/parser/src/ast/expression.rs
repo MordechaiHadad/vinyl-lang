@@ -15,6 +15,10 @@ pub enum Expression {
     Bool(bool, SourceSpan),
     Unit(SourceSpan),
     Ident(String, SourceSpan),
+    ValuePath {
+        span: SourceSpan,
+        segments: Vec<String>,
+    },
     Binary {
         span: SourceSpan,
         left: Box<Expression>,
@@ -84,6 +88,7 @@ impl Expression {
             Expression::Bool(_, s) => *s,
             Expression::Unit(s) => *s,
             Expression::Ident(_, s) => *s,
+            Expression::ValuePath { span, .. } => *span,
             Expression::Binary { span, .. } => *span,
             Expression::Unary { span, .. } => *span,
             Expression::Call { span, .. } => *span,

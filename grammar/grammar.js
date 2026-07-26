@@ -25,7 +25,7 @@ export default grammar({
   conflicts: $ => [
     [$._statement, $._expression],
     [$.unary_expression, $.index_expression],
-    [$.enum_variant_expression],
+    [$.scoped_type_expression],
     [$._expression, $.struct_literal_expression],
   ],
 
@@ -51,7 +51,7 @@ export default grammar({
 
     function_definition: $ => seq(
       "fn",
-      field("name", $.identifier),
+      field("name", $.value_identifier),
       field("parameters", $.parameters),
       field("return_type", optional($.type_annotation)),
       field("body", $.block),
@@ -59,7 +59,7 @@ export default grammar({
 
     struct_definition: $ => seq(
       "struct",
-      field("name", $.identifier),
+      field("name", $.type_identifier),
       "{",
       commaSep($.field_definition),
       optional(","),
@@ -67,14 +67,14 @@ export default grammar({
     ),
 
     field_definition: $ => seq(
-      field("name", $.identifier),
+      field("name", $.value_identifier),
       ":",
       $._type,
     ),
 
     tuple_definition: $ => seq(
       "tuple",
-      field("name", $.identifier),
+      field("name", $.type_identifier),
       "(",
       commaSep($._type),
       ")",
@@ -82,7 +82,7 @@ export default grammar({
 
     enum_definition: $ => seq(
       "enum",
-      field("name", $.identifier),
+      field("name", $.type_identifier),
       "{",
       commaSep($.enum_variant),
       optional(","),
@@ -90,7 +90,7 @@ export default grammar({
     ),
 
     enum_variant: $ => seq(
-      field("name", $.identifier),
+      field("name", $.type_identifier),
       optional(choice(
         seq("(", commaSep($._type), ")"),
         seq("{", commaSep($.field_definition), optional(","), "}"),
@@ -122,10 +122,10 @@ export default grammar({
       'bool', 'char', 'string', 'unit',
       'int', 'float'
     ),
-    simple_type: $ => choice($.primitive_type, $.identifier),
+    simple_type: $ => choice($.primitive_type, $.type_identifier),
 
     generic_type: $ => seq(
-      $.identifier,
+      $.type_identifier,
       "<",
       commaSep1($._type),
       ">",
@@ -147,7 +147,7 @@ export default grammar({
 
     parameter: $ => seq(
       optional(field("mut", "mut")),
-      field("name", $.identifier),
+      field("name", $.value_identifier),
       field("type", $.type_annotation),
     ),
 
@@ -174,7 +174,7 @@ export default grammar({
     let_declaration: $ => seq(
       "let",
       optional(field("mut", "mut")),
-      field("name", $.identifier),
+      field("name", $.value_identifier),
       optional($.type_annotation),
       "=",
       $._expression,
@@ -200,7 +200,7 @@ export default grammar({
     ),
 
     _expression: $ => choice(
-      $.identifier,
+      $.value_identifier,
       $.string_literal,
       $.raw_string_literal,
       $.char_literal,
@@ -220,11 +220,14 @@ export default grammar({
       $.parenthesized_expression,
       $.block,
       $.if_expression,
-      $.enum_variant_expression,
+      $.scoped_value_expression,
+      $.scoped_type_expression,
       $.struct_literal_expression,
     ),
 
-    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    value_identifier: $ => /[a-z_][a-zA-Z0-9_]*/,
+
+    type_identifier: $ => /[A-Z][a-zA-Z0-9_]*/,
 
     char_literal: $ => seq(
       "'",
@@ -252,11 +255,11 @@ export default grammar({
       ";",
     ),
 
-    import_path: $ => sep1($.identifier, "::"),
+    import_path: $ => sep1(choice($.value_identifier, $.type_identifier), "::"),
 
     attribute: $ => seq(
       "@",
-      field("name", $.identifier),
+      field("name", $.value_identifier),
       optional(seq(
         "(",
         commaSep($._expression),
@@ -278,7 +281,7 @@ export default grammar({
     unit_literal: $ => "unit",
 
     call_expression: $ => prec(PREC.CALL, seq(
-      field("function", $.identifier),
+      field("function", choice($.value_identifier, $.scoped_value_expression)),
       field("arguments", $.arguments),
     )),
 
@@ -317,7 +320,7 @@ export default grammar({
     field_access_expression: $ => prec(PREC.FIELD, seq(
       $._expression,
       ".",
-      field("field", choice($.identifier, $.integer_literal)),
+      field("field", choice($.value_identifier, $.integer_literal)),
     )),
 
     array_expression: $ => seq(
@@ -347,20 +350,26 @@ export default grammar({
     ),
 
     struct_literal_expression: $ => seq(
-      field("name", $.identifier),
+      field("name", $.type_identifier),
       field("fields", $.struct_literal_fields),
     ),
 
     struct_literal_fields: $ => seq(
       "{",
-      commaSep(seq(field("name", $.identifier), ":", field("value", $._expression))),
+      commaSep(seq(field("name", $.value_identifier), ":", field("value", $._expression))),
       "}",
     ),
 
-    enum_variant_expression: $ => prec(PREC.FIELD, seq(
-      field("type", $.identifier),
+    scoped_value_expression: $ => prec(PREC.FIELD, seq(
+      field("module", choice($.value_identifier, $.type_identifier)),
       "::",
-      field("variant", $.identifier),
+      field("function", $.value_identifier),
+    )),
+
+    scoped_type_expression: $ => prec(PREC.FIELD, seq(
+      field("type", choice($.value_identifier, $.type_identifier)),
+      "::",
+      field("variant", $.type_identifier),
       optional(field("arguments", $.arguments)),
     )),
 
@@ -382,7 +391,7 @@ export default grammar({
 
     wildcard_pattern: $ => "_",
 
-    identifier_pattern: $ => $.identifier,
+    identifier_pattern: $ => $.value_identifier,
 
     literal_pattern: $ => choice(
       $.integer_literal,
@@ -392,14 +401,14 @@ export default grammar({
     ),
 
     struct_pattern: $ => seq(
-      $.identifier,
+      $.type_identifier,
       "{",
       commaSep($.field_pattern),
       "}",
     ),
 
     field_pattern: $ => seq(
-      field("name", $.identifier),
+      field("name", $.value_identifier),
       optional(seq(":", $.pattern)),
     ),
 
@@ -410,7 +419,7 @@ export default grammar({
     ),
 
     enum_variant_pattern: $ => seq(
-      $.identifier,
+      $.type_identifier,
       "(",
       commaSep1($.pattern),
       ")",

@@ -189,7 +189,9 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_assign_target(&self, node: &Node) -> Result<AssignTarget, LowerError> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
-            "identifier" => Ok(AssignTarget::Ident(node_text(node, self.source), span())),
+            "value_identifier" | "type_identifier" => {
+                Ok(AssignTarget::Ident(node_text(node, self.source), span()))
+            }
             "index_expression" => {
                 let children = children(node);
                 if children.len() < 2 {

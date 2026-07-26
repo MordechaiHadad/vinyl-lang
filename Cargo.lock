@@ -1006,6 +1006,7 @@ dependencies = [
  "tracing-subscriber",
  "vinyl-codegen",
  "vinyl-compiler",
+ "vinyl-formatter",
  "vinyl-parser",
  "vinyl-typecheck",
 ]
@@ -1033,6 +1034,15 @@ dependencies = [
  "vinyl-parser",
  "vinyl-resolver",
  "vinyl-typecheck",
+]
+
+[[package]]
+name = "vinyl-formatter"
+version = "0.1.0"
+dependencies = [
+ "tree-sitter",
+ "vinyl-parser",
+ "vinyl-resolver",
 ]
 
 [[package]]

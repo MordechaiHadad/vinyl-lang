@@ -32,19 +32,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -76,6 +68,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -93,6 +93,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -131,19 +135,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -175,6 +171,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -192,6 +196,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -316,19 +324,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -360,6 +360,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -378,6 +386,10 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
     }
@@ -391,7 +403,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -426,19 +438,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -470,6 +474,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -487,6 +499,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -628,19 +644,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -672,6 +680,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -689,6 +705,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -739,10 +759,6 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "expression_statement",
           "named": true
         },
@@ -752,10 +768,6 @@
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -803,6 +815,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -820,6 +840,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         },
         {
@@ -858,7 +882,11 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -884,7 +912,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -910,7 +938,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -948,42 +976,6 @@
     }
   },
   {
-    "type": "enum_variant_expression",
-    "named": true,
-    "fields": {
-      "arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "arguments",
-            "named": true
-          }
-        ]
-      },
-      "type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "variant": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "enum_variant_pattern",
     "named": true,
     "fields": {},
@@ -992,11 +984,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "pattern",
           "named": true
         },
         {
-          "type": "pattern",
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -1035,19 +1027,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1079,6 +1063,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1097,6 +1089,10 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
     }
@@ -1110,11 +1106,11 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "integer_literal",
             "named": true
           },
           {
-            "type": "integer_literal",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1149,19 +1145,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1193,6 +1181,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1211,6 +1207,10 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
     }
@@ -1224,7 +1224,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1266,7 +1266,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1302,7 +1302,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1346,10 +1346,6 @@
           "named": true
         },
         {
-          "type": "identifier",
-          "named": true
-        },
-        {
           "type": "reference_type",
           "named": true
         },
@@ -1359,6 +1355,10 @@
         },
         {
           "type": "tuple_type",
+          "named": true
+        },
+        {
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -1373,7 +1373,7 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1412,19 +1412,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1456,6 +1448,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1474,6 +1474,10 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
     }
@@ -1487,7 +1491,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "type_identifier",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1542,19 +1550,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1586,6 +1586,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1603,6 +1611,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1627,7 +1639,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1662,19 +1674,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1706,6 +1710,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1727,6 +1739,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1807,19 +1823,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1855,6 +1863,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1872,6 +1888,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1910,19 +1930,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1958,6 +1970,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -1975,6 +1995,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1999,7 +2023,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -2064,19 +2088,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2108,6 +2124,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -2125,6 +2149,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -2198,19 +2226,11 @@
             "named": true
           },
           {
-            "type": "enum_variant_expression",
-            "named": true
-          },
-          {
             "type": "field_access_expression",
             "named": true
           },
           {
             "type": "float_literal",
-            "named": true
-          },
-          {
-            "type": "identifier",
             "named": true
           },
           {
@@ -2242,6 +2262,14 @@
             "named": true
           },
           {
+            "type": "scoped_type_expression",
+            "named": true
+          },
+          {
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
             "type": "string_literal",
             "named": true
           },
@@ -2259,6 +2287,10 @@
           },
           {
             "type": "unit_literal",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -2306,19 +2338,11 @@
             "named": true
           },
           {
-            "type": "enum_variant_expression",
-            "named": true
-          },
-          {
             "type": "field_access_expression",
             "named": true
           },
           {
             "type": "float_literal",
-            "named": true
-          },
-          {
-            "type": "identifier",
             "named": true
           },
           {
@@ -2350,6 +2374,14 @@
             "named": true
           },
           {
+            "type": "scoped_type_expression",
+            "named": true
+          },
+          {
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
             "type": "string_literal",
             "named": true
           },
@@ -2367,6 +2399,10 @@
           },
           {
             "type": "unit_literal",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -2442,19 +2478,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2486,6 +2514,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -2504,8 +2540,82 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "scoped_type_expression",
+    "named": true,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arguments",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      },
+      "variant": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "scoped_value_expression",
+    "named": true,
+    "fields": {
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      },
+      "module": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2517,11 +2627,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "primitive_type",
           "named": true
         },
         {
-          "type": "primitive_type",
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -2577,7 +2687,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -2613,7 +2723,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -2629,7 +2739,7 @@
         "required": false,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -2663,19 +2773,11 @@
             "named": true
           },
           {
-            "type": "enum_variant_expression",
-            "named": true
-          },
-          {
             "type": "field_access_expression",
             "named": true
           },
           {
             "type": "float_literal",
-            "named": true
-          },
-          {
-            "type": "identifier",
             "named": true
           },
           {
@@ -2707,6 +2809,14 @@
             "named": true
           },
           {
+            "type": "scoped_type_expression",
+            "named": true
+          },
+          {
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
             "type": "string_literal",
             "named": true
           },
@@ -2724,6 +2834,10 @@
           },
           {
             "type": "unit_literal",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -2743,7 +2857,7 @@
           "named": true
         },
         {
-          "type": "identifier",
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -2758,7 +2872,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -2824,19 +2938,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2868,6 +2974,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -2885,6 +2999,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -3023,19 +3141,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -3067,6 +3177,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -3084,6 +3202,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -3127,19 +3249,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -3171,6 +3285,14 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
           "named": true
         },
@@ -3188,6 +3310,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -3431,10 +3557,6 @@
     "named": false
   },
   {
-    "type": "identifier",
-    "named": true
-  },
-  {
     "type": "if",
     "named": false
   },
@@ -3527,6 +3649,10 @@
     "named": false
   },
   {
+    "type": "type_identifier",
+    "named": true
+  },
+  {
     "type": "uint128",
     "named": false
   },
@@ -3553,6 +3679,10 @@
   {
     "type": "usize",
     "named": false
+  },
+  {
+    "type": "value_identifier",
+    "named": true
   },
   {
     "type": "while",

@@ -108,7 +108,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "value_identifier"
           }
         },
         {
@@ -157,7 +157,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "type_identifier"
           }
         },
         {
@@ -223,7 +223,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "value_identifier"
           }
         },
         {
@@ -248,7 +248,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "type_identifier"
           }
         },
         {
@@ -306,7 +306,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "type_identifier"
           }
         },
         {
@@ -372,7 +372,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "type_identifier"
           }
         },
         {
@@ -685,7 +685,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "identifier"
+          "name": "type_identifier"
         }
       ]
     },
@@ -694,7 +694,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "identifier"
+          "name": "type_identifier"
         },
         {
           "type": "STRING",
@@ -826,7 +826,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "value_identifier"
           }
         },
         {
@@ -944,7 +944,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "value_identifier"
           }
         },
         {
@@ -1086,7 +1086,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "identifier"
+          "name": "value_identifier"
         },
         {
           "type": "SYMBOL",
@@ -1166,7 +1166,11 @@
         },
         {
           "type": "SYMBOL",
-          "name": "enum_variant_expression"
+          "name": "scoped_value_expression"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "scoped_type_expression"
         },
         {
           "type": "SYMBOL",
@@ -1174,9 +1178,13 @@
         }
       ]
     },
-    "identifier": {
+    "value_identifier": {
       "type": "PATTERN",
-      "value": "[a-zA-Z_][a-zA-Z0-9_]*"
+      "value": "[a-z_][a-zA-Z0-9_]*"
+    },
+    "type_identifier": {
+      "type": "PATTERN",
+      "value": "[A-Z][a-zA-Z0-9_]*"
     },
     "char_literal": {
       "type": "SEQ",
@@ -1288,8 +1296,17 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "identifier"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "value_identifier"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "type_identifier"
+            }
+          ]
         },
         {
           "type": "REPEAT",
@@ -1301,8 +1318,17 @@
                 "value": "::"
               },
               {
-                "type": "SYMBOL",
-                "name": "identifier"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "value_identifier"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "type_identifier"
+                  }
+                ]
               }
             ]
           }
@@ -1321,7 +1347,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "value_identifier"
           }
         },
         {
@@ -1478,8 +1504,17 @@
             "type": "FIELD",
             "name": "function",
             "content": {
-              "type": "SYMBOL",
-              "name": "identifier"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "value_identifier"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "scoped_value_expression"
+                }
+              ]
             }
           },
           {
@@ -1991,7 +2026,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "identifier"
+                  "name": "value_identifier"
                 },
                 {
                   "type": "SYMBOL",
@@ -2151,7 +2186,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "type_identifier"
           }
         },
         {
@@ -2185,7 +2220,7 @@
                       "name": "name",
                       "content": {
                         "type": "SYMBOL",
-                        "name": "identifier"
+                        "name": "value_identifier"
                       }
                     },
                     {
@@ -2219,7 +2254,7 @@
                             "name": "name",
                             "content": {
                               "type": "SYMBOL",
-                              "name": "identifier"
+                              "name": "value_identifier"
                             }
                           },
                           {
@@ -2252,7 +2287,45 @@
         }
       ]
     },
-    "enum_variant_expression": {
+    "scoped_value_expression": {
+      "type": "PREC",
+      "value": 15,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "module",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "value_identifier"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "type_identifier"
+                }
+              ]
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "::"
+          },
+          {
+            "type": "FIELD",
+            "name": "function",
+            "content": {
+              "type": "SYMBOL",
+              "name": "value_identifier"
+            }
+          }
+        ]
+      }
+    },
+    "scoped_type_expression": {
       "type": "PREC",
       "value": 15,
       "content": {
@@ -2262,8 +2335,17 @@
             "type": "FIELD",
             "name": "type",
             "content": {
-              "type": "SYMBOL",
-              "name": "identifier"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "value_identifier"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "type_identifier"
+                }
+              ]
             }
           },
           {
@@ -2275,7 +2357,7 @@
             "name": "variant",
             "content": {
               "type": "SYMBOL",
-              "name": "identifier"
+              "name": "type_identifier"
             }
           },
           {
@@ -2361,7 +2443,7 @@
     },
     "identifier_pattern": {
       "type": "SYMBOL",
-      "name": "identifier"
+      "name": "value_identifier"
     },
     "literal_pattern": {
       "type": "CHOICE",
@@ -2389,7 +2471,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "identifier"
+          "name": "type_identifier"
         },
         {
           "type": "STRING",
@@ -2442,7 +2524,7 @@
           "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "identifier"
+            "name": "value_identifier"
           }
         },
         {
@@ -2511,7 +2593,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "identifier"
+          "name": "type_identifier"
         },
         {
           "type": "STRING",
@@ -2746,7 +2828,7 @@
       "index_expression"
     ],
     [
-      "enum_variant_expression"
+      "scoped_type_expression"
     ],
     [
       "_expression",

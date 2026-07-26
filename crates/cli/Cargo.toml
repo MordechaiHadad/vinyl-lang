@@ -17,3 +17,4 @@ eyre = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 vinyl-typecheck = { path = "../typecheck" }
+vinyl-formatter = { version = "0.1.0", path = "../formatter" }

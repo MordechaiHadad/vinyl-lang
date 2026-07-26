@@ -76,6 +76,22 @@ fn field_access_lower() {
 }
 
 #[test]
+fn module_function_call_is_not_enum_variant() {
+    let items = common::do_lower("fn f(): int32 { math::double(5) }");
+    let function = match &items[0] {
+        Item::Function(function) => function,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &function.body[0] {
+        Statement::Value(Expression::Call { function, args, .. }, _) => {
+            assert!(matches!(function.as_ref(), Expression::ValuePath { segments, .. } if segments == &["math", "double"]));
+            assert!(matches!(args.as_slice(), [Expression::Int(5, _)]));
+        }
+        other => panic!("expected module function call, got {other:?}"),
+    }
+}
+
+#[test]
 fn match_expression_lower() {
     let items = common::do_lower("fn f(x: int32): int32 { match x { 1 => 10, _ => 0 } }");
     let func = match &items[0] {

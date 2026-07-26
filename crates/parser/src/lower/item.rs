@@ -78,7 +78,8 @@ impl<'a> Lowerer<'a> {
         let mut types = Vec::new();
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
-                && child.kind() != "identifier"
+                && child.kind() != "value_identifier"
+                && child.kind() != "type_identifier"
             {
                 types.push(self.lower_type(&child)?);
             }

@@ -17,7 +17,9 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_expression(&self, node: &Node) -> Result<Expression, LowerError> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
-            "identifier" => Ok(Expression::Ident(node_text(node, self.source), span())),
+            "value_identifier" | "type_identifier" => {
+                Ok(Expression::Ident(node_text(node, self.source), span()))
+            }
             "string_literal" => self.lower_string(node),
             "raw_string_literal" => self.lower_raw_string(node),
             "char_literal" => self.lower_char(node),
@@ -69,7 +71,15 @@ impl<'a> Lowerer<'a> {
                 })
             }
             "match_expression" => self.lower_match(node),
-            "enum_variant_expression" => {
+            "scoped_value_expression" => {
+                let module = node_text(&self.child_by_field(node, "module")?, self.source);
+                let function = node_text(&self.child_by_field(node, "function")?, self.source);
+                Ok(Expression::ValuePath {
+                    span: span(),
+                    segments: vec![module, function],
+                })
+            }
+            "scoped_type_expression" => {
                 let type_name = node_text(&self.child_by_field(node, "type")?, self.source);
                 let variant_name = node_text(&self.child_by_field(node, "variant")?, self.source);
                 let args = if let Some(arg_node) = child_by_field_opt(node, "arguments") {
@@ -387,7 +397,7 @@ impl<'a> Lowerer<'a> {
                     args,
                 })
             }
-            "identifier" => {
+            "value_identifier" | "type_identifier" => {
                 let name = node_text(right, self.source);
                 let name_span = SourceSpan::from(right.start_byte()..right.end_byte());
                 let function = Expression::Ident(name, name_span);
