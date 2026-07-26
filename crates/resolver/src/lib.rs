@@ -47,61 +47,12 @@ impl ModuleResolver {
     pub fn new(source_root: &Path) -> Result<Self, ResolveError> {
         let mut modules = HashMap::new();
         let source_root = source_root.canonicalize().map_err(ResolveError::Io)?;
-        Self::collect_modules(&source_root, &source_root, &mut modules)
+        collect_modules(&source_root, &source_root, &mut modules)
             .map_err(ResolveError::Io)?;
         Ok(ModuleResolver {
             source_root,
             modules,
         })
-    }
-
-    fn collect_modules(
-        dir: &Path,
-        source_root: &Path,
-        modules: &mut HashMap<Vec<String>, ModuleInfo>,
-    ) -> std::io::Result<()> {
-        let dir_name = entry_name(dir);
-        for entry in std::fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                Self::collect_modules(&path, source_root, modules)?;
-            } else if path.extension().is_some_and(|e| e == "vn") {
-                let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
-                let relative = path.strip_prefix(source_root).unwrap_or(&path);
-                let mut parts: Vec<String> = relative
-                    .iter()
-                    .map(|s| {
-                        let s = s.to_string_lossy().to_string();
-                        if let Some(stem) = s.rsplit_once('.') {
-                            stem.0.to_string()
-                        } else {
-                            s
-                        }
-                    })
-                    .collect();
-
-                if parts.len() >= 2 && parts.last() == parts.get(parts.len() - 2) {
-                    parts.pop();
-                }
-
-                let is_dir_module = file_stem == dir_name;
-                let import_name = parts.last().cloned().unwrap_or(file_stem);
-
-                let info = ModuleInfo {
-                    path: parts.clone(),
-                    file_path: path.clone(),
-                    import_name,
-                };
-
-                if is_dir_module {
-                    modules.entry(parts).or_insert(info);
-                } else {
-                    modules.insert(parts, info);
-                }
-            }
-        }
-        Ok(())
     }
 
     pub fn resolve(&self, import_path: &[String]) -> Result<&ModuleInfo, ResolveError> {
@@ -158,13 +109,98 @@ impl ModuleResolver {
     pub fn source_root(&self) -> &Path {
         &self.source_root
     }
+
+    pub fn add_module(&mut self, path: &Path) -> Result<(), ResolveError> {
+        let canonical = path.canonicalize().map_err(ResolveError::Io)?;
+        if canonical.is_dir() {
+            collect_modules(&canonical, &self.source_root, &mut self.modules)
+                .map_err(ResolveError::Io)?;
+        } else {
+            add_module_path(&canonical, &self.source_root, &mut self.modules)
+                .map_err(ResolveError::Io)?;
+        }
+        Ok(())
+    }
+
+    pub fn remove_module(&mut self, path: &Path) -> bool {
+        let canonical = path.canonicalize().ok();
+        let len_before = self.modules.len();
+        self.modules.retain(|_, info| {
+            if let Some(ref canonical) = canonical {
+                info.file_path.as_path() != canonical.as_path()
+            } else {
+                info.file_path != path
+            }
+        });
+        self.modules.len() != len_before
+    }
 }
 
-fn entry_name(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string()
+fn add_module_path(
+    path: &Path,
+    source_root: &Path,
+    modules: &mut HashMap<Vec<String>, ModuleInfo>,
+) -> std::io::Result<()> {
+    if path.extension().is_none_or(|e| e != "vn") {
+        return Ok(());
+    }
+
+    let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
+    let relative = path.strip_prefix(source_root).unwrap_or(path);
+    let mut parts: Vec<String> = relative
+        .iter()
+        .map(|s| {
+            let s = s.to_string_lossy().to_string();
+            if let Some(stem) = s.rsplit_once('.') {
+                stem.0.to_string()
+            } else {
+                s
+            }
+        })
+        .collect();
+
+    if parts.len() >= 2 && parts.last() == parts.get(parts.len() - 2) {
+        parts.pop();
+    }
+
+    let parent_dir_name = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let is_dir_module = file_stem == parent_dir_name;
+    let import_name = parts.last().cloned().unwrap_or(file_stem);
+
+    let info = ModuleInfo {
+        path: parts.clone(),
+        file_path: path.to_path_buf(),
+        import_name,
+    };
+
+    if is_dir_module {
+        modules.entry(parts).or_insert(info);
+    } else {
+        modules.insert(parts, info);
+    }
+
+    Ok(())
+}
+
+fn collect_modules(
+    dir: &Path,
+    source_root: &Path,
+    modules: &mut HashMap<Vec<String>, ModuleInfo>,
+) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_modules(&path, source_root, modules)?;
+        } else {
+            add_module_path(&path, source_root, modules)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -306,5 +342,53 @@ mod tests {
             ])
             .unwrap();
         assert_eq!(info.import_name, "d");
+    }
+
+    #[test]
+    fn add_module_single_file() {
+        let dir = setup_test_dir("add_single", &["existing.vn"]);
+        let mut resolver = ModuleResolver::new(&dir).unwrap();
+        assert_eq!(resolver.all_modules().len(), 1);
+
+        let new_file = dir.join("new_module.vn");
+        fs::write(&new_file, "").unwrap();
+        resolver.add_module(&new_file).unwrap();
+        assert_eq!(resolver.all_modules().len(), 2);
+        assert!(resolver.resolve(&["new_module".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn add_module_directory() {
+        let dir = setup_test_dir("add_dir", &["existing.vn"]);
+        let mut resolver = ModuleResolver::new(&dir).unwrap();
+        assert_eq!(resolver.all_modules().len(), 1);
+
+        let sub_dir = dir.join("sub");
+        fs::create_dir_all(&sub_dir).unwrap();
+        fs::write(sub_dir.join("a.vn"), "").unwrap();
+        fs::write(sub_dir.join("b.vn"), "").unwrap();
+        resolver.add_module(&sub_dir).unwrap();
+        assert_eq!(resolver.all_modules().len(), 3);
+    }
+
+    #[test]
+    fn remove_module_by_path() {
+        let dir = setup_test_dir("remove_by_path", &["foo.vn", "bar.vn"]);
+        let mut resolver = ModuleResolver::new(&dir).unwrap();
+        assert_eq!(resolver.all_modules().len(), 2);
+
+        let removed = resolver.remove_module(&dir.join("foo.vn"));
+        assert!(removed);
+        assert_eq!(resolver.all_modules().len(), 1);
+        assert!(resolver.resolve(&["bar".to_string()]).is_ok());
+    }
+
+    #[test]
+    fn remove_module_non_existent() {
+        let dir = setup_test_dir("remove_missing", &["foo.vn"]);
+        let mut resolver = ModuleResolver::new(&dir).unwrap();
+        let removed = resolver.remove_module(&dir.join("nonexistent.vn"));
+        assert!(!removed);
+        assert_eq!(resolver.all_modules().len(), 1);
     }
 }

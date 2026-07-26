@@ -1,22 +1,37 @@
+use std::ops::Range;
+
 use tree_sitter::Node;
 
 use crate::error::FormatError;
+use crate::FormatterConfig;
 
 pub fn format_source(source: &str) -> Result<String, FormatError> {
+    format_source_with_config(source, &FormatterConfig::default())
+}
+
+pub fn format_source_with_config(source: &str, config: &FormatterConfig) -> Result<String, FormatError> {
     let tree = vinyl_parser::parse(source).map_err(|errors| {
         FormatError::Parse(Box::new(errors.into_iter().next().unwrap()))
     })?;
     let root = tree.root_node();
-    let mut f = Formatter { source, output: String::new(), indent: 0 };
+    let indent_str = " ".repeat(config.indent_width);
+    let mut f = Formatter { source, output: String::new(), indent: 0, indent_str };
     f.format_root(root);
     let trimmed = f.output.trim_end().to_string();
     Ok(trimmed)
+}
+
+pub fn format_range(source: &str, config: &FormatterConfig, _range: Range<usize>) -> Result<String, FormatError> {
+    // ponytail: formatting the whole file is fine for now; range-aware
+    // formatting would need to diff or reformat a specific CST subtree.
+    format_source_with_config(source, config)
 }
 
 struct Formatter<'a> {
     source: &'a str,
     output: String,
     indent: usize,
+    indent_str: String,
 }
 
 impl Formatter<'_> {
@@ -27,7 +42,7 @@ impl Formatter<'_> {
     fn emit(&mut self, text: &str) {
         if self.output.is_empty() || self.output.ends_with('\n') {
             for _ in 0..self.indent {
-                self.output.push_str("    ");
+                self.output.push_str(&self.indent_str);
             }
         }
         self.output.push_str(text);
@@ -38,7 +53,7 @@ impl Formatter<'_> {
         let end = node.end_byte();
         if self.output.is_empty() || self.output.ends_with('\n') {
             for _ in 0..self.indent {
-                self.output.push_str("    ");
+                self.output.push_str(&self.indent_str);
             }
         }
         self.output.push_str(&self.source[start..end]);
