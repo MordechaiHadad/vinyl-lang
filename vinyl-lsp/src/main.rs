@@ -956,8 +956,8 @@ fn function_signature(function: &HirFunction, source: &str) -> String {
     let paren_close = text.find(')').unwrap_or(0);
     let brace_open = text.find('{').unwrap_or(text.len());
     let return_type = text[paren_close + 1..brace_open].trim();
-    let return_type = if return_type.starts_with(':') {
-        return_type[1..].trim().to_string()
+    let return_type = if let Some(stripped_return_type) = return_type.strip_prefix(':') {
+        stripped_return_type.trim().to_string()
     } else {
         function.return_type.to_string()
     };
