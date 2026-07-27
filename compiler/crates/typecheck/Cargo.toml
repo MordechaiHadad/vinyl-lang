@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 vinyl-parser = { path = "../parser" }
 miette = { version = "7", features = ["derive"] }
+vinyl-diagnostics = { version = "0.1.0", path = "../diagnostics" }

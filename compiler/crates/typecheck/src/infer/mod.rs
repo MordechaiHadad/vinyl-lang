@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
 
-use crate::error::{CompileWarning, TypeError};
+use crate::error::{CompileWarning, TypeError, TypeErrorKind};
 use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
     HirTupleStruct, Type,
@@ -44,7 +44,15 @@ impl SourceContext {
 
     pub(super) fn error(&self, span: SourceSpan, message: String) -> TypeError {
         TypeError {
-            message,
+            kind: TypeErrorKind::Message(message),
+            source: NamedSource::new(&self.source_name, self.source.to_string()),
+            span,
+        }
+    }
+
+    pub(super) fn type_mismatch(&self, span: SourceSpan, expected: Type, found: Type) -> TypeError {
+        TypeError {
+            kind: TypeErrorKind::Mismatch { expected, found },
             source: NamedSource::new(&self.source_name, self.source.to_string()),
             span,
         }

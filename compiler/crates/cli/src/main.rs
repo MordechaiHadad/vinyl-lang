@@ -6,7 +6,6 @@ use tracing::warn;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
 use vinyl_codegen::CodegenBackend;
-use vinyl_compiler::CompileError;
 
 #[derive(Parser)]
 #[command(name = "vinyl", version, about = "Vinyl language compiler")]
@@ -67,12 +66,7 @@ fn compile_and_report(file: &std::path::Path) -> eyre::Result<Vec<vinyl_typechec
         Ok(items) => Ok(items),
         Err(errors) => {
             for error in errors {
-                match error {
-                    CompileError::Parse(e) => eprintln!("{:?}", Report::from(e)),
-                    CompileError::Lower(e) => eprintln!("{:?}", Report::from(e)),
-                    CompileError::TypeError(e) => eprintln!("{:?}", Report::from(e)),
-                    other => eprintln!("{:?}", Report::from(other)),
-                }
+                eprintln!("{:?}", Report::from(error));
             }
             std::process::exit(1);
         }

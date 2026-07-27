@@ -2,8 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use miette::Diagnostic;
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 use tracing::instrument;
 use vinyl_parser::ast::item::{ImportDef, Item};
 use vinyl_parser::lower::error::LowerError;
@@ -12,86 +11,35 @@ use vinyl_typecheck::CompileWarning;
 use vinyl_typecheck::TypeError;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
-#[derive(Debug, Diagnostic)]
-#[diagnostic()]
+#[derive(Debug, Error, Diagnostic)]
 pub enum CompileError {
-    Parse(#[diagnostic(transparent)] vinyl_parser::ParseError),
-    Lower(#[diagnostic(transparent)] LowerError),
-    TypeError(#[diagnostic(transparent)] TypeError),
-    Io(#[diagnostic] std::io::Error),
-    Module(#[diagnostic] ModuleError),
-    ModResolve(#[diagnostic] ResolveError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Parse(#[from] vinyl_parser::ParseError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Lower(#[from] LowerError),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeError(#[from] TypeError),
+    #[error("io error: {0}")]
+    #[diagnostic(code(compiler::io_error))]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    #[diagnostic(code(compiler::module_error))]
+    Module(#[from] ModuleError),
+    #[error("module resolution error: {0}")]
+    #[diagnostic(code(compiler::module_resolution_error))]
+    ModResolve(#[from] ResolveError),
 }
 
-#[derive(Debug, Diagnostic)]
-#[diagnostic(help("check the module path and file structure"))]
+#[derive(Debug, Error, Diagnostic)]
+#[error("{message}")]
+#[diagnostic(help("check the module path and file structure"), code(compiler::module_error))]
 pub struct ModuleError {
     pub message: String,
 }
 
-impl fmt::Display for ModuleError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl Error for ModuleError {}
-
-impl fmt::Display for CompileError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CompileError::Parse(e) => fmt::Display::fmt(e, f),
-            CompileError::Lower(e) => fmt::Display::fmt(e, f),
-            CompileError::TypeError(e) => fmt::Display::fmt(e, f),
-            CompileError::Io(e) => fmt::Display::fmt(e, f),
-            CompileError::Module(e) => fmt::Display::fmt(e, f),
-            CompileError::ModResolve(e) => fmt::Display::fmt(e, f),
-        }
-    }
-}
-
-impl Error for CompileError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            CompileError::Parse(e) => Some(e),
-            CompileError::Lower(e) => Some(e),
-            CompileError::TypeError(e) => Some(e),
-            CompileError::Io(e) => Some(e),
-            CompileError::Module(e) => Some(e),
-            CompileError::ModResolve(e) => Some(e),
-        }
-    }
-}
-
-impl From<vinyl_parser::ParseError> for CompileError {
-    fn from(e: vinyl_parser::ParseError) -> Self {
-        CompileError::Parse(e)
-    }
-}
-
-impl From<LowerError> for CompileError {
-    fn from(e: LowerError) -> Self {
-        CompileError::Lower(e)
-    }
-}
-
-impl From<TypeError> for CompileError {
-    fn from(e: TypeError) -> Self {
-        CompileError::TypeError(e)
-    }
-}
-
-impl From<std::io::Error> for CompileError {
-    fn from(e: std::io::Error) -> Self {
-        CompileError::Io(e)
-    }
-}
-
-impl From<ResolveError> for CompileError {
-    fn from(e: ResolveError) -> Self {
-        CompileError::ModResolve(e)
-    }
-}
 
 #[derive(Debug)]
 pub struct CompiledModule {

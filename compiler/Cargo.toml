@@ -8,5 +8,5 @@ members = [
     "crates/std",
     "crates/typecheck",
     "crates/codegen",
-    "crates/resolver", "crates/formatter",
+    "crates/resolver", "crates/formatter", "crates/diagnostics",
 ]

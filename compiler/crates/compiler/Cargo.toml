@@ -9,3 +9,4 @@ vinyl-typecheck = { path = "../typecheck" }
 vinyl-resolver = { path = "../resolver" }
 miette = { version = "7", features = ["derive"] }
 tracing = "0.1"
+thiserror = "2.0.19"

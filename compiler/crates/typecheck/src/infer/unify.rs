@@ -124,10 +124,7 @@ impl SubstitutionState {
                 }
                 Ok(())
             }
-            _ => Err(source.error(
-                span,
-                format!("type mismatch: expected `{}`, found `{}`", b, a),
-            )),
+            _ => Err(source.type_mismatch(span, b, a)),
         }
     }
 

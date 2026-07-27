@@ -3,6 +3,41 @@ use std::error::Error;
 use std::fmt;
 use tree_sitter::Tree;
 
+vinyl_diagnostics::diagnostic_codes! {
+    "parser",
+    pub enum ParseDiagnosticKind {
+        UnexpectedToken,
+        MissingToken,
+    }
+}
+
+impl fmt::Display for ParseDiagnosticKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.code().variant)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenKind {
+    Semicolon,
+    ClosingParen,
+    ClosingBrace,
+    Quote,
+    Other,
+}
+
+impl TokenKind {
+    const fn code_name(self) -> &'static str {
+        match self {
+            Self::Semicolon => "semicolon",
+            Self::ClosingParen => "closing_paren",
+            Self::ClosingBrace => "closing_brace",
+            Self::Quote => "quote",
+            Self::Other => "other",
+        }
+    }
+}
+
 #[derive(Debug, Diagnostic)]
 #[diagnostic()]
 pub struct ParseError {
@@ -12,15 +47,34 @@ pub struct ParseError {
     #[label]
     pub span: SourceSpan,
 
-    #[help]
-    pub help: Option<String>,
+    #[diagnostic(skip)]
+    pub kind: ParseDiagnosticKind,
+    #[diagnostic(skip)]
+    pub expected: Option<TokenKind>,
+    #[diagnostic(skip)]
+    pub token: Option<String>,
+}
 
-    pub message: String,
+impl ParseError {
+    pub fn diagnostic_code(&self) -> vinyl_diagnostics::DetailedCode {
+        self.kind
+            .code()
+            .with_detail(self.expected.map(TokenKind::code_name).unwrap_or("unknown"))
+    }
 }
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
+        match self.kind {
+            ParseDiagnosticKind::UnexpectedToken => {
+                write!(
+                    f,
+                    "unexpected token `{}`",
+                    self.token.as_deref().unwrap_or("")
+                )
+            }
+            ParseDiagnosticKind::MissingToken => f.write_str("expected a token here"),
+        }
     }
 }
 
@@ -41,22 +95,26 @@ pub(crate) fn validate_with_name(filename: &str, tree: &Tree, source: &str) -> V
             let start = node.start_byte();
             let end = node.end_byte();
 
-            let (message, help) = if node.is_missing() {
+            let (kind, expected, token) = if node.is_missing() {
                 let expected = node.kind();
-                (
-                    format!("expected `{expected}`"),
-                    Some(format!("add `{expected}` here")),
-                )
+                let token = match expected {
+                    ";" => TokenKind::Semicolon,
+                    ")" => TokenKind::ClosingParen,
+                    "}" => TokenKind::ClosingBrace,
+                    "\"" => TokenKind::Quote,
+                    _ => TokenKind::Other,
+                };
+                (ParseDiagnosticKind::MissingToken, Some(token), None)
             } else {
                 let snippet = &source[start..end];
                 let context = snippet.chars().take(40).collect::<String>();
-                let help = suggest_fix(snippet, source, start, end);
-                (format!("unexpected `{context}`"), help)
+                (ParseDiagnosticKind::UnexpectedToken, None, Some(context))
             };
 
             errors.push(ParseError {
-                message,
-                help,
+                kind,
+                expected,
+                token,
                 source: NamedSource::new(filename, source.to_string()),
                 span: SourceSpan::from(start..end),
             });
@@ -77,24 +135,18 @@ pub(crate) fn validate_with_name(filename: &str, tree: &Tree, source: &str) -> V
     errors
 }
 
-fn suggest_fix(snippet: &str, _source: &str, _start: usize, _end: usize) -> Option<String> {
-    let opens = snippet.matches('(').count();
-    let closes = snippet.matches(')').count();
-    if opens > closes {
-        return Some("add closing `)`".into());
-    }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let dq_open = snippet.matches('"').count();
-    if !dq_open.is_multiple_of(2) {
-        return Some("add closing `\"`".into());
+    #[test]
+    fn missing_semicolon_has_structured_code() {
+        assert_eq!(
+            ParseDiagnosticKind::MissingToken
+                .code()
+                .with_detail(TokenKind::Semicolon.code_name())
+                .to_string(),
+            "parser::ParseDiagnosticKind::MissingToken::semicolon"
+        );
     }
-
-    if !snippet.ends_with(';') && !snippet.ends_with('}') && !snippet.ends_with('{') {
-        let trimmed = snippet.trim_end();
-        if trimmed.ends_with(')') || trimmed.ends_with('"') || trimmed.ends_with('}') {
-            return Some("add `;` after this".into());
-        }
-    }
-
-    None
 }
