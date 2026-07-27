@@ -35,11 +35,13 @@ pub enum CompileError {
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("{message}")]
-#[diagnostic(help("check the module path and file structure"), code(compiler::module_error))]
+#[diagnostic(
+    help("check the module path and file structure"),
+    code(compiler::module_error)
+)]
 pub struct ModuleError {
     pub message: String,
 }
-
 
 #[derive(Debug)]
 pub struct CompiledModule {

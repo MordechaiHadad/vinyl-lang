@@ -305,11 +305,16 @@ impl InferState {
 
                 if let Type::Ref(inner) = &resolved_type {
                     if *ast_op == AssignOp::Eq && matches!(value_expr, Expression::Ref { .. }) {
-                        if let Some(e) = self.check_assign_type_change(inner, value_type, *name_span) {
+                        if let Some(e) =
+                            self.check_assign_type_change(inner, value_type, *name_span)
+                        {
                             self.errors.push(e);
                             return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
                         }
-                        if let Err(e) = self.subs.unify(&self.source, value_type, &resolved_type, span) {
+                        if let Err(e) =
+                            self.subs
+                                .unify(&self.source, value_type, &resolved_type, span)
+                        {
                             self.errors.push(e);
                         }
                         return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
@@ -336,11 +341,16 @@ impl InferState {
                     ));
                 }
 
-                if let Some(e) = self.check_assign_type_change(&resolved_type, value_type, *name_span) {
+                if let Some(e) =
+                    self.check_assign_type_change(&resolved_type, value_type, *name_span)
+                {
                     self.errors.push(e);
                     return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
                 }
-                if let Err(e) = self.subs.unify(&self.source, value_type, &resolved_type, span) {
+                if let Err(e) = self
+                    .subs
+                    .unify(&self.source, value_type, &resolved_type, span)
+                {
                     self.errors.push(e);
                 }
                 Ok(HirAssignTarget::Ident(name.clone(), *name_span))
@@ -389,13 +399,18 @@ impl InferState {
                 };
                 if !matches!(&inner_value, Type::Var(_)) {
                     let is_float = self.subs.float_vars.contains(id);
-                    let compatible =
-                        if is_float { inner_value.is_float() } else { inner_value.is_numeric() };
+                    let compatible = if is_float {
+                        inner_value.is_float()
+                    } else {
+                        inner_value.is_numeric()
+                    };
                     if !compatible {
                         let default_type = if is_float { "float64" } else { "int64" };
                         return Some(self.source.error(
                             span,
-                            format!("type mismatch: expected `{default_type}`, found `{value_type}`"),
+                            format!(
+                                "type mismatch: expected `{default_type}`, found `{value_type}`"
+                            ),
                         ));
                     }
                 }

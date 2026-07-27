@@ -31,8 +31,11 @@ impl IndexBuilder {
         for item in items {
             self.walk_item(item);
         }
-        let referenced: std::collections::HashSet<usize> = self.references.values().map(|d| d.id).collect();
-        let unused = self.definitions.values()
+        let referenced: std::collections::HashSet<usize> =
+            self.references.values().map(|d| d.id).collect();
+        let unused = self
+            .definitions
+            .values()
             .flat_map(|defs| defs.iter())
             .filter(|d| d.scope_depth > 1 && !referenced.contains(&d.id) && d.name != "main")
             .cloned()
@@ -67,7 +70,13 @@ impl IndexBuilder {
         }
     }
 
-    fn add_definition(&mut self, name: &str, kind: DefinitionKind, span: miette::SourceSpan, type_name: Option<String>) {
+    fn add_definition(
+        &mut self,
+        name: &str,
+        kind: DefinitionKind,
+        span: miette::SourceSpan,
+        type_name: Option<String>,
+    ) {
         let definition = Definition {
             id: self.next_definition_id,
             name: name.to_string(),
@@ -118,7 +127,12 @@ impl IndexBuilder {
             HirItemKind::Function(f) => {
                 self.scopes.push(HashMap::new());
                 for param in &f.params {
-                    self.add_definition(&param.name, DefinitionKind::Parameter, param.span, Some(param.type_.to_string()));
+                    self.add_definition(
+                        &param.name,
+                        DefinitionKind::Parameter,
+                        param.span,
+                        Some(param.type_.to_string()),
+                    );
                 }
                 self.walk_stmts(&f.body);
                 self.scopes.pop();
@@ -136,10 +150,19 @@ impl IndexBuilder {
     fn walk_stmt(&mut self, stmt: &HirStatement) {
         match &stmt.kind {
             HirStatementKind::Let {
-                span, name, value, type_, ..
+                span,
+                name,
+                value,
+                type_,
+                ..
             } => {
                 self.walk_expr(value);
-                self.add_definition(name, DefinitionKind::Variable, *span, Some(type_.to_string()));
+                self.add_definition(
+                    name,
+                    DefinitionKind::Variable,
+                    *span,
+                    Some(type_.to_string()),
+                );
             }
             HirStatementKind::Expr(expr, _) => self.walk_expr(expr),
             HirStatementKind::Return(expr, _) => {

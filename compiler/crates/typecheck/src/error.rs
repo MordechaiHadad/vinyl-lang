@@ -1,6 +1,5 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
 vinyl_diagnostics::diagnostic_codes! {
     "type",
@@ -10,9 +9,11 @@ vinyl_diagnostics::diagnostic_codes! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TypeErrorKind {
+    #[error("{0}")]
     Message(String),
+    #[error("type mismatch: expected `{expected}`, found `{found}`")]
     Mismatch {
         expected: crate::hir::Type,
         found: crate::hir::Type,
@@ -28,56 +29,25 @@ impl TypeErrorKind {
     }
 }
 
-impl TypeError {
-    pub fn diagnostic_code(&self) -> &'static str {
-        self.kind.code()
-    }
-}
-
-impl fmt::Display for TypeErrorKind {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.code())
-    }
-}
-
-#[derive(Debug, Diagnostic)]
+#[derive(Debug, Error, Diagnostic)]
+#[error("{kind}")]
 #[diagnostic()]
 pub struct TypeError {
     #[diagnostic(skip)]
     pub kind: TypeErrorKind,
     #[source_code]
-    pub source: NamedSource<String>,
+    pub source_code: NamedSource<String>,
     #[label]
     pub span: SourceSpan,
 }
 
-impl fmt::Display for TypeError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.kind {
-            TypeErrorKind::Message(message) => f.write_str(message),
-            TypeErrorKind::Mismatch { expected, found } => {
-                write!(f, "type mismatch: expected `{expected}`, found `{found}`")
-            }
-        }
-    }
-}
-
-impl Error for TypeError {}
-
-#[derive(Debug, Diagnostic)]
+#[derive(Debug, Error, Diagnostic)]
+#[error("{message}")]
 #[diagnostic(severity(Warning))]
 pub struct CompileWarning {
     pub message: String,
     #[source_code]
-    pub source: NamedSource<String>,
+    pub source_code: NamedSource<String>,
     #[label]
     pub span: SourceSpan,
 }
-
-impl fmt::Display for CompileWarning {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl Error for CompileWarning {}

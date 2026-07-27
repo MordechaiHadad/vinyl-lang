@@ -45,7 +45,7 @@ impl SourceContext {
     pub(super) fn error(&self, span: SourceSpan, message: String) -> TypeError {
         TypeError {
             kind: TypeErrorKind::Message(message),
-            source: NamedSource::new(&self.source_name, self.source.to_string()),
+            source_code: NamedSource::new(&self.source_name, self.source.to_string()),
             span,
         }
     }
@@ -53,7 +53,7 @@ impl SourceContext {
     pub(super) fn type_mismatch(&self, span: SourceSpan, expected: Type, found: Type) -> TypeError {
         TypeError {
             kind: TypeErrorKind::Mismatch { expected, found },
-            source: NamedSource::new(&self.source_name, self.source.to_string()),
+            source_code: NamedSource::new(&self.source_name, self.source.to_string()),
             span,
         }
     }
@@ -61,7 +61,7 @@ impl SourceContext {
     pub(super) fn warn(&self, span: SourceSpan, message: String) -> CompileWarning {
         CompileWarning {
             message,
-            source: NamedSource::new(&self.source_name, self.source.to_string()),
+            source_code: NamedSource::new(&self.source_name, self.source.to_string()),
             span,
         }
     }

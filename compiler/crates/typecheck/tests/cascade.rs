@@ -15,7 +15,12 @@ fn main(): int32 {
     let result = common::compile(source);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert_eq!(errors.len(), 1, "assigning string to int var should produce exactly 1 error, got: {:?}", errors);
+    assert_eq!(
+        errors.len(),
+        1,
+        "assigning string to int var should produce exactly 1 error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -32,7 +37,12 @@ fn main(): int32 {
     let result = common::compile(source);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert_eq!(errors.len(), 1, "deref assigning string to &int should produce exactly 1 error, got: {:?}", errors);
+    assert_eq!(
+        errors.len(),
+        1,
+        "deref assigning string to &int should produce exactly 1 error, got: {:?}",
+        errors
+    );
 }
 
 #[test]
@@ -50,5 +60,10 @@ fn main(): int32 {
     let result = common::compile(source);
     assert!(result.is_err());
     let errors = result.unwrap_err();
-    assert_eq!(errors.len(), 1, "assigning &string to &int var should produce exactly 1 error, got: {:?}", errors);
+    assert_eq!(
+        errors.len(),
+        1,
+        "assigning &string to &int var should produce exactly 1 error, got: {:?}",
+        errors
+    );
 }
