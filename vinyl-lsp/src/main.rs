@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::{ArgAction, Parser};
 use eyre::{Result, eyre};
@@ -12,6 +13,7 @@ use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
 use vinyl_parser::ast::item::{ImportDef, Item};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
+use vinyl_typecheck::DefinitionKind;
 
 #[derive(Parser)]
 #[command(name = "vinyl-lsp", version, about = "Vinyl language server")]
@@ -83,12 +85,57 @@ struct State {
     vfs: Vfs,
     cache: HashMap<PathBuf, Arc<Analysis>>,
     workspace_root: Option<PathBuf>,
+    update_version: u64,
 }
 
 struct Backend {
     client: Client,
     state: Arc<RwLock<State>>,
 }
+
+const KEYWORDS: &[(&str, CompletionItemKind)] = &[
+    ("fn", CompletionItemKind::KEYWORD),
+    ("let", CompletionItemKind::KEYWORD),
+    ("mut", CompletionItemKind::KEYWORD),
+    ("return", CompletionItemKind::KEYWORD),
+    ("if", CompletionItemKind::KEYWORD),
+    ("else", CompletionItemKind::KEYWORD),
+    ("match", CompletionItemKind::KEYWORD),
+    ("while", CompletionItemKind::KEYWORD),
+    ("loop", CompletionItemKind::KEYWORD),
+    ("break", CompletionItemKind::KEYWORD),
+    ("continue", CompletionItemKind::KEYWORD),
+    ("import", CompletionItemKind::KEYWORD),
+    ("public", CompletionItemKind::KEYWORD),
+    ("true", CompletionItemKind::KEYWORD),
+    ("false", CompletionItemKind::KEYWORD),
+    ("unit", CompletionItemKind::KEYWORD),
+    ("not", CompletionItemKind::KEYWORD),
+    ("and", CompletionItemKind::KEYWORD),
+    ("or", CompletionItemKind::KEYWORD),
+    ("struct", CompletionItemKind::KEYWORD),
+    ("enum", CompletionItemKind::KEYWORD),
+    ("tuple", CompletionItemKind::KEYWORD),
+    ("int", CompletionItemKind::KEYWORD),
+    ("float", CompletionItemKind::KEYWORD),
+    ("bool", CompletionItemKind::KEYWORD),
+    ("char", CompletionItemKind::KEYWORD),
+    ("string", CompletionItemKind::KEYWORD),
+    ("int8", CompletionItemKind::KEYWORD),
+    ("int16", CompletionItemKind::KEYWORD),
+    ("int32", CompletionItemKind::KEYWORD),
+    ("int64", CompletionItemKind::KEYWORD),
+    ("int128", CompletionItemKind::KEYWORD),
+    ("isize", CompletionItemKind::KEYWORD),
+    ("uint8", CompletionItemKind::KEYWORD),
+    ("uint16", CompletionItemKind::KEYWORD),
+    ("uint32", CompletionItemKind::KEYWORD),
+    ("uint64", CompletionItemKind::KEYWORD),
+    ("uint128", CompletionItemKind::KEYWORD),
+    ("usize", CompletionItemKind::KEYWORD),
+    ("float32", CompletionItemKind::KEYWORD),
+    ("float64", CompletionItemKind::KEYWORD),
+];
 
 impl Backend {
     async fn update(&self, uri: &Url) {
@@ -157,6 +204,22 @@ impl Backend {
                     .await;
             }
         }
+    }
+
+    async fn schedule_update(&self, uri: &Url) {
+        let version = {
+            let mut state = self.state.write().await;
+            state.update_version += 1;
+            state.update_version
+        };
+
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        if self.state.read().await.update_version != version {
+            return;
+        }
+
+        self.update(uri).await;
     }
 
     async fn analysis(&self, uri: &Url) -> Option<Arc<Analysis>> {
@@ -269,7 +332,7 @@ impl LanguageServer for Backend {
                 .vfs
                 .set(path, params.text_document.text);
         }
-        self.update(&params.text_document.uri).await;
+        self.schedule_update(&params.text_document.uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -278,7 +341,7 @@ impl LanguageServer for Backend {
         {
             self.state.write().await.vfs.set(path, change.text);
         }
-        self.update(&params.text_document.uri).await;
+        self.schedule_update(&params.text_document.uri).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -405,21 +468,44 @@ impl LanguageServer for Backend {
         };
         let offset = offset_at(&analysis.source, params.text_document_position.position);
         let prefix = word_prefix(&analysis.source, offset);
-        let items = analysis
-            .result
-            .definitions
-            .values()
-            .flatten()
-            .filter(|definition| definition.name.starts_with(&prefix))
-            .map(|definition| definition.name.clone())
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .map(|name| CompletionItem {
-                label: name,
-                kind: Some(CompletionItemKind::VARIABLE),
+
+        let mut items: Vec<CompletionItem> = Vec::new();
+
+        for (name, definitions) in &analysis.result.definitions {
+            if !name.starts_with(&prefix) {
+                continue;
+            }
+            let Some(definition) = definitions.first() else {
+                continue;
+            };
+            if definition.name == "main" && matches!(definition.kind, DefinitionKind::Function) {
+                continue;
+            }
+            let kind = match definition.kind {
+                DefinitionKind::Function => CompletionItemKind::FUNCTION,
+                DefinitionKind::Struct => CompletionItemKind::STRUCT,
+                DefinitionKind::Enum => CompletionItemKind::ENUM,
+                DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                DefinitionKind::Variable => CompletionItemKind::VARIABLE,
+                DefinitionKind::Parameter => CompletionItemKind::VARIABLE,
+            };
+            items.push(CompletionItem {
+                label: name.clone(),
+                kind: Some(kind),
                 ..CompletionItem::default()
-            })
-            .collect();
+            });
+        }
+
+        for (keyword, kind) in KEYWORDS {
+            if keyword.starts_with(&prefix) {
+                items.push(CompletionItem {
+                    label: keyword.to_string(),
+                    kind: Some(*kind),
+                    ..CompletionItem::default()
+                });
+            }
+        }
+
         Ok(Some(CompletionResponse::Array(items)))
     }
 

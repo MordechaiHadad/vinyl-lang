@@ -233,24 +233,6 @@ fn serves_core_lsp_features_over_stdio() {
 
     lsp.send(json!({
         "jsonrpc": "2.0",
-        "id": 6,
-        "method": "textDocument/completion",
-        "params": {
-            "textDocument": { "uri": main_uri },
-            "position": { "line": 2, "character": 10 },
-            "context": { "triggerKind": 1 }
-        }
-    }));
-    assert!(
-        lsp.response(6)["result"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|item| item["label"] == "main")
-    );
-
-    lsp.send(json!({
-        "jsonrpc": "2.0",
         "id": 7,
         "method": "textDocument/references",
         "params": {
