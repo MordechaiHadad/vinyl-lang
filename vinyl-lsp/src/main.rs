@@ -12,8 +12,10 @@ use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::prelude::*;
 use vinyl_parser::ast::item::{ImportDef, Item};
+use vinyl_resolver::ModuleResolver;
+use vinyl_typecheck::hir::{HirFunction, HirItemKind};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
-use vinyl_typecheck::DefinitionKind;
+use vinyl_typecheck::{Definition, DefinitionKind, TypeckResult};
 
 #[derive(Parser)]
 #[command(name = "vinyl-lsp", version, about = "Vinyl language server")]
@@ -78,7 +80,7 @@ struct SourceDiagnostic {
 
 type WorkspaceAnalyses = HashMap<PathBuf, Arc<Analysis>>;
 type WorkspaceDiagnostics = HashMap<PathBuf, Vec<SourceDiagnostic>>;
-type WorkspaceResult = (WorkspaceAnalyses, WorkspaceDiagnostics);
+type WorkspaceState = (WorkspaceAnalyses, WorkspaceDiagnostics, ModuleResolver, ModuleTable);
 
 #[derive(Default)]
 struct State {
@@ -86,6 +88,8 @@ struct State {
     cache: HashMap<PathBuf, Arc<Analysis>>,
     workspace_root: Option<PathBuf>,
     update_version: u64,
+    resolver: Option<ModuleResolver>,
+    module_table: ModuleTable,
 }
 
 struct Backend {
@@ -159,8 +163,10 @@ impl Backend {
             .find(|candidate| candidate.exists())
             .unwrap_or(path.clone());
         match analyze_workspace(&state.vfs, &root, &entry_path) {
-            Ok((analyses, diagnostics)) => {
+            Ok((analyses, diagnostics, resolver, module_table)) => {
                 info!(files = analyses.len(), "workspace analysis complete");
+                state.resolver = Some(resolver);
+                state.module_table = module_table;
                 state.cache.extend(analyses);
                 drop(state);
                 for (diagnostic_path, file_diagnostics) in &diagnostics {
@@ -460,10 +466,8 @@ impl LanguageServer for Backend {
         &self,
         params: CompletionParams,
     ) -> tower_lsp::jsonrpc::Result<Option<CompletionResponse>> {
-        let Some(analysis) = self
-            .analysis(&params.text_document_position.text_document.uri)
-            .await
-        else {
+        let uri = &params.text_document_position.text_document.uri;
+        let Some(analysis) = self.analysis(uri).await else {
             return Ok(None);
         };
         let offset = offset_at(&analysis.source, params.text_document_position.position);
@@ -489,9 +493,11 @@ impl LanguageServer for Backend {
                 DefinitionKind::Variable => CompletionItemKind::VARIABLE,
                 DefinitionKind::Parameter => CompletionItemKind::VARIABLE,
             };
+            let detail = definition_detail(definition, &analysis.result);
             items.push(CompletionItem {
                 label: name.clone(),
                 kind: Some(kind),
+                detail,
                 ..CompletionItem::default()
             });
         }
@@ -505,6 +511,57 @@ impl LanguageServer for Backend {
                 });
             }
         }
+
+        let state = self.state.read().await;
+        if let Some(resolver) = &state.resolver {
+            let current_path = uri.to_file_path().ok();
+            let existing_imports = current_imports(&analysis.source);
+            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.source_root());
+
+            for info in resolver.all_modules().values() {
+                let import_name = &info.import_name;
+                if existing_imports.contains(import_name) {
+                    continue;
+                }
+                if current_path.as_ref().is_some_and(|p| p == &info.file_path) {
+                    continue;
+                }
+                let cache_key = non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
+                let Some(module_analysis) = state.cache.get(&cache_key) else {
+                    continue;
+                };
+                for (name, definitions) in &module_analysis.result.definitions {
+                    if !name.starts_with(&prefix) {
+                        continue;
+                    }
+                    let Some(definition) = definitions.first() else {
+                        continue;
+                    };
+                    let kind = match definition.kind {
+                        DefinitionKind::Function => CompletionItemKind::FUNCTION,
+                        DefinitionKind::Struct => CompletionItemKind::STRUCT,
+                        DefinitionKind::Enum => CompletionItemKind::ENUM,
+                        DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                        _ => continue,
+                    };
+                    let detail = definition_detail(definition, &module_analysis.result);
+                    let detail = Some(
+                        detail.map(|d| format!("{d} (from {import_name})"))
+                            .unwrap_or_else(|| format!("(from {import_name})")),
+                    );
+                    let edit_range = import_edit_range(&analysis.source);
+                    let import_edit = TextEdit::new(edit_range, format!("import {import_name};\n"));
+                    items.push(CompletionItem {
+                        label: name.clone(),
+                        kind: Some(kind),
+                        detail,
+                        additional_text_edits: Some(vec![import_edit]),
+                        ..CompletionItem::default()
+                    });
+                }
+            }
+        }
+        drop(state);
 
         Ok(Some(CompletionResponse::Array(items)))
     }
@@ -754,6 +811,69 @@ fn word_prefix(source: &str, offset: usize) -> String {
         .to_string()
 }
 
+fn definition_detail(definition: &Definition, result: &TypeckResult) -> Option<String> {
+    match definition.kind {
+        DefinitionKind::Function => result
+            .items
+            .iter()
+            .find_map(|item| match &item.kind {
+                HirItemKind::Function(f) if f.name == definition.name => {
+                    Some(function_signature(f))
+                }
+                _ => None,
+            }),
+        DefinitionKind::Struct => result.items.iter().find_map(|item| match &item.kind {
+            HirItemKind::Struct(s) if s.name == definition.name => {
+                let fields: Vec<_> = s.fields.iter().map(|f| format!("{}: {}", f.name, f.type_)).collect();
+                Some(format!("struct {} {{ {} }}", s.name, fields.join(", ")))
+            }
+            _ => None,
+        }),
+        DefinitionKind::Enum => result.items.iter().find_map(|item| match &item.kind {
+            HirItemKind::Enum(e) if e.name == definition.name => {
+                let variants: Vec<_> = e.variants.iter().map(|v| v.name.clone()).collect();
+                Some(format!("enum {} {{ {} }}", e.name, variants.join(", ")))
+            }
+            _ => None,
+        }),
+        DefinitionKind::TupleStruct => result.items.iter().find_map(|item| match &item.kind {
+            HirItemKind::TupleStruct(t) if t.name == definition.name => {
+                let types: Vec<_> = t.types.iter().map(|t| t.to_string()).collect();
+                Some(format!("struct {}({})", t.name, types.join(", ")))
+            }
+            _ => None,
+        }),
+        DefinitionKind::Variable | DefinitionKind::Parameter => {
+            None
+        }
+    }
+}
+
+fn function_signature(function: &HirFunction) -> String {
+    let params: Vec<_> = function.params.iter().map(|p| format!("{}: {}", p.name, p.type_)).collect();
+    format!("fn {}({}) -> {}", function.name, params.join(", "), function.return_type)
+}
+
+fn import_edit_range(source: &str) -> Range {
+    let mut offset = 0usize;
+    for line in source.lines() {
+        if line.trim_start().starts_with("import ") {
+            offset += line.len() + 1;
+        } else {
+            break;
+        }
+    }
+    let pos = position_at(source, offset.min(source.len()));
+    Range::new(pos, pos)
+}
+
+fn current_imports(source: &str) -> HashSet<String> {
+    source.lines()
+        .filter_map(|line| line.trim().strip_prefix("import "))
+        .map(|s| s.trim_end_matches(';').trim().to_string())
+        .collect()
+}
+
 fn analyze_with_diagnostics(
     path: &Path,
     source: &str,
@@ -851,57 +971,84 @@ fn parse_file_with_diagnostics(
     Ok((source, items))
 }
 
-fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<WorkspaceResult> {
-    let resolver = vinyl_resolver::ModuleResolver::new(root)?;
-    let (entry_source, entry_items) = match parse_file_with_diagnostics(vfs, entry_path) {
-        Ok(result) => result,
-        Err(diagnostics) => {
-            return Ok((
-                HashMap::new(),
-                HashMap::from([(entry_path.to_path_buf(), diagnostics)]),
-            ));
-        }
-    };
-    let mut all_items = entry_items.clone();
+fn non_canonical_key(path: &Path, canonical_root: &Path, non_canonical_root: &Path) -> PathBuf {
+    path.strip_prefix(canonical_root)
+        .map(|relative| non_canonical_root.join(relative))
+        .unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<WorkspaceState> {
+    let resolver = ModuleResolver::new(root)?;
     let mut module_table = ModuleTable::new();
     let mut visited = HashSet::new();
-    collect_modules(
-        vfs,
-        &resolver,
-        entry_path,
-        &entry_items,
-        &mut all_items,
-        &mut module_table,
-        &mut visited,
-    )?;
     let mut analyses = HashMap::new();
-    match analyze_with_diagnostics(entry_path, &entry_source, &all_items, &module_table) {
-        Ok(analysis) => {
-            analyses.insert(entry_path.to_path_buf(), analysis);
-        }
-        Err(error) => {
-            return Ok((analyses, HashMap::from([(entry_path.to_path_buf(), error)])));
-        }
-    }
     let mut diagnostics = HashMap::new();
-    for path in visited {
-        let (source, items) = match parse_file_with_diagnostics(vfs, &path) {
-            Ok(result) => result,
-            Err(file_diagnostics) => {
-                diagnostics.insert(path.clone(), file_diagnostics);
-                continue;
+
+    match parse_file_with_diagnostics(vfs, entry_path) {
+        Ok((entry_source, entry_items)) => {
+            let mut all_items = entry_items.clone();
+            let _ = collect_modules(
+                vfs,
+                &resolver,
+                entry_path,
+                &entry_items,
+                &mut all_items,
+                &mut module_table,
+                &mut visited,
+            );
+            match analyze_with_diagnostics(entry_path, &entry_source, &all_items, &module_table) {
+                Ok(analysis) => {
+                    analyses.insert(entry_path.to_path_buf(), analysis);
+                }
+                Err(error) => {
+                    diagnostics.insert(entry_path.to_path_buf(), error);
+                }
             }
-        };
-        match analyze_with_diagnostics(&path, &source, &items, &ModuleTable::new()) {
-            Ok(analysis) => {
-                analyses.insert(path.clone(), analysis);
-            }
-            Err(error) => {
-                diagnostics.insert(path.clone(), error);
+            for path in &visited {
+                let (source, items) = match parse_file_with_diagnostics(vfs, path) {
+                    Ok(result) => result,
+                    Err(file_diagnostics) => {
+                        diagnostics.insert(non_canonical_key(path, resolver.source_root(), root), file_diagnostics);
+                        continue;
+                    }
+                };
+                match analyze_with_diagnostics(path, &source, &items, &ModuleTable::new()) {
+                    Ok(analysis) => {
+                        let key = non_canonical_key(path, resolver.source_root(), root);
+                        analyses.insert(key, analysis);
+                    }
+                    Err(error) => {
+                        diagnostics.insert(non_canonical_key(path, resolver.source_root(), root), error);
+                    }
+                }
             }
         }
+        Err(entry_diagnostics) => {
+            diagnostics.insert(entry_path.to_path_buf(), entry_diagnostics);
+        }
     }
-    Ok((analyses, diagnostics))
+    for info in resolver.all_modules().values() {
+        let canonical_path = &info.file_path;
+        if visited.contains(canonical_path) || canonical_path == entry_path {
+            continue;
+        }
+        let Some(source) = vfs.source(canonical_path) else {
+            continue;
+        };
+        let name = canonical_path.to_string_lossy();
+        let Ok(tree) = vinyl_parser::parse_with_name(&name, &source) else {
+            continue;
+        };
+        let Ok(items) = vinyl_parser::lower::lower(&tree, &source, &name) else {
+            continue;
+        };
+        if let Ok(analysis) = analyze_with_diagnostics(canonical_path, &source, &items, &ModuleTable::new()) {
+            // store with non-canonical path key so URI lookups match
+            let key = non_canonical_key(canonical_path, resolver.source_root(), root);
+            analyses.insert(key, analysis);
+        }
+    }
+    Ok((analyses, diagnostics, resolver, module_table))
 }
 
 async fn state_source(state: &Arc<RwLock<State>>, path: &Path) -> String {
@@ -983,6 +1130,7 @@ async fn main() -> Result<()> {
         client,
         state: Arc::new(RwLock::new(State::default())),
     });
+    info!("Starting Vinyl Language Server...");
     Server::new(stdin, stdout, socket).serve(service).await;
     Ok(())
 }

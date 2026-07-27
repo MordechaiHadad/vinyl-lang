@@ -332,6 +332,104 @@ fn serves_core_lsp_features_over_stdio() {
             .is_some()
     );
 
+    // completion returns type detail for local definitions in math.vn
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 12,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": math_uri },
+            "position": { "line": 0, "character": 11 }
+        }
+    }));
+    let completion = lsp.response(12);
+    let items = completion["result"].as_array().unwrap();
+    let answer_item = items.iter().find(|item| item["label"] == "answer").expect("answer should be in completions");
+    assert!(answer_item["detail"].as_str().is_some(), "completion item should have type detail");
+    assert!(answer_item["detail"].as_str().unwrap().contains("answer"), "detail should contain function signature");
+
+    // completion in main.vn also shows type detail for prefixed module functions
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 13,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 1, "character": 5 }
+        }
+    }));
+    let completion_main = lsp.response(13);
+    let main_items = completion_main["result"].as_array().unwrap();
+    let math_answer = main_items.iter().find(|item| item["label"] == "math::answer").expect("math::answer should be in main completions");
+    assert!(math_answer["detail"].as_str().is_some(), "math::answer should have type detail");
+    assert!(math_answer["detail"].as_str().unwrap().contains("answer"), "math::answer detail should contain signature");
+
+    // auto-import: create a self-contained module, open it, then request completion for its function
+    // from a file that doesn't import it
+    let utils_vn = project.root.join("utils.vn");
+    std::fs::write(&utils_vn, "public fn helper(): int { 42 }\n").unwrap();
+    let utils_uri = TestProject::uri(&utils_vn);
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": utils_uri,
+                "languageId": "vinyl",
+                "version": 1,
+                "text": "public fn helper(): int { 42 }\n"
+            }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    // create a valid file that doesn't import utils and request completion at end
+    let app_vn = project.root.join("app.vn");
+    std::fs::write(&app_vn, "public fn run(): int {\n    0\n}\n").unwrap();
+    let app_uri = TestProject::uri(&app_vn);
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": {
+                "uri": app_uri,
+                "languageId": "vinyl",
+                "version": 1,
+                "text": "public fn run(): int {\n    0\n}\n"
+            }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    // completion at end of line 1 has prefix from line content
+    lsp.send(json!({
+        "jsonrpc": "2.0",
+        "id": 14,
+        "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": app_uri },
+            "position": { "line": 0, "character": 0 }
+        }
+    }));
+    let auto_import_completion = lsp.response(14);
+    let auto_items = auto_import_completion["result"].as_array().unwrap();
+    let auto_helper = auto_items.iter().find(|item| item["label"] == "helper");
+    assert!(
+        auto_helper.is_some(),
+        "helper should appear as auto-import in app.vn"
+    );
+    if let Some(helper) = auto_helper {
+        assert!(
+            helper["additionalTextEdits"].as_array().is_some(),
+            "auto-import completion should have additionalTextEdits"
+        );
+        assert!(
+            helper["detail"].as_str().unwrap().contains("from utils"),
+            "auto-import detail should mention module: got {:?}",
+            helper["detail"]
+        );
+    }
+
     lsp.send(json!({
         "jsonrpc": "2.0",
         "id": 5,
