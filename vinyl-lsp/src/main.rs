@@ -868,6 +868,7 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
     collect_modules(
         vfs,
         &resolver,
+        entry_path,
         &entry_items,
         &mut all_items,
         &mut module_table,
@@ -910,6 +911,7 @@ async fn state_source(state: &Arc<RwLock<State>>, path: &Path) -> String {
 fn collect_modules(
     vfs: &Vfs,
     resolver: &vinyl_resolver::ModuleResolver,
+    file_path: &Path,
     items: &[Item],
     all_items: &mut Vec<Item>,
     module_table: &mut ModuleTable,
@@ -919,7 +921,7 @@ fn collect_modules(
         Item::Import(ImportDef { path, .. }) => Some(path),
         _ => None,
     }) {
-        let info = resolver.resolve(import)?;
+        let info = resolver.resolve_from_file(import, file_path)?;
         let path = info.file_path.clone();
         if !visited.insert(path.clone()) {
             continue;
@@ -961,6 +963,7 @@ fn collect_modules(
         collect_modules(
             vfs,
             resolver,
+            &path,
             &module_items,
             all_items,
             module_table,

@@ -74,6 +74,35 @@ impl ModuleResolver {
         })
     }
 
+    pub fn resolve_from_file(
+        &self,
+        import_path: &[String],
+        from_file: &Path,
+    ) -> Result<ModuleInfo, ResolveError> {
+        if let Some(info) = self.modules.get(import_path) {
+            return Ok(info.clone());
+        }
+        let ext = "vn";
+        let file_stem = import_path.last().cloned().unwrap_or_default();
+        let mut candidate = from_file.parent().unwrap_or(Path::new("")).to_path_buf();
+        for segment in import_path {
+            candidate.push(segment);
+        }
+        candidate.set_extension(ext);
+        if candidate.exists() {
+            return Ok(ModuleInfo {
+                path: import_path.to_vec(),
+                file_path: candidate,
+                import_name: file_stem,
+            });
+        }
+        let searched = vec![self.module_file_path(import_path, ext)];
+        Err(ResolveError::NotFound {
+            import_path: import_path.to_vec(),
+            searched,
+        })
+    }
+
     fn module_file_path(&self, import_path: &[String], ext: &str) -> PathBuf {
         let mut path = self.source_root.clone();
         for segment in import_path {
