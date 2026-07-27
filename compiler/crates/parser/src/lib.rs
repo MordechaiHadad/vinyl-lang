@@ -35,3 +35,11 @@ pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParserD
         Err(errors)
     }
 }
+
+pub fn parse_and_lower_with_name(
+    filename: &str,
+    source: &str,
+) -> Result<Vec<Item>, Vec<ParserDiagnostic>> {
+    let tree = parse_with_name(filename, source)?;
+    lower::lower(&tree, source, filename)
+}

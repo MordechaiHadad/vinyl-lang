@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use miette::Diagnostic;
 use thiserror::Error;
-use tracing::instrument;
 use vinyl_parser::ast::item::{ImportDef, Item};
 use vinyl_resolver::ResolveError;
 use vinyl_typecheck::CompileWarning;
@@ -68,16 +67,7 @@ fn parse_file(path: &Path) -> Result<(String, String, Vec<Item>), Vec<CompileErr
         Err(e) => return Err(vec![CompileError::Io(e)]),
     };
     let name = path.to_string_lossy().to_string();
-    let tree = match vinyl_parser::parse_with_name(&name, &source) {
-        Ok(t) => t,
-        Err(errors) => {
-            return Err(errors
-                .into_iter()
-                .map(CompileError::Parse)
-                .collect::<Vec<CompileError>>());
-        }
-    };
-    let items = match vinyl_parser::lower::lower(&tree, &source, &name) {
+    let items = match vinyl_parser::parse_and_lower_with_name(&name, &source) {
         Ok(items) => items,
         Err(errors) => {
             return Err(errors
@@ -259,35 +249,6 @@ pub fn compile_entry(
         items: hir,
         module_table,
     })
-}
-
-#[instrument(skip_all)]
-pub fn compile(
-    source: &str,
-    source_name: &str,
-    warnings: &mut Vec<CompileWarning>,
-) -> Result<Vec<vinyl_typecheck::hir::HirItem>, Vec<CompileError>> {
-    let tree = match vinyl_parser::parse(source) {
-        Ok(t) => t,
-        Err(errors) => return Err(errors.into_iter().map(CompileError::Parse).collect()),
-    };
-
-    let items = vinyl_parser::lower::lower(&tree, source, source_name).map_err(|errors| {
-        errors
-            .into_iter()
-            .map(CompileError::Parse)
-            .collect::<Vec<_>>()
-    })?;
-
-    let module_table = HashMap::new();
-
-    vinyl_typecheck::typeck_with_modules(&items, source, source_name, warnings, &module_table)
-        .map_err(|errors| {
-            errors
-                .into_iter()
-                .map(CompileError::TypeError)
-                .collect::<Vec<_>>()
-        })
 }
 
 #[cfg(test)]
