@@ -51,3 +51,35 @@ pub struct CompileWarning {
     #[label]
     pub span: SourceSpan,
 }
+
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("{kind}")]
+pub struct TypecheckDiagnostic {
+    #[diagnostic(transparent)]
+    pub kind: TypecheckDiagnosticKind,
+
+    #[source_code]
+    pub source_code: NamedSource<String>,
+
+    #[label]
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum TypecheckDiagnosticKind {
+    #[error("{0}")]
+    #[diagnostic(code(typeck::message))]
+    Message(String),
+
+    #[error("type mismatch: expected `{expected}`, found `{found}`")]
+    #[diagnostic(code(typeck::mismatch))]
+    Mismatch {
+        expected: crate::hir::Type,
+        found: crate::hir::Type,
+    },
+
+    #[error("{message}")]
+    #[diagnostic(code(typeck::warning), severity(warning))]
+    Warning { message: String },
+}

@@ -18,6 +18,10 @@ pub fn parse(source: &str) -> Result<Tree, Vec<ParserDiagnostic>> {
     parse_with_name("<input>", source)
 }
 
+pub fn parse_and_lower(source: &str) -> Result<Vec<Item>, Vec<ParserDiagnostic>> {
+    parse_and_lower_with_name("<input>", source)
+}
+
 pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParserDiagnostic>> {
     let mut parser = Parser::new();
     parser
