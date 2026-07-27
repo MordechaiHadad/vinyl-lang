@@ -222,5 +222,6 @@ pub fn typeck_with_index(
         expr_at_pos: index.expr_at_pos,
         definitions: index.definitions,
         references: index.references,
+        unused: index.unused,
     })
 }

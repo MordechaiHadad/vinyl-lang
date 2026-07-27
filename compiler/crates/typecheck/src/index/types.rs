@@ -18,6 +18,7 @@ pub struct Definition {
     pub kind: DefinitionKind,
     pub span: SourceSpan,
     pub scope_depth: usize,
+    pub type_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +37,7 @@ pub struct TypeckResult {
     pub expr_at_pos: BTreeMap<usize, HirExprRef>,
     pub definitions: HashMap<String, Vec<Definition>>,
     pub references: BTreeMap<usize, Definition>,
+    pub unused: Vec<Definition>,
 }
 
 #[derive(Debug, Default)]
@@ -43,4 +45,5 @@ pub struct HirIndex {
     pub expr_at_pos: BTreeMap<usize, HirExprRef>,
     pub definitions: HashMap<String, Vec<Definition>>,
     pub references: BTreeMap<usize, Definition>,
+    pub unused: Vec<Definition>,
 }

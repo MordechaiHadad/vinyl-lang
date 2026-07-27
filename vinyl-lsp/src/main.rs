@@ -168,35 +168,44 @@ impl Backend {
                 state.resolver = Some(resolver);
                 state.module_table = module_table;
                 state.cache.extend(analyses);
+                let source = state.vfs.source(&entry_path).unwrap_or_default();
+                let mut file_diagnostics: Vec<Diagnostic> = diagnostics
+                    .get(&entry_path)
+                    .map(|diagnostics| {
+                        diagnostics
+                            .iter()
+                            .map(|diagnostic| {
+                                Diagnostic::new_simple(
+                                    span_range(&source, diagnostic.offset, diagnostic.length),
+                                    diagnostic.message.clone(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if let Some(analysis) = state.cache.get(&entry_path) {
+                    for definition in &analysis.result.unused {
+                        file_diagnostics.push(Diagnostic {
+                            range: span_range(&source, definition.span.offset(), definition.span.len()),
+                            severity: Some(DiagnosticSeverity::WARNING),
+                            message: format!("unused {}", match definition.kind {
+                                DefinitionKind::Function => "function",
+                                DefinitionKind::Variable => "variable",
+                                DefinitionKind::Parameter => "parameter",
+                                _ => "symbol",
+                            }),
+                            ..Diagnostic::default()
+                        });
+                    }
+                }
                 drop(state);
-                for (diagnostic_path, file_diagnostics) in &diagnostics {
-                    let source = state_source(&self.state, diagnostic_path).await;
-                    let lsp_diagnostics = file_diagnostics
-                        .iter()
-                        .map(|diagnostic| {
-                            Diagnostic::new_simple(
-                                span_range(&source, diagnostic.offset, diagnostic.length),
-                                diagnostic.message.clone(),
-                            )
-                        })
-                        .collect();
-                    self.client
-                        .publish_diagnostics(
-                            Url::from_file_path(diagnostic_path).unwrap_or(uri.clone()),
-                            lsp_diagnostics,
-                            None,
-                        )
-                        .await;
-                }
-                if !diagnostics.contains_key(&entry_path) {
-                    self.client
-                        .publish_diagnostics(
-                            Url::from_file_path(&entry_path).unwrap_or(uri.clone()),
-                            Vec::new(),
-                            None,
-                        )
-                        .await;
-                }
+                self.client
+                    .publish_diagnostics(
+                        Url::from_file_path(&entry_path).unwrap_or(uri.clone()),
+                        file_diagnostics,
+                        None,
+                    )
+                    .await;
             }
             Err(error) => {
                 let diagnostics = vec![Diagnostic::new_simple(Range::default(), error.to_string())];
@@ -493,7 +502,7 @@ impl LanguageServer for Backend {
                 DefinitionKind::Variable => CompletionItemKind::VARIABLE,
                 DefinitionKind::Parameter => CompletionItemKind::VARIABLE,
             };
-            let detail = definition_detail(definition, &analysis.result);
+            let detail = definition_detail(definition, &analysis.result, &analysis.source);
             items.push(CompletionItem {
                 label: name.clone(),
                 kind: Some(kind),
@@ -523,15 +532,21 @@ impl LanguageServer for Backend {
                 if existing_imports.contains(import_name) {
                     continue;
                 }
-                if current_path.as_ref().is_some_and(|p| p == &info.file_path) {
+                if current_path.as_ref().is_some_and(|p| same_file(p, &info.file_path)) {
                     continue;
                 }
                 let cache_key = non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
                 let Some(module_analysis) = state.cache.get(&cache_key) else {
                     continue;
                 };
+                let import_path = current_path.as_ref()
+                    .map(|p| relative_import_path(p, &info.file_path, resolver.source_root()))
+                    .unwrap_or_else(|| import_name.clone());
+                if existing_imports.contains(&import_path) {
+                    continue;
+                }
                 for (name, definitions) in &module_analysis.result.definitions {
-                    if !name.starts_with(&prefix) {
+                    if !name.starts_with(&prefix) || name.contains("::") {
                         continue;
                     }
                     let Some(definition) = definitions.first() else {
@@ -544,13 +559,13 @@ impl LanguageServer for Backend {
                         DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
                         _ => continue,
                     };
-                    let detail = definition_detail(definition, &module_analysis.result);
+                    let detail = definition_detail(definition, &module_analysis.result, &module_analysis.source);
                     let detail = Some(
-                        detail.map(|d| format!("{d} (from {import_name})"))
-                            .unwrap_or_else(|| format!("(from {import_name})")),
+                        detail.map(|d| format!("{d} (from {import_path})"))
+                            .unwrap_or_else(|| format!("(from {import_path})")),
                     );
                     let edit_range = import_edit_range(&analysis.source);
-                    let import_edit = TextEdit::new(edit_range, format!("import {import_name};\n"));
+                    let import_edit = TextEdit::new(edit_range, format!("import {import_path};\n"));
                     items.push(CompletionItem {
                         label: name.clone(),
                         kind: Some(kind),
@@ -682,14 +697,15 @@ impl LanguageServer for Backend {
                     }
                     Some(SignatureInformation {
                         label: format!(
-                            "{}({})",
+                            "fn {}({}): {}",
                             function.name,
                             function
                                 .params
                                 .iter()
-                                .map(|param| format!("{}: {:?}", param.name, param.type_))
+                                .map(|param| format!("{}: {}", param.name, param.type_))
                                 .collect::<Vec<_>>()
-                                .join(", ")
+                                .join(", "),
+                            function.return_type
                         ),
                         documentation: None,
                         parameters: None,
@@ -718,16 +734,19 @@ impl LanguageServer for Backend {
         let Some(source) = state.vfs.source(&path) else {
             return Ok(None);
         };
+
+        let mut actions = Vec::new();
+
         let Ok(formatted) = vinyl_formatter::format_source(&source) else {
             return Ok(None);
         };
-        Ok(Some(vec![CodeActionOrCommand::CodeAction(CodeAction {
+        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
             title: "Format document".to_string(),
             kind: Some(CodeActionKind::SOURCE_FIX_ALL),
             diagnostics: None,
             edit: Some(WorkspaceEdit {
                 changes: Some(HashMap::from([(
-                    uri,
+                    uri.clone(),
                     vec![TextEdit::new(full_range(&source), formatted)],
                 )])),
                 ..WorkspaceEdit::default()
@@ -736,7 +755,61 @@ impl LanguageServer for Backend {
             is_preferred: Some(true),
             disabled: None,
             data: None,
-        })]))
+        }));
+
+        let cursor_offset = offset_at(&source, params.range.start);
+        let prefix = word_prefix(&source, cursor_offset);
+        if !prefix.is_empty() {
+            let analysis = self.analysis(&uri).await;
+            let is_local = analysis.as_ref().is_some_and(|a| {
+                a.result.definitions.keys().any(|k| k == &prefix)
+            });
+            if !is_local {
+                let existing_imports = current_imports(&source);
+                if let Some(resolver) = &state.resolver {
+                    let current_path = uri.to_file_path().ok();
+                    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.source_root());
+                    for info in resolver.all_modules().values() {
+                        if current_path.as_ref().is_some_and(|p| same_file(p, &info.file_path)) {
+                            continue;
+                        }
+                        let cache_key = non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
+                        let Some(module_analysis) = state.cache.get(&cache_key) else {
+                            continue;
+                        };
+                        let import_path = current_path.as_ref()
+                            .map(|p| relative_import_path(p, &info.file_path, resolver.source_root()))
+                            .unwrap_or_else(|| info.import_name.clone());
+                        if existing_imports.contains(&import_path) || existing_imports.contains(&info.import_name) {
+                            continue;
+                        }
+                        if module_analysis.result.definitions.contains_key(&prefix) {
+                            let edit_range = import_edit_range(&source);
+                            let title = format!("Add import `{import_path}`");
+                            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                                title,
+                                kind: Some(CodeActionKind::QUICKFIX),
+                                diagnostics: None,
+                                edit: Some(WorkspaceEdit {
+                                    changes: Some(HashMap::from([(
+                                        uri.clone(),
+                                        vec![TextEdit::new(edit_range, format!("import {import_path};\n"))],
+                                    )])),
+                                    ..WorkspaceEdit::default()
+                                }),
+                                command: None,
+                                is_preferred: Some(false),
+                                disabled: None,
+                                data: None,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+        drop(state);
+
+        Ok(Some(actions))
     }
 }
 
@@ -811,14 +884,27 @@ fn word_prefix(source: &str, offset: usize) -> String {
         .to_string()
 }
 
-fn definition_detail(definition: &Definition, result: &TypeckResult) -> Option<String> {
+fn extract_type_from_span(source: &str, offset: usize, length: usize, is_let: bool) -> Option<String> {
+    let text = &source[offset..(offset + length)];
+    let type_text = if is_let {
+        let colon = text.find(':')?;
+        let after_colon = &text[colon + 1..];
+        let eq = after_colon.find('=').unwrap_or(after_colon.len());
+        after_colon[..eq].trim().to_string()
+    } else {
+        text.split(':').nth(1)?.trim().to_string()
+    };
+    if type_text.is_empty() { None } else { Some(type_text) }
+}
+
+fn definition_detail(definition: &Definition, result: &TypeckResult, source: &str) -> Option<String> {
     match definition.kind {
         DefinitionKind::Function => result
             .items
             .iter()
             .find_map(|item| match &item.kind {
                 HirItemKind::Function(f) if f.name == definition.name => {
-                    Some(function_signature(f))
+                    Some(function_signature(f, source))
                 }
                 _ => None,
             }),
@@ -843,15 +929,39 @@ fn definition_detail(definition: &Definition, result: &TypeckResult) -> Option<S
             }
             _ => None,
         }),
-        DefinitionKind::Variable | DefinitionKind::Parameter => {
-            None
+        DefinitionKind::Parameter => {
+            extract_type_from_span(source, definition.span.offset(), definition.span.len(), false).map(|type_name| format!("{}: {}", definition.name, type_name))
+        }
+        DefinitionKind::Variable => {
+            let type_text = extract_type_from_span(source, definition.span.offset(), definition.span.len(), true)
+                .or_else(|| definition.type_name.clone());
+            type_text.map(|type_name| format!("{}: {}", definition.name, type_name))
         }
     }
 }
 
-fn function_signature(function: &HirFunction) -> String {
-    let params: Vec<_> = function.params.iter().map(|p| format!("{}: {}", p.name, p.type_)).collect();
-    format!("fn {}({}) -> {}", function.name, params.join(", "), function.return_type)
+fn function_signature(function: &HirFunction, source: &str) -> String {
+    let params: Vec<_> = function.params.iter().map(|p| {
+        let original_type = extract_type_from_span(source, p.span.offset(), p.span.len(), false).unwrap_or_else(|| p.type_.to_string());
+        format!("{}: {}", p.name, original_type)
+    }).collect();
+    let span_offset = function.span.offset();
+    let span_len = function.span.len();
+    let span_end = span_offset.checked_add(span_len).unwrap_or(0);
+    let text = if span_end <= source.len() {
+        &source[span_offset..span_end]
+    } else {
+        return format!("fn {}: {}", function.name, function.return_type);
+    };
+    let paren_close = text.find(')').unwrap_or(0);
+    let brace_open = text.find('{').unwrap_or(text.len());
+    let return_type = text[paren_close + 1..brace_open].trim();
+    let return_type = if return_type.starts_with(':') {
+        return_type[1..].trim().to_string()
+    } else {
+        function.return_type.to_string()
+    };
+    format!("fn {}({}): {}", function.name, params.join(", "), return_type)
 }
 
 fn import_edit_range(source: &str) -> Range {
@@ -971,10 +1081,32 @@ fn parse_file_with_diagnostics(
     Ok((source, items))
 }
 
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
 fn non_canonical_key(path: &Path, canonical_root: &Path, non_canonical_root: &Path) -> PathBuf {
     path.strip_prefix(canonical_root)
         .map(|relative| non_canonical_root.join(relative))
         .unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn relative_import_path(from_file: &Path, to_module: &Path, source_root: &Path) -> String {
+    let to_stem = to_module.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    if let (Ok(from_canon), Ok(to_canon)) = (from_file.parent().unwrap().canonicalize(), to_module.canonicalize())
+        && from_canon == to_canon.parent().unwrap_or(Path::new(""))
+    {
+        return to_stem;
+    }
+    if let Ok(relative) = to_module.strip_prefix(source_root) {
+        let relative = relative.with_extension("");
+        relative.to_string_lossy().replace('\\', "/")
+    } else {
+        to_stem
+    }
 }
 
 fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<WorkspaceState> {
@@ -1051,10 +1183,6 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
     Ok((analyses, diagnostics, resolver, module_table))
 }
 
-async fn state_source(state: &Arc<RwLock<State>>, path: &Path) -> String {
-    state.read().await.vfs.source(path).unwrap_or_default()
-}
-
 fn collect_modules(
     vfs: &Vfs,
     resolver: &vinyl_resolver::ModuleResolver,
@@ -1069,7 +1197,7 @@ fn collect_modules(
         _ => None,
     }) {
         let info = resolver.resolve_from_file(import, file_path)?;
-        let path = info.file_path.clone();
+        let path = info.file_path.canonicalize().unwrap_or(info.file_path.clone());
         if !visited.insert(path.clone()) {
             continue;
         }
