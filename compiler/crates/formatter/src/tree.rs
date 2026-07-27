@@ -302,12 +302,20 @@ impl Formatter<'_> {
         self.emit("{");
         self.newline();
         self.indent += 1;
+        let mut prev_end: Option<usize> = None;
         for i in 1..count - 1 {
             if let Some(child) = node.child(i as u32)
                 && (child.is_named() || child.kind() == "comment")
             {
+                if let Some(prev) = prev_end {
+                    let between = &self.source[prev..child.start_byte()];
+                    if between.chars().filter(|&c| c == '\n').count() > 1 {
+                        self.newline();
+                    }
+                }
                 self.format_node(child);
                 self.newline();
+                prev_end = Some(child.end_byte());
             }
         }
         self.indent -= 1;

@@ -95,6 +95,32 @@ mod tests {
     }
 
     #[test]
+    fn preserves_blank_lines_in_block() {
+        let input = "fn f() {\n    let mut x = 10;\n\n    x = 69;\n}";
+        let expected = "fn f() {\n    let mut x = 10;\n\n    x = 69;\n}";
+        assert_eq!(format_source(input).unwrap(), expected);
+    }
+
+    #[test]
+    fn preserves_multiple_blank_lines_as_single_in_block() {
+        let input = "fn f() {\n    let mut x = 10;\n\n\n    x = 69;\n}";
+        let expected = "fn f() {\n    let mut x = 10;\n\n    x = 69;\n}";
+        assert_eq!(format_source(input).unwrap(), expected);
+    }
+
+    #[test]
+    fn no_extra_blank_line_without_one_in_block() {
+        let input = "fn f() {\n    let mut x = 10;\n    x = 69;\n}";
+        let result = format_source(input).unwrap();
+        let lines: Vec<&str> = result.lines().collect();
+        assert!(lines.contains(&"    let mut x = 10;"));
+        assert!(lines.contains(&"    x = 69;"));
+        let x_idx = lines.iter().position(|l| l.contains("x = 10")).unwrap();
+        let y_idx = lines.iter().position(|l| l.contains("x = 69")).unwrap();
+        assert_eq!(y_idx - x_idx, 1, "should be adjacent without blank line");
+    }
+
+    #[test]
     fn empty_source() {
         assert_eq!(format_source("").unwrap(), "");
     }
