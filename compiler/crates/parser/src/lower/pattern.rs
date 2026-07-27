@@ -2,16 +2,14 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ast::pattern::{LiteralPattern, Pattern},
-    lower::{
+    ParserDiagnostic, ast::pattern::{LiteralPattern, Pattern}, lower::{
         Lowerer,
-        error::LowerError,
         helpers::{children, node_text},
-    },
+    }
 };
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn lower_pattern(&self, node: &Node) -> Result<Pattern, LowerError> {
+    pub(super) fn lower_pattern(&self, node: &Node) -> Result<Pattern, ParserDiagnostic> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
             "wildcard_pattern" => Ok(Pattern::Wildcard(span())),
@@ -51,7 +49,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_literal_pattern(&self, node: &Node) -> Result<Pattern, LowerError> {
+    pub(super) fn lower_literal_pattern(&self, node: &Node) -> Result<Pattern, ParserDiagnostic> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
                 return match child.kind() {
@@ -108,7 +106,7 @@ impl<'a> Lowerer<'a> {
         Err(self.span_error(node, "empty literal pattern"))
     }
 
-    pub(super) fn lower_struct_pattern(&self, node: &Node) -> Result<Pattern, LowerError> {
+    pub(super) fn lower_struct_pattern(&self, node: &Node) -> Result<Pattern, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.is_empty() {

@@ -1,16 +1,14 @@
 use tree_sitter::Node;
 
 use crate::{
-    ast::types::{Primitive, Type},
-    lower::{
+    ParserDiagnostic, ast::types::{Primitive, Type}, lower::{
         Lowerer,
-        error::LowerError,
         helpers::{children, node_text},
-    },
+    }
 };
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn lower_type_annotation_child(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_type_annotation_child(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
                 && child.kind() == "type_annotation"
@@ -31,7 +29,7 @@ impl<'a> Lowerer<'a> {
         Err(self.span_error(node, "expected type"))
     }
 
-    pub(super) fn lower_type(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         match node.kind() {
             "simple_type" => return self.lower_simple_type(node),
             "generic_type" => return self.lower_generic_type(node),
@@ -55,7 +53,7 @@ impl<'a> Lowerer<'a> {
         Err(self.invalid_kind(node, node.kind(), "type"))
     }
 
-    pub(super) fn lower_reference_type(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_reference_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
                 let inner = self.lower_type(&child)?;
@@ -65,7 +63,7 @@ impl<'a> Lowerer<'a> {
         Err(self.span_error(node, "empty reference type"))
     }
 
-    pub(super) fn lower_tuple_type(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_tuple_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         let mut elements = Vec::new();
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
@@ -75,7 +73,7 @@ impl<'a> Lowerer<'a> {
         Ok(Type::Tuple(elements))
     }
 
-    pub(super) fn lower_simple_type(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_simple_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         let child = node
             .named_child(0)
             .ok_or_else(|| self.span_error(node, "empty simple type"))?;
@@ -115,7 +113,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_generic_type(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_generic_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         let name = node_text(
             &node
                 .named_child(0)
@@ -131,7 +129,7 @@ impl<'a> Lowerer<'a> {
         Ok(Type::Generic { name, args })
     }
 
-    pub(super) fn lower_array_type(&self, node: &Node) -> Result<Type, LowerError> {
+    pub(super) fn lower_array_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
         let children = children(node);
         if children.len() < 2 {
             return Err(self.span_error(node, "incomplete array type"));

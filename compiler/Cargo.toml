@@ -8,5 +8,11 @@ members = [
     "crates/std",
     "crates/typecheck",
     "crates/codegen",
-    "crates/resolver", "crates/formatter", "crates/diagnostics",
+    "crates/resolver",
+    "crates/formatter",
+    "crates/diagnostics",
 ]
+
+[workspace.dependencies]
+thiserror = "2"
+miette = { version = "7", default-features = false, features = ["derive"] }

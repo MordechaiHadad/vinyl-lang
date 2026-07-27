@@ -2,19 +2,17 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ast::{
+    ParserDiagnostic, ast::{
         expression::{Expression, MatchArm},
         operator::{BinaryOp, UnaryOp},
-    },
-    lower::{
+    }, lower::{
         Lowerer,
-        error::LowerError,
         helpers::{child_by_field_opt, children, node_text},
-    },
+    }
 };
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn lower_expression(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_expression(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
             "value_identifier" | "type_identifier" => {
@@ -144,7 +142,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_any_expression(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_any_expression(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         for i in (0..node.named_child_count()).rev() {
             if let Some(child) = node.named_child(i as u32) {
                 match node.field_name_for_named_child(i as u32) {
@@ -159,7 +157,7 @@ impl<'a> Lowerer<'a> {
         Err(self.span_error(node, "expected expression"))
     }
 
-    pub(super) fn lower_if(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_if(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let named = children(node);
 
@@ -201,7 +199,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_string(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_string(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
         let content = if raw.starts_with('f') {
@@ -213,21 +211,21 @@ impl<'a> Lowerer<'a> {
         Ok(Expression::String(content.to_string(), span))
     }
 
-    pub(super) fn lower_raw_string(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_raw_string(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
         let content = &raw[2..raw.len() - 1];
         Ok(Expression::String(content.to_string(), span))
     }
 
-    pub(super) fn lower_char(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_char(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
         let c = raw.chars().nth(1).unwrap_or('\0');
         Ok(Expression::Char(c, span))
     }
 
-    pub(super) fn lower_int(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_int(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
         let val = if let Some(hex) = raw.strip_prefix("0x") {
@@ -245,7 +243,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_float(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_float(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
         match raw.parse::<f64>() {
@@ -254,7 +252,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_call(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_call(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let func_node = self.child_by_field(node, "function")?;
         let function = self.lower_expression(&func_node)?;
@@ -274,7 +272,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_match(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_match(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.is_empty() {
@@ -294,7 +292,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_match_arm(&self, node: &Node) -> Result<MatchArm, LowerError> {
+    pub(super) fn lower_match_arm(&self, node: &Node) -> Result<MatchArm, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.len() < 2 {
@@ -309,7 +307,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_unary(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_unary(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.is_empty() {
@@ -333,7 +331,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_unary_op(&self, node: &Node) -> Result<UnaryOp, LowerError> {
+    pub(super) fn lower_unary_op(&self, node: &Node) -> Result<UnaryOp, ParserDiagnostic> {
         Ok(match node_text(node, self.source).as_str() {
             "-" => UnaryOp::Neg,
             "!" | "not" => UnaryOp::Not,
@@ -344,7 +342,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_binary(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_binary(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.len() < 2 {
@@ -361,7 +359,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_pipe(&self, node: &Node) -> Result<Expression, LowerError> {
+    pub(super) fn lower_pipe(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let children = children(node);
         if children.len() < 2 {
@@ -411,7 +409,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_binary_op(&self, node: &Node) -> Result<BinaryOp, LowerError> {
+    pub(super) fn lower_binary_op(&self, node: &Node) -> Result<BinaryOp, ParserDiagnostic> {
         Ok(match node_text(node, self.source).as_str() {
             "+" => BinaryOp::Add,
             "-" => BinaryOp::Sub,

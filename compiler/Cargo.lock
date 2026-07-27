@@ -1073,6 +1073,8 @@ name = "vinyl-diagnostics"
 version = "0.1.0"
 dependencies = [
  "miette",
+ "thiserror",
+ "vinyl-parser",
 ]
 
 [[package]]
@@ -1092,7 +1094,6 @@ dependencies = [
  "miette",
  "thiserror",
  "tree-sitter",
- "vinyl-diagnostics",
 ]
 
 [[package]]

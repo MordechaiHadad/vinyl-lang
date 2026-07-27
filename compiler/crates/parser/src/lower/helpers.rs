@@ -1,10 +1,11 @@
 use miette::{NamedSource, SourceSpan};
 use tree_sitter::Node;
 
-use crate::lower::{Lowerer, error::LowerError};
+use crate::{ParserDiagnostic, lower::{Lowerer}};
+use crate::error::ParserDiagnosticKind;
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn invalid_kind(&self, node: &Node, kind: &str, context: &str) -> LowerError {
+    pub(super) fn invalid_kind(&self, node: &Node, kind: &str, context: &str) -> ParserDiagnostic {
         self.span_error(node, &format!("unsupported {context}: `{kind}`"))
     }
 
@@ -12,15 +13,17 @@ impl<'a> Lowerer<'a> {
         &self,
         node: &Node<'b>,
         field: &str,
-    ) -> Result<Node<'b>, LowerError> {
+    ) -> Result<Node<'b>, ParserDiagnostic> {
         node.child_by_field_name(field)
             .ok_or_else(|| self.span_error(node, &format!("missing field `{field}`")))
     }
 
-    pub(super) fn span_error(&self, node: &Node, message: &str) -> LowerError {
-        LowerError {
-            message: message.to_string(),
-            source: NamedSource::new(self.source_name, self.source.to_string()),
+    pub(super) fn span_error(&self, node: &Node, message: &str) -> ParserDiagnostic {
+        ParserDiagnostic {
+            kind: ParserDiagnosticKind::Lowering {
+                message: message.to_string(),
+            },
+            source_code: NamedSource::new(self.source_name, self.source.to_string()),
             span: SourceSpan::from(node.start_byte()..node.end_byte()),
         }
     }

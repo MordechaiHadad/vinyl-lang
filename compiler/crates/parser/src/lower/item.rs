@@ -2,12 +2,10 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ast::item::{
+    ParserDiagnostic, ast::item::{
         Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, ImportDef,
         Item, StructDef, StructField, TupleDef,
-    },
-    lower::error::LowerError,
-    lower::{Lowerer, helpers::node_text},
+    }, lower::{Lowerer, helpers::node_text}
 };
 
 impl<'a> Lowerer<'a> {
@@ -16,7 +14,7 @@ impl<'a> Lowerer<'a> {
         node: &Node,
         kind: &str,
         public: bool,
-    ) -> Result<Item, LowerError> {
+    ) -> Result<Item, ParserDiagnostic> {
         match kind {
             "function_definition" => self
                 .lower_function(node, Vec::new(), public)
@@ -40,7 +38,7 @@ impl<'a> Lowerer<'a> {
         node: &Node,
         attrs: Vec<Attribute>,
         public: bool,
-    ) -> Result<StructDef, LowerError> {
+    ) -> Result<StructDef, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let mut fields = Vec::new();
@@ -60,7 +58,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_field_definition(&self, node: &Node) -> Result<StructField, LowerError> {
+    pub(super) fn lower_field_definition(&self, node: &Node) -> Result<StructField, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let type_ = self.lower_type_annotation_child(node)?;
@@ -72,7 +70,7 @@ impl<'a> Lowerer<'a> {
         node: &Node,
         attrs: Vec<Attribute>,
         public: bool,
-    ) -> Result<TupleDef, LowerError> {
+    ) -> Result<TupleDef, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let mut types = Vec::new();
@@ -98,7 +96,7 @@ impl<'a> Lowerer<'a> {
         node: &Node,
         attrs: Vec<Attribute>,
         public: bool,
-    ) -> Result<EnumDef, LowerError> {
+    ) -> Result<EnumDef, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let mut variants = Vec::new();
@@ -118,7 +116,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_enum_variant(&self, node: &Node) -> Result<EnumVariant, LowerError> {
+    pub(super) fn lower_enum_variant(&self, node: &Node) -> Result<EnumVariant, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let child_count = node.named_child_count();
@@ -155,7 +153,7 @@ impl<'a> Lowerer<'a> {
         node: &Node,
         attrs: Vec<Attribute>,
         public: bool,
-    ) -> Result<FunctionDef, LowerError> {
+    ) -> Result<FunctionDef, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let params_node = self.child_by_field(node, "parameters")?;
@@ -180,7 +178,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_import(&self, node: &Node) -> Result<ImportDef, LowerError> {
+    pub(super) fn lower_import(&self, node: &Node) -> Result<ImportDef, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let path_node = self.child_by_field(node, "path")?;
         let mut path = Vec::new();
@@ -192,7 +190,7 @@ impl<'a> Lowerer<'a> {
         Ok(ImportDef { span, path })
     }
 
-    pub(super) fn lower_params(&self, node: &Node) -> Result<Vec<FunctionParam>, LowerError> {
+    pub(super) fn lower_params(&self, node: &Node) -> Result<Vec<FunctionParam>, ParserDiagnostic> {
         let mut params = Vec::new();
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
@@ -204,7 +202,7 @@ impl<'a> Lowerer<'a> {
         Ok(params)
     }
 
-    pub(super) fn lower_param(&self, node: &Node) -> Result<FunctionParam, LowerError> {
+    pub(super) fn lower_param(&self, node: &Node) -> Result<FunctionParam, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let mutable = node.child_by_field_name("mut").is_some();
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
@@ -218,7 +216,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_attribute(&self, node: &Node) -> Result<Attribute, LowerError> {
+    pub(super) fn lower_attribute(&self, node: &Node) -> Result<Attribute, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let mut args = Vec::new();

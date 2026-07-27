@@ -5,7 +5,6 @@ use miette::Diagnostic;
 use thiserror::Error;
 use tracing::instrument;
 use vinyl_parser::ast::item::{ImportDef, Item};
-use vinyl_parser::lower::error::LowerError;
 use vinyl_resolver::ResolveError;
 use vinyl_typecheck::CompileWarning;
 use vinyl_typecheck::TypeError;
@@ -15,10 +14,7 @@ use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 pub enum CompileError {
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parse(#[from] vinyl_parser::ParseError),
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Lower(#[from] LowerError),
+    Parse(#[from] vinyl_parser::ParserDiagnostic),
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeError(#[from] TypeError),
@@ -86,7 +82,7 @@ fn parse_file(path: &Path) -> Result<(String, String, Vec<Item>), Vec<CompileErr
         Err(errors) => {
             return Err(errors
                 .into_iter()
-                .map(CompileError::Lower)
+                .map(CompileError::Parse)
                 .collect::<Vec<CompileError>>());
         }
     };
@@ -279,7 +275,7 @@ pub fn compile(
     let items = vinyl_parser::lower::lower(&tree, source, source_name).map_err(|errors| {
         errors
             .into_iter()
-            .map(CompileError::Lower)
+            .map(CompileError::Parse)
             .collect::<Vec<_>>()
     })?;
 

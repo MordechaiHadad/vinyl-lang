@@ -1,4 +1,3 @@
-pub mod error;
 pub mod expression;
 pub mod helpers;
 pub mod item;
@@ -6,10 +5,8 @@ pub mod pattern;
 pub mod statement;
 pub mod types;
 
-use crate::ast::item::{Attribute, Item};
+use crate::{ParserDiagnostic, ast::item::{Attribute, Item}};
 use tree_sitter::{Node, Tree};
-
-use super::lower::error::LowerError;
 
 pub struct Lowerer<'a> {
     pub source: &'a str,
@@ -24,7 +21,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_source_file(&self, node: &Node) -> Result<Vec<Item>, Vec<LowerError>> {
+    pub(super) fn lower_source_file(&self, node: &Node) -> Result<Vec<Item>, Vec<ParserDiagnostic>> {
         let mut items = Vec::new();
         let mut errors = Vec::new();
         let mut pending_attrs: Vec<Attribute> = Vec::new();
@@ -76,7 +73,7 @@ impl<'a> Lowerer<'a> {
     }
 }
 
-pub fn lower(tree: &Tree, source: &str, source_name: &str) -> Result<Vec<Item>, Vec<LowerError>> {
+pub fn lower(tree: &Tree, source: &str, source_name: &str) -> Result<Vec<Item>, Vec<ParserDiagnostic>> {
     let root = tree.root_node();
     let lowerer = Lowerer::new(source, source_name);
     lowerer.lower_source_file(&root)

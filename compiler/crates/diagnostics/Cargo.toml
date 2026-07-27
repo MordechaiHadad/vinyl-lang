@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-miette = { version = "7.6.0", features = ["derive"] }
+miette = { workspace = true }
+thiserror = { workspace = true }
+vinyl-parser = { path = "../parser" }

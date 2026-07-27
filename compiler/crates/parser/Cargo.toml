@@ -5,9 +5,8 @@ edition = "2024"
 
 [dependencies]
 tree-sitter = "0.26.3"
-miette = { version = "7", features = ["derive"] }
-vinyl-diagnostics = { version = "0.1.0", path = "../diagnostics" }
-thiserror = "2.0.19"
+miette = { workspace = true }
+thiserror = { workspace = true } 
 
 [build-dependencies]
 cc = "1"

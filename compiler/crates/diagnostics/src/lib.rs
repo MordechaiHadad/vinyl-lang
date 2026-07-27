@@ -1,5 +1,8 @@
 use std::fmt;
 
+use miette::Diagnostic;
+use thiserror::Error;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Code {
     pub namespace: &'static str,
@@ -56,4 +59,19 @@ macro_rules! diagnostic_codes {
         }
 
     };
+}
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum CompilerDiagnostic {
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Parse(#[from] vinyl_parser::error::ParserDiagnostic),
+
+    // #[error(transparent)]
+    // #[diagnostic(transparent)]
+    // Type(#[from] vinyl_typecheck::TypecheckerError),
+    //
+    // #[error(transparent)]
+    // #[diagnostic(transparent)]
+    // Resolve(#[from] vinyl_resolver::ResolverError),
 }

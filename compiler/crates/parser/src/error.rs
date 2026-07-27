@@ -1,147 +1,82 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use std::fmt;
 use thiserror::Error;
 use tree_sitter::Tree;
 
-vinyl_diagnostics::diagnostic_codes! {
-    "parser",
-    pub enum ParseDiagnosticKind {
-        UnexpectedToken,
-        MissingToken,
-    }
-}
+#[derive(Debug, Error, Diagnostic)]
+#[error("{kind}")]
+pub struct ParserDiagnostic {
+    #[diagnostic(transparent)]
+    pub kind: ParserDiagnosticKind,
 
-impl fmt::Display for ParseDiagnosticKind {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.code().variant)
-    }
-}
+    #[source_code]
+    pub source_code: NamedSource<String>,
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TokenKind {
-    Semicolon,
-    ClosingParen,
-    ClosingBrace,
-    Quote,
-    Other,
+    #[label]
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Error, Diagnostic)]
-pub enum ParseError {
-    #[error("expected `;`")]
-    #[diagnostic(code(parser::missing_semicolon), help("add `;` here"))]
-    MissingSemicolon {
-        #[source_code]
-        source_code: NamedSource<String>,
-        #[label]
-        span: SourceSpan,
-    },
-    #[error("expected `)`")]
-    #[diagnostic(code(parser::missing_closing_paren), help("add `)` here"))]
-    MissingClosingParen {
-        #[source_code]
-        source_code: NamedSource<String>,
-        #[label]
-        span: SourceSpan,
-    },
-    #[error("expected `}}`")]
-    #[diagnostic(code(parser::missing_closing_brace), help("add `}}` here"))]
-    MissingClosingBrace {
-        #[source_code]
-        source_code: NamedSource<String>,
-        #[label]
-        span: SourceSpan,
-    },
-    #[error("expected `\"`")]
-    #[diagnostic(code(parser::missing_quote), help("add `\"` here"))]
-    MissingQuote {
-        #[source_code]
-        source_code: NamedSource<String>,
-        #[label]
-        span: SourceSpan,
-    },
-    #[error("expected a token")]
+pub enum ParserDiagnosticKind {
+    #[error("expected `{expected}`")]
     #[diagnostic(code(parser::missing_token))]
-    MissingToken {
-        #[source_code]
-        source_code: NamedSource<String>,
-        #[label]
-        span: SourceSpan,
-    },
+    #[help("add `{expected}` here")]
+    MissingToken { expected: String },
+
     #[error("unexpected token `{token}`")]
     #[diagnostic(code(parser::unexpected_token))]
-    UnexpectedToken {
-        token: String,
-        #[source_code]
-        source_code: NamedSource<String>,
-        #[label]
-        span: SourceSpan,
-    },
+    UnexpectedToken { token: String },
+
+    #[error("{message}")]
+    #[diagnostic(code(parser::lowering_error))]
+    Lowering { message: String },
 }
 
-pub(crate) fn validate_with_name(filename: &str, tree: &Tree, source: &str) -> Vec<ParseError> {
-    let mut errors = Vec::new();
-    let cursor = &mut tree.walk();
+pub(crate) fn validate_with_name(
+    filename: &str,
+    tree: &Tree,
+    source: &str,
+) -> Vec<ParserDiagnostic> {
+    let mut diagnostics = Vec::new();
+    let mut cursor = tree.walk();
+    let shared_source = NamedSource::new(filename, source.to_string());
 
     fn visit(
         cursor: &mut tree_sitter::TreeCursor,
-        filename: &str,
         source: &str,
-        errors: &mut Vec<ParseError>,
+        shared_source: &NamedSource<String>,
+        diagnostics: &mut Vec<ParserDiagnostic>,
     ) {
         let node = cursor.node();
-        if node.is_error() || node.is_missing() {
+
+        if !node.has_error() {
+            return;
+        }
+
+        if node.is_missing() || node.is_error() {
             let start = node.start_byte();
             let end = node.end_byte();
+            let span = SourceSpan::from(start..end);
 
-            let error = if node.is_missing() {
-                let expected = node.kind();
-                let token = match expected {
-                    ";" => TokenKind::Semicolon,
-                    ")" => TokenKind::ClosingParen,
-                    "}" => TokenKind::ClosingBrace,
-                    "\"" => TokenKind::Quote,
-                    _ => TokenKind::Other,
-                };
-                let source = NamedSource::new(filename, source.to_string());
-                let span = SourceSpan::from(start..end);
-                match token {
-                    TokenKind::Semicolon => ParseError::MissingSemicolon {
-                        source_code: source,
-                        span,
-                    },
-                    TokenKind::ClosingParen => ParseError::MissingClosingParen {
-                        source_code: source,
-                        span,
-                    },
-                    TokenKind::ClosingBrace => ParseError::MissingClosingBrace {
-                        source_code: source,
-                        span,
-                    },
-                    TokenKind::Quote => ParseError::MissingQuote {
-                        source_code: source,
-                        span,
-                    },
-                    TokenKind::Other => ParseError::MissingToken {
-                        source_code: source,
-                        span,
-                    },
+            let kind = if node.is_missing() {
+                ParserDiagnosticKind::MissingToken {
+                    expected: node.kind().to_string(),
                 }
             } else {
-                let snippet = &source[start..end];
-                let context = snippet.chars().take(40).collect::<String>();
-                ParseError::UnexpectedToken {
-                    token: context,
-                    source_code: NamedSource::new(filename, source.to_string()),
-                    span: SourceSpan::from(start..end),
-                }
+                let snippet = source.get(start..end).unwrap_or("");
+                let token = snippet.chars().take(40).collect::<String>();
+                ParserDiagnosticKind::UnexpectedToken { token }
             };
-            errors.push(error);
+
+            diagnostics.push(ParserDiagnostic {
+                kind,
+                source_code: shared_source.clone(),
+                span,
+            });
         }
 
         if cursor.goto_first_child() {
             loop {
-                visit(cursor, filename, source, errors);
+                visit(cursor, source, shared_source, diagnostics);
                 if !cursor.goto_next_sibling() {
                     break;
                 }
@@ -150,16 +85,6 @@ pub(crate) fn validate_with_name(filename: &str, tree: &Tree, source: &str) -> V
         }
     }
 
-    visit(cursor, filename, source, &mut errors);
-    errors
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_semicolon_has_structured_code() {
-        assert!(matches!(TokenKind::Semicolon, TokenKind::Semicolon));
-    }
+    visit(&mut cursor, source, &shared_source, &mut diagnostics);
+    diagnostics
 }

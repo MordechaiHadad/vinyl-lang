@@ -3,7 +3,7 @@ pub mod error;
 pub mod lower;
 
 pub use ast::*;
-pub use error::ParseError;
+pub use error::ParserDiagnostic;
 use tree_sitter::{Parser, Tree};
 
 unsafe extern "C" {
@@ -14,11 +14,11 @@ fn language() -> tree_sitter::Language {
     unsafe { tree_sitter::Language::from_raw(tree_sitter_vinyl()) }
 }
 
-pub fn parse(source: &str) -> Result<Tree, Vec<ParseError>> {
+pub fn parse(source: &str) -> Result<Tree, Vec<ParserDiagnostic>> {
     parse_with_name("<input>", source)
 }
 
-pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParseError>> {
+pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParserDiagnostic>> {
     let mut parser = Parser::new();
     parser
         .set_language(&language())

@@ -2,21 +2,19 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ast::{
+    ParserDiagnostic, ast::{
         expression::Expression,
         operator::AssignOp,
         statement::{AssignTarget, Statement},
         types::Type,
-    },
-    lower::{
+    }, lower::{
         Lowerer,
-        error::LowerError,
         helpers::{children, node_text},
-    },
+    }
 };
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn lower_block(&self, node: &Node) -> Result<Vec<Statement>, LowerError> {
+    pub(super) fn lower_block(&self, node: &Node) -> Result<Vec<Statement>, ParserDiagnostic> {
         let mut stmts = Vec::new();
         let child_count = node.named_child_count();
         for i in 0..child_count {
@@ -63,7 +61,7 @@ impl<'a> Lowerer<'a> {
         Ok(stmts)
     }
 
-    pub(super) fn lower_statement(&self, node: &Node) -> Result<Option<Statement>, LowerError> {
+    pub(super) fn lower_statement(&self, node: &Node) -> Result<Option<Statement>, ParserDiagnostic> {
         match node.kind() {
             "let_declaration" => self.lower_let(node).map(Some),
             "assignment_statement" => self.lower_assignment(node).map(Some),
@@ -129,7 +127,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_let(&self, node: &Node) -> Result<Statement, LowerError> {
+    pub(super) fn lower_let(&self, node: &Node) -> Result<Statement, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let mutable = node.child_by_field_name("mut").is_some();
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
@@ -144,7 +142,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn find_type_annotation(&self, node: &Node) -> Result<Option<Type>, LowerError> {
+    pub(super) fn find_type_annotation(&self, node: &Node) -> Result<Option<Type>, ParserDiagnostic> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
                 && child.kind() == "type_annotation"
@@ -155,7 +153,7 @@ impl<'a> Lowerer<'a> {
         Ok(None)
     }
 
-    pub(super) fn lower_return(&self, node: &Node) -> Result<Statement, LowerError> {
+    pub(super) fn lower_return(&self, node: &Node) -> Result<Statement, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
@@ -167,7 +165,7 @@ impl<'a> Lowerer<'a> {
         Ok(Statement::Return(None, span))
     }
 
-    pub(super) fn lower_assignment(&self, node: &Node) -> Result<Statement, LowerError> {
+    pub(super) fn lower_assignment(&self, node: &Node) -> Result<Statement, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let named = children(node);
         if named.len() < 2 {
@@ -186,7 +184,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_assign_target(&self, node: &Node) -> Result<AssignTarget, LowerError> {
+    pub(super) fn lower_assign_target(&self, node: &Node) -> Result<AssignTarget, ParserDiagnostic> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
             "value_identifier" | "type_identifier" => {
@@ -225,7 +223,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    pub(super) fn lower_assign_op(&self, node: &Node) -> Result<AssignOp, LowerError> {
+    pub(super) fn lower_assign_op(&self, node: &Node) -> Result<AssignOp, ParserDiagnostic> {
         let op_node = node
             .child_by_field_name("operator")
             .ok_or_else(|| self.span_error(node, "missing assignment operator"))?;

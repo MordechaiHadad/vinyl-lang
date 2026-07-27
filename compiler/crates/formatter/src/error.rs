@@ -3,7 +3,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum FormatError {
     Resolve(vinyl_resolver::ResolveError),
-    Parse(Box<vinyl_parser::ParseError>),
+    Parse(Box<vinyl_parser::ParserDiagnostic>),
     Io(std::io::Error),
 }
 
@@ -33,8 +33,8 @@ impl From<vinyl_resolver::ResolveError> for FormatError {
     }
 }
 
-impl From<vinyl_parser::ParseError> for FormatError {
-    fn from(e: vinyl_parser::ParseError) -> Self {
+impl From<vinyl_parser::ParserDiagnostic> for FormatError {
+    fn from(e: vinyl_parser::ParserDiagnostic) -> Self {
         FormatError::Parse(Box::new(e))
     }
 }
