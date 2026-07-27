@@ -305,11 +305,28 @@ impl InferState {
 
                 if let Type::Ref(inner) = &resolved_type {
                     if *ast_op == AssignOp::Eq && matches!(value_expr, Expression::Ref { .. }) {
-                        self.subs
-                            .unify(&self.source, value_type, &resolved_type, span)?;
+                        if let Some(e) = self.check_assign_type_change(inner, value_type, *name_span) {
+                            self.errors.push(e);
+                            return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
+                        }
+                        if let Err(e) = self.subs.unify(&self.source, value_type, &resolved_type, span) {
+                            self.errors.push(e);
+                        }
                         return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
                     }
-                    self.subs.unify(&self.source, value_type, inner, span)?;
+                    if let Some(e) = self.check_assign_type_change(inner, value_type, *name_span) {
+                        self.errors.push(e);
+                        return Ok(HirAssignTarget::Deref(
+                            Box::new(HirExpression {
+                                kind: HirExpressionKind::Ident(name.clone(), *name_span),
+                                type_: scheme.type_,
+                            }),
+                            *name_span,
+                        ));
+                    }
+                    if let Err(e) = self.subs.unify(&self.source, value_type, inner, span) {
+                        self.errors.push(e);
+                    }
                     return Ok(HirAssignTarget::Deref(
                         Box::new(HirExpression {
                             kind: HirExpressionKind::Ident(name.clone(), *name_span),
@@ -319,8 +336,13 @@ impl InferState {
                     ));
                 }
 
-                self.subs
-                    .unify(&self.source, value_type, &resolved_type, span)?;
+                if let Some(e) = self.check_assign_type_change(&resolved_type, value_type, *name_span) {
+                    self.errors.push(e);
+                    return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
+                }
+                if let Err(e) = self.subs.unify(&self.source, value_type, &resolved_type, span) {
+                    self.errors.push(e);
+                }
                 Ok(HirAssignTarget::Ident(name.clone(), *name_span))
             }
             AssignTarget::Index {
@@ -349,5 +371,36 @@ impl InferState {
                 })
             }
         }
+    }
+
+    fn check_assign_type_change(
+        &self,
+        target_type: &Type,
+        value_type: &Type,
+        span: SourceSpan,
+    ) -> Option<TypeError> {
+        let resolved = self.subs.resolve(target_type);
+        if let Type::Var(id) = &resolved {
+            if !self.subs.subs.contains_key(id) {
+                let resolved_value = self.subs.resolve(value_type);
+                let inner_value = match &resolved_value {
+                    Type::Ref(inner) => self.subs.resolve(inner),
+                    other => other.clone(),
+                };
+                if !matches!(&inner_value, Type::Var(_)) {
+                    let is_float = self.subs.float_vars.contains(id);
+                    let compatible =
+                        if is_float { inner_value.is_float() } else { inner_value.is_numeric() };
+                    if !compatible {
+                        let default_type = if is_float { "float64" } else { "int64" };
+                        return Some(self.source.error(
+                            span,
+                            format!("type mismatch: expected `{default_type}`, found `{value_type}`"),
+                        ));
+                    }
+                }
+            }
+        }
+        None
     }
 }
