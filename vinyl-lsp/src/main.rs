@@ -43,7 +43,7 @@ fn init_tracing(verbose: u8) -> Result<()> {
     Ok(())
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Vfs {
     files: HashMap<PathBuf, String>,
 }
@@ -147,107 +147,22 @@ const KEYWORDS: &[(&str, CompletionItemKind)] = &[
 ];
 
 impl Backend {
-    async fn update(&self, uri: &Url) {
-        debug!(%uri, "updating workspace analysis");
-        let Some(path) = uri.to_file_path().ok() else {
-            return;
-        };
-        let mut state = self.state.write().await;
-        if state.vfs.source(&path).is_none() {
-            return;
-        }
-        let root = state
-            .workspace_root
-            .clone()
-            .or_else(|| path.parent().map(Path::to_path_buf));
-        let Some(root) = root else {
-            return;
-        };
-        let entry_path = [root.join("main.vn"), root.join("lib.vn")]
-            .into_iter()
-            .find(|candidate| candidate.exists())
-            .unwrap_or(path.clone());
-        match analyze_workspace(&state.vfs, &root, &entry_path) {
-            Ok((analyses, diagnostics, resolver, module_table)) => {
-                info!(files = analyses.len(), "workspace analysis complete");
-                state.resolver = Some(resolver);
-                state.module_table = module_table;
-                state.cache.extend(analyses);
-                let source = state.vfs.source(&entry_path).unwrap_or_default();
-                let mut file_diagnostics: Vec<Diagnostic> = diagnostics
-                    .get(&entry_path)
-                    .map(|diagnostics| {
-                        diagnostics
-                            .iter()
-                            .map(|diagnostic| {
-                                Diagnostic::new_simple(
-                                    span_range(&source, diagnostic.offset, diagnostic.length),
-                                    diagnostic.message.clone(),
-                                )
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                if let Some(analysis) = state.cache.get(&entry_path) {
-                    for definition in &analysis.result.unused {
-                        file_diagnostics.push(Diagnostic {
-                            range: span_range(
-                                &source,
-                                definition.span.offset(),
-                                definition.span.len(),
-                            ),
-                            severity: Some(DiagnosticSeverity::WARNING),
-                            message: format!(
-                                "unused {}",
-                                match definition.kind {
-                                    DefinitionKind::Function => "function",
-                                    DefinitionKind::Variable => "variable",
-                                    DefinitionKind::Parameter => "parameter",
-                                    _ => "symbol",
-                                }
-                            ),
-                            ..Diagnostic::default()
-                        });
-                    }
-                }
-                drop(state);
-                self.client
-                    .publish_diagnostics(
-                        Url::from_file_path(&entry_path).unwrap_or(uri.clone()),
-                        file_diagnostics,
-                        None,
-                    )
-                    .await;
-            }
-            Err(error) => {
-                let diagnostics = vec![Diagnostic::new_simple(Range::default(), error.to_string())];
-                drop(state);
-                self.client
-                    .publish_diagnostics(
-                        Url::from_file_path(&entry_path).unwrap_or(uri.clone()),
-                        diagnostics,
-                        None,
-                    )
-                    .await;
-            }
-        }
-    }
-
     async fn schedule_update(&self, uri: &Url) {
         let version = {
             let mut state = self.state.write().await;
             state.update_version += 1;
             state.update_version
         };
-
-        // tokio::time::sleep(Duration::from_millis(150)).await; temporarily disabling this, as it
-        // makes lsp unusable
-
-        if self.state.read().await.update_version != version {
-            return;
-        }
-
-        self.update(uri).await;
+        let state = self.state.clone();
+        let client = self.client.clone();
+        let uri = uri.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            if state.read().await.update_version != version {
+                return;
+            }
+            perform_update(&state, &client, &uri).await;
+        });
     }
 
     async fn analysis(&self, uri: &Url) -> Option<Arc<Analysis>> {
@@ -542,6 +457,10 @@ impl LanguageServer for Backend {
                 .workspace_root
                 .as_deref()
                 .unwrap_or(resolver.source_root());
+            let current_dir_canonical = current_path
+                .as_ref()
+                .and_then(|p| p.parent())
+                .and_then(|d| std::fs::canonicalize(d).ok());
 
             for info in resolver.all_modules().values() {
                 let import_name = &info.import_name;
@@ -551,6 +470,11 @@ impl LanguageServer for Backend {
                 if current_path
                     .as_ref()
                     .is_some_and(|p| same_file(p, &info.file_path))
+                {
+                    continue;
+                }
+                if let Some(ref current_dir) = current_dir_canonical
+                    && !info.file_path.starts_with(current_dir)
                 {
                     continue;
                 }
@@ -798,10 +722,19 @@ impl LanguageServer for Backend {
                         .workspace_root
                         .as_deref()
                         .unwrap_or(resolver.source_root());
+                    let current_dir_canonical = current_path
+                        .as_ref()
+                        .and_then(|p| p.parent())
+                        .and_then(|d| std::fs::canonicalize(d).ok());
                     for info in resolver.all_modules().values() {
                         if current_path
                             .as_ref()
                             .is_some_and(|p| same_file(p, &info.file_path))
+                        {
+                            continue;
+                        }
+                        if let Some(ref current_dir) = current_dir_canonical
+                            && !info.file_path.starts_with(current_dir)
                         {
                             continue;
                         }
@@ -871,6 +804,100 @@ impl Backend {
             Err(_) => return Ok(None),
         };
         Ok(Some(vec![TextEdit::new(full_range(&source), formatted)]))
+    }
+}
+
+async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) {
+    debug!(%uri, "performing update");
+    let Some(path) = uri.to_file_path().ok() else {
+        return;
+    };
+
+    let (vfs, root, entry_path) = {
+        let guard = state.read().await;
+        if guard.vfs.source(&path).is_none() {
+            return;
+        }
+        let root = guard
+            .workspace_root
+            .clone()
+            .or_else(|| path.parent().map(Path::to_path_buf));
+        let Some(root) = root else {
+            return;
+        };
+        let entry_path = [root.join("main.vn"), root.join("lib.vn")]
+            .into_iter()
+            .find(|candidate| candidate.exists())
+            .unwrap_or(path.clone());
+        (guard.vfs.clone(), root, entry_path)
+    };
+
+    match analyze_workspace(&vfs, &root, &entry_path) {
+        Ok((analyses, diagnostics, resolver, module_table)) => {
+            info!(files = analyses.len(), "workspace analysis complete");
+            let entry_source = vfs.source(&entry_path).unwrap_or_default();
+            let mut entry_diagnostics: Vec<Diagnostic> = diagnostics
+                .get(&entry_path)
+                .map(|diags| {
+                    diags
+                        .iter()
+                        .map(|d| {
+                            Diagnostic::new_simple(
+                                span_range(&entry_source, d.offset, d.length),
+                                d.message.clone(),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            {
+                let mut guard = state.write().await;
+                guard.resolver = Some(resolver);
+                guard.module_table = module_table;
+                guard.cache.extend(analyses);
+                if let Some(analysis) = guard.cache.get(&entry_path) {
+                    for definition in &analysis.result.unused {
+                        entry_diagnostics.push(Diagnostic {
+                            range: span_range(
+                                &entry_source,
+                                definition.span.offset(),
+                                definition.span.len(),
+                            ),
+                            severity: Some(DiagnosticSeverity::WARNING),
+                            message: format!(
+                                "unused {}",
+                                match definition.kind {
+                                    DefinitionKind::Function => "function",
+                                    DefinitionKind::Variable => "variable",
+                                    DefinitionKind::Parameter => "parameter",
+                                    _ => "symbol",
+                                }
+                            ),
+                            ..Diagnostic::default()
+                        });
+                    }
+                }
+            }
+
+            client
+                .publish_diagnostics(
+                    Url::from_file_path(&entry_path).unwrap_or(uri.clone()),
+                    entry_diagnostics,
+                    None,
+                )
+                .await;
+        }
+        Err(error) => {
+            let diagnostics = vec![Diagnostic::new_simple(Range::default(), error.to_string())];
+            client
+                .publish_diagnostics(
+                    Url::from_file_path(&entry_path).unwrap_or(uri.clone()),
+                    diagnostics,
+                    None,
+                )
+                .await;
+        }
     }
 }
 
