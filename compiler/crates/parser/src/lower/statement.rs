@@ -2,15 +2,17 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ParserDiagnostic, ast::{
+    ParserDiagnostic,
+    ast::{
         expression::Expression,
         operator::AssignOp,
         statement::{AssignTarget, Statement},
         types::Type,
-    }, lower::{
+    },
+    lower::{
         Lowerer,
         helpers::{children, node_text},
-    }
+    },
 };
 
 impl<'a> Lowerer<'a> {
@@ -61,7 +63,10 @@ impl<'a> Lowerer<'a> {
         Ok(stmts)
     }
 
-    pub(super) fn lower_statement(&self, node: &Node) -> Result<Option<Statement>, ParserDiagnostic> {
+    pub(super) fn lower_statement(
+        &self,
+        node: &Node,
+    ) -> Result<Option<Statement>, ParserDiagnostic> {
         match node.kind() {
             "let_declaration" => self.lower_let(node).map(Some),
             "assignment_statement" => self.lower_assignment(node).map(Some),
@@ -142,7 +147,10 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn find_type_annotation(&self, node: &Node) -> Result<Option<Type>, ParserDiagnostic> {
+    pub(super) fn find_type_annotation(
+        &self,
+        node: &Node,
+    ) -> Result<Option<Type>, ParserDiagnostic> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
                 && child.kind() == "type_annotation"
@@ -184,7 +192,10 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_assign_target(&self, node: &Node) -> Result<AssignTarget, ParserDiagnostic> {
+    pub(super) fn lower_assign_target(
+        &self,
+        node: &Node,
+    ) -> Result<AssignTarget, ParserDiagnostic> {
         let span = || SourceSpan::from(node.start_byte()..node.end_byte());
         match node.kind() {
             "value_identifier" | "type_identifier" => {

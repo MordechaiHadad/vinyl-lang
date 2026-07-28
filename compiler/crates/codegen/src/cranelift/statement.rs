@@ -7,12 +7,12 @@ use vinyl_typecheck::hir::{
     Type,
 };
 
-use crate::CraneliftError;
 use super::state::{CodegenCtx, VarInfo, VarSlot};
 use super::types::{
     element_byte_size, extract_array_element_type, ir_type_from_primitive, is_large_aggregate,
 };
 use super::variable::{build_var_info, var_mode};
+use crate::CraneliftError;
 
 impl<'a> CodegenCtx<'a> {
     pub fn compile_stmt(

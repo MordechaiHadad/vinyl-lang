@@ -32,13 +32,17 @@ impl InferState {
             HirExpressionKind::Int(_, span) if !expr.type_.is_numeric() => {
                 errors.push(self.source.error(
                     *span,
-                    TypeDiagnosticKind::IntLiteralMismatch { found: expr.type_.clone() },
+                    TypeDiagnosticKind::IntLiteralMismatch {
+                        found: expr.type_.clone(),
+                    },
                 ));
             }
             HirExpressionKind::Float(_, span) if !expr.type_.is_float() => {
                 errors.push(self.source.error(
                     *span,
-                    TypeDiagnosticKind::FloatLiteralMismatch { found: expr.type_.clone() },
+                    TypeDiagnosticKind::FloatLiteralMismatch {
+                        found: expr.type_.clone(),
+                    },
                 ));
             }
             HirExpressionKind::Binary { left, right, .. } => {
@@ -61,7 +65,9 @@ impl InferState {
                 if !index.type_.is_int() && !index.type_.is_uint() {
                     errors.push(self.source.error(
                         *span,
-                        TypeDiagnosticKind::IndexMustBeInteger { found: index.type_.clone() },
+                        TypeDiagnosticKind::IndexMustBeInteger {
+                            found: index.type_.clone(),
+                        },
                     ));
                 }
             }
@@ -91,7 +97,10 @@ impl InferState {
         }
     }
 
-    pub(super) fn collect_literal_type_errors(&self, stmts: &[HirStatement]) -> Vec<TypeDiagnostic> {
+    pub(super) fn collect_literal_type_errors(
+        &self,
+        stmts: &[HirStatement],
+    ) -> Vec<TypeDiagnostic> {
         let mut errors = Vec::new();
         self.validate_literal_types(stmts, &mut errors);
         errors

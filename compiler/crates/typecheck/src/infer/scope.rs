@@ -60,12 +60,19 @@ impl ScopeState {
                 if !scheme.mutable {
                     return Err(Box::new(source.error(
                         span,
-                        TypeDiagnosticKind::AssignToImmutable { name: name.to_string() },
+                        TypeDiagnosticKind::AssignToImmutable {
+                            name: name.to_string(),
+                        },
                     )));
                 }
                 return Ok(());
             }
         }
-        Err(Box::new(source.error(span, TypeDiagnosticKind::UndefinedName { name: name.to_string() })))
+        Err(Box::new(source.error(
+            span,
+            TypeDiagnosticKind::UndefinedName {
+                name: name.to_string(),
+            },
+        )))
     }
 }

@@ -80,7 +80,12 @@ struct SourceDiagnostic {
 
 type WorkspaceAnalyses = HashMap<PathBuf, Arc<Analysis>>;
 type WorkspaceDiagnostics = HashMap<PathBuf, Vec<SourceDiagnostic>>;
-type WorkspaceState = (WorkspaceAnalyses, WorkspaceDiagnostics, ModuleResolver, ModuleTable);
+type WorkspaceState = (
+    WorkspaceAnalyses,
+    WorkspaceDiagnostics,
+    ModuleResolver,
+    ModuleTable,
+);
 
 #[derive(Default)]
 struct State {
@@ -186,14 +191,21 @@ impl Backend {
                 if let Some(analysis) = state.cache.get(&entry_path) {
                     for definition in &analysis.result.unused {
                         file_diagnostics.push(Diagnostic {
-                            range: span_range(&source, definition.span.offset(), definition.span.len()),
+                            range: span_range(
+                                &source,
+                                definition.span.offset(),
+                                definition.span.len(),
+                            ),
                             severity: Some(DiagnosticSeverity::WARNING),
-                            message: format!("unused {}", match definition.kind {
-                                DefinitionKind::Function => "function",
-                                DefinitionKind::Variable => "variable",
-                                DefinitionKind::Parameter => "parameter",
-                                _ => "symbol",
-                            }),
+                            message: format!(
+                                "unused {}",
+                                match definition.kind {
+                                    DefinitionKind::Function => "function",
+                                    DefinitionKind::Variable => "variable",
+                                    DefinitionKind::Parameter => "parameter",
+                                    _ => "symbol",
+                                }
+                            ),
                             ..Diagnostic::default()
                         });
                     }
@@ -525,21 +537,29 @@ impl LanguageServer for Backend {
         if let Some(resolver) = &state.resolver {
             let current_path = uri.to_file_path().ok();
             let existing_imports = current_imports(&analysis.source);
-            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.source_root());
+            let workspace_root = state
+                .workspace_root
+                .as_deref()
+                .unwrap_or(resolver.source_root());
 
             for info in resolver.all_modules().values() {
                 let import_name = &info.import_name;
                 if existing_imports.contains(import_name) {
                     continue;
                 }
-                if current_path.as_ref().is_some_and(|p| same_file(p, &info.file_path)) {
+                if current_path
+                    .as_ref()
+                    .is_some_and(|p| same_file(p, &info.file_path))
+                {
                     continue;
                 }
-                let cache_key = non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
+                let cache_key =
+                    non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
                 let Some(module_analysis) = state.cache.get(&cache_key) else {
                     continue;
                 };
-                let import_path = current_path.as_ref()
+                let import_path = current_path
+                    .as_ref()
                     .map(|p| relative_import_path(p, &info.file_path, resolver.source_root()))
                     .unwrap_or_else(|| import_name.clone());
                 if existing_imports.contains(&import_path) {
@@ -559,9 +579,14 @@ impl LanguageServer for Backend {
                         DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
                         _ => continue,
                     };
-                    let detail = definition_detail(definition, &module_analysis.result, &module_analysis.source);
+                    let detail = definition_detail(
+                        definition,
+                        &module_analysis.result,
+                        &module_analysis.source,
+                    );
                     let detail = Some(
-                        detail.map(|d| format!("{d} (from {import_path})"))
+                        detail
+                            .map(|d| format!("{d} (from {import_path})"))
                             .unwrap_or_else(|| format!("(from {import_path})")),
                     );
                     let edit_range = import_edit_range(&analysis.source);
@@ -761,26 +786,41 @@ impl LanguageServer for Backend {
         let prefix = word_prefix(&source, cursor_offset);
         if !prefix.is_empty() {
             let analysis = self.analysis(&uri).await;
-            let is_local = analysis.as_ref().is_some_and(|a| {
-                a.result.definitions.keys().any(|k| k == &prefix)
-            });
+            let is_local = analysis
+                .as_ref()
+                .is_some_and(|a| a.result.definitions.keys().any(|k| k == &prefix));
             if !is_local {
                 let existing_imports = current_imports(&source);
                 if let Some(resolver) = &state.resolver {
                     let current_path = uri.to_file_path().ok();
-                    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.source_root());
+                    let workspace_root = state
+                        .workspace_root
+                        .as_deref()
+                        .unwrap_or(resolver.source_root());
                     for info in resolver.all_modules().values() {
-                        if current_path.as_ref().is_some_and(|p| same_file(p, &info.file_path)) {
+                        if current_path
+                            .as_ref()
+                            .is_some_and(|p| same_file(p, &info.file_path))
+                        {
                             continue;
                         }
-                        let cache_key = non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
+                        let cache_key = non_canonical_key(
+                            &info.file_path,
+                            resolver.source_root(),
+                            workspace_root,
+                        );
                         let Some(module_analysis) = state.cache.get(&cache_key) else {
                             continue;
                         };
-                        let import_path = current_path.as_ref()
-                            .map(|p| relative_import_path(p, &info.file_path, resolver.source_root()))
+                        let import_path = current_path
+                            .as_ref()
+                            .map(|p| {
+                                relative_import_path(p, &info.file_path, resolver.source_root())
+                            })
                             .unwrap_or_else(|| info.import_name.clone());
-                        if existing_imports.contains(&import_path) || existing_imports.contains(&info.import_name) {
+                        if existing_imports.contains(&import_path)
+                            || existing_imports.contains(&info.import_name)
+                        {
                             continue;
                         }
                         if module_analysis.result.definitions.contains_key(&prefix) {
@@ -793,7 +833,10 @@ impl LanguageServer for Backend {
                                 edit: Some(WorkspaceEdit {
                                     changes: Some(HashMap::from([(
                                         uri.clone(),
-                                        vec![TextEdit::new(edit_range, format!("import {import_path};\n"))],
+                                        vec![TextEdit::new(
+                                            edit_range,
+                                            format!("import {import_path};\n"),
+                                        )],
                                     )])),
                                     ..WorkspaceEdit::default()
                                 }),
@@ -884,7 +927,12 @@ fn word_prefix(source: &str, offset: usize) -> String {
         .to_string()
 }
 
-fn extract_type_from_span(source: &str, offset: usize, length: usize, is_let: bool) -> Option<String> {
+fn extract_type_from_span(
+    source: &str,
+    offset: usize,
+    length: usize,
+    is_let: bool,
+) -> Option<String> {
     let text = &source[offset..(offset + length)];
     let type_text = if is_let {
         let colon = text.find(':')?;
@@ -894,23 +942,32 @@ fn extract_type_from_span(source: &str, offset: usize, length: usize, is_let: bo
     } else {
         text.split(':').nth(1)?.trim().to_string()
     };
-    if type_text.is_empty() { None } else { Some(type_text) }
+    if type_text.is_empty() {
+        None
+    } else {
+        Some(type_text)
+    }
 }
 
-fn definition_detail(definition: &Definition, result: &TypeckResult, source: &str) -> Option<String> {
+fn definition_detail(
+    definition: &Definition,
+    result: &TypeckResult,
+    source: &str,
+) -> Option<String> {
     match definition.kind {
-        DefinitionKind::Function => result
-            .items
-            .iter()
-            .find_map(|item| match &item.kind {
-                HirItemKind::Function(f) if f.name == definition.name => {
-                    Some(function_signature(f, source))
-                }
-                _ => None,
-            }),
+        DefinitionKind::Function => result.items.iter().find_map(|item| match &item.kind {
+            HirItemKind::Function(f) if f.name == definition.name => {
+                Some(function_signature(f, source))
+            }
+            _ => None,
+        }),
         DefinitionKind::Struct => result.items.iter().find_map(|item| match &item.kind {
             HirItemKind::Struct(s) if s.name == definition.name => {
-                let fields: Vec<_> = s.fields.iter().map(|f| format!("{}: {}", f.name, f.type_)).collect();
+                let fields: Vec<_> = s
+                    .fields
+                    .iter()
+                    .map(|f| format!("{}: {}", f.name, f.type_))
+                    .collect();
                 Some(format!("struct {} {{ {} }}", s.name, fields.join(", ")))
             }
             _ => None,
@@ -929,22 +986,37 @@ fn definition_detail(definition: &Definition, result: &TypeckResult, source: &st
             }
             _ => None,
         }),
-        DefinitionKind::Parameter => {
-            extract_type_from_span(source, definition.span.offset(), definition.span.len(), false).map(|type_name| format!("{}: {}", definition.name, type_name))
-        }
+        DefinitionKind::Parameter => extract_type_from_span(
+            source,
+            definition.span.offset(),
+            definition.span.len(),
+            false,
+        )
+        .map(|type_name| format!("{}: {}", definition.name, type_name)),
         DefinitionKind::Variable => {
-            let type_text = extract_type_from_span(source, definition.span.offset(), definition.span.len(), true)
-                .or_else(|| definition.type_name.clone());
+            let type_text = extract_type_from_span(
+                source,
+                definition.span.offset(),
+                definition.span.len(),
+                true,
+            )
+            .or_else(|| definition.type_name.clone());
             type_text.map(|type_name| format!("{}: {}", definition.name, type_name))
         }
     }
 }
 
 fn function_signature(function: &HirFunction, source: &str) -> String {
-    let params: Vec<_> = function.params.iter().map(|p| {
-        let original_type = extract_type_from_span(source, p.span.offset(), p.span.len(), false).unwrap_or_else(|| p.type_.to_string());
-        format!("{}: {}", p.name, original_type)
-    }).collect();
+    let params: Vec<_> = function
+        .params
+        .iter()
+        .map(|p| {
+            let original_type =
+                extract_type_from_span(source, p.span.offset(), p.span.len(), false)
+                    .unwrap_or_else(|| p.type_.to_string());
+            format!("{}: {}", p.name, original_type)
+        })
+        .collect();
     let span_offset = function.span.offset();
     let span_len = function.span.len();
     let span_end = span_offset.checked_add(span_len).unwrap_or(0);
@@ -961,7 +1033,12 @@ fn function_signature(function: &HirFunction, source: &str) -> String {
     } else {
         function.return_type.to_string()
     };
-    format!("fn {}({}): {}", function.name, params.join(", "), return_type)
+    format!(
+        "fn {}({}): {}",
+        function.name,
+        params.join(", "),
+        return_type
+    )
 }
 
 fn import_edit_range(source: &str) -> Range {
@@ -978,7 +1055,8 @@ fn import_edit_range(source: &str) -> Range {
 }
 
 fn current_imports(source: &str) -> HashSet<String> {
-    source.lines()
+    source
+        .lines()
         .filter_map(|line| line.trim().strip_prefix("import "))
         .map(|s| s.trim_end_matches(';').trim().to_string())
         .collect()
@@ -992,8 +1070,8 @@ fn analyze_with_diagnostics(
 ) -> std::result::Result<Arc<Analysis>, Vec<SourceDiagnostic>> {
     let name = path.to_string_lossy();
     let (result, _warnings) =
-        vinyl_typecheck::typeck_with_index(items, source, &name, module_table)
-            .map_err(|errors| {
+        vinyl_typecheck::typeck_with_index(items, source, &name, module_table).map_err(
+            |errors| {
                 errors
                     .into_iter()
                     .map(|error| SourceDiagnostic {
@@ -1002,7 +1080,8 @@ fn analyze_with_diagnostics(
                         length: error.span.len(),
                     })
                     .collect::<Vec<_>>()
-            })?;
+            },
+        )?;
     Ok(Arc::new(Analysis {
         path: path.to_path_buf(),
         source: source.to_string(),
@@ -1094,9 +1173,14 @@ fn non_canonical_key(path: &Path, canonical_root: &Path, non_canonical_root: &Pa
 }
 
 fn relative_import_path(from_file: &Path, to_module: &Path, source_root: &Path) -> String {
-    let to_stem = to_module.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    if let (Ok(from_canon), Ok(to_canon)) = (from_file.parent().unwrap().canonicalize(), to_module.canonicalize())
-        && from_canon == to_canon.parent().unwrap_or(Path::new(""))
+    let to_stem = to_module
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    if let (Ok(from_canon), Ok(to_canon)) = (
+        from_file.parent().unwrap().canonicalize(),
+        to_module.canonicalize(),
+    ) && from_canon == to_canon.parent().unwrap_or(Path::new(""))
     {
         return to_stem;
     }
@@ -1139,7 +1223,10 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
                 let (source, items) = match parse_file_with_diagnostics(vfs, path) {
                     Ok(result) => result,
                     Err(file_diagnostics) => {
-                        diagnostics.insert(non_canonical_key(path, resolver.source_root(), root), file_diagnostics);
+                        diagnostics.insert(
+                            non_canonical_key(path, resolver.source_root(), root),
+                            file_diagnostics,
+                        );
                         continue;
                     }
                 };
@@ -1149,7 +1236,8 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
                         analyses.insert(key, analysis);
                     }
                     Err(error) => {
-                        diagnostics.insert(non_canonical_key(path, resolver.source_root(), root), error);
+                        diagnostics
+                            .insert(non_canonical_key(path, resolver.source_root(), root), error);
                     }
                 }
             }
@@ -1173,7 +1261,9 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
         let Ok(items) = vinyl_parser::lower::lower(&tree, &source, &name) else {
             continue;
         };
-        if let Ok(analysis) = analyze_with_diagnostics(canonical_path, &source, &items, &ModuleTable::new()) {
+        if let Ok(analysis) =
+            analyze_with_diagnostics(canonical_path, &source, &items, &ModuleTable::new())
+        {
             // store with non-canonical path key so URI lookups match
             let key = non_canonical_key(canonical_path, resolver.source_root(), root);
             analyses.insert(key, analysis);
@@ -1196,7 +1286,10 @@ fn collect_modules(
         _ => None,
     }) {
         let info = resolver.resolve_from_file(import, file_path)?;
-        let path = info.file_path.canonicalize().unwrap_or(info.file_path.clone());
+        let path = info
+            .file_path
+            .canonicalize()
+            .unwrap_or(info.file_path.clone());
         if !visited.insert(path.clone()) {
             continue;
         }

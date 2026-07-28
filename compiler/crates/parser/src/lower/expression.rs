@@ -2,13 +2,15 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ParserDiagnostic, ast::{
+    ParserDiagnostic,
+    ast::{
         expression::{Expression, MatchArm},
         operator::{BinaryOp, UnaryOp},
-    }, lower::{
+    },
+    lower::{
         Lowerer,
         helpers::{child_by_field_opt, children, node_text},
-    }
+    },
 };
 
 impl<'a> Lowerer<'a> {

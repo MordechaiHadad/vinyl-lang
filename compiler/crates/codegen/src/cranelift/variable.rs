@@ -5,9 +5,9 @@ use cranelift_frontend::FunctionBuilder;
 
 use vinyl_typecheck::hir::Type;
 
-use crate::CraneliftError;
 use super::state::{CodegenCtx, VarSlot};
 use super::types::ir_type_from_primitive;
+use crate::CraneliftError;
 
 pub enum VarMode {
     Value,

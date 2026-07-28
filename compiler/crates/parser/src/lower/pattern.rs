@@ -2,10 +2,12 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ParserDiagnostic, ast::pattern::{LiteralPattern, Pattern}, lower::{
+    ParserDiagnostic,
+    ast::pattern::{LiteralPattern, Pattern},
+    lower::{
         Lowerer,
         helpers::{children, node_text},
-    }
+    },
 };
 
 impl<'a> Lowerer<'a> {

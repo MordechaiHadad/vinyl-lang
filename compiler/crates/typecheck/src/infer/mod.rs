@@ -50,7 +50,12 @@ impl SourceContext {
         }
     }
 
-    pub(super) fn type_mismatch(&self, span: SourceSpan, expected: Type, found: Type) -> TypeDiagnostic {
+    pub(super) fn type_mismatch(
+        &self,
+        span: SourceSpan,
+        expected: Type,
+        found: Type,
+    ) -> TypeDiagnostic {
         TypeDiagnostic {
             kind: TypeDiagnosticKind::Mismatch { expected, found },
             source_code: NamedSource::new(&self.source_name, self.source.to_string()),
@@ -220,11 +225,14 @@ pub fn typeck_with_index(
 ) -> Result<(TypeckResult, Vec<TypeDiagnostic>), Vec<TypeDiagnostic>> {
     let (hir_items, warnings) = typeck_with_modules(items, source, source_name, module_table)?;
     let index = IndexBuilder::default().build(&hir_items);
-    Ok((TypeckResult {
-        items: hir_items,
-        expr_at_pos: index.expr_at_pos,
-        definitions: index.definitions,
-        references: index.references,
-        unused: index.unused,
-    }, warnings))
+    Ok((
+        TypeckResult {
+            items: hir_items,
+            expr_at_pos: index.expr_at_pos,
+            definitions: index.definitions,
+            references: index.references,
+            unused: index.unused,
+        },
+        warnings,
+    ))
 }

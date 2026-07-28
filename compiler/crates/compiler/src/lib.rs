@@ -242,10 +242,13 @@ pub fn compile_entry(
             .collect::<Vec<_>>()
     })?;
 
-    Ok((CompiledModule {
-        items: hir,
-        module_table,
-    }, warnings))
+    Ok((
+        CompiledModule {
+            items: hir,
+            module_table,
+        },
+        warnings,
+    ))
 }
 
 #[cfg(test)]
@@ -276,10 +279,7 @@ mod tests {
                 ("src/math.vn", "public fn answer(): int { 42 }"),
             ],
         );
-        let result = compile_entry(
-            &root.join("src/main.vn"),
-            Some(&root.join("src")),
-        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root.join("src")));
         assert!(result.is_ok(), "{result:?}");
     }
 
@@ -295,10 +295,7 @@ mod tests {
                 ("src/math.vn", "fn answer(): int { 42 }"),
             ],
         );
-        let result = compile_entry(
-            &root.join("src/main.vn"),
-            Some(&root.join("src")),
-        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root.join("src")));
         assert!(result.is_err());
     }
 
@@ -314,10 +311,7 @@ mod tests {
                 ("src/math/math.vn", "public fn answer(): int { 42 }"),
             ],
         );
-        let result = compile_entry(
-            &root.join("src/main.vn"),
-            Some(&root.join("src")),
-        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root.join("src")));
         assert!(result.is_ok(), "{result:?}");
     }
 }

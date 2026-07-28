@@ -10,9 +10,9 @@ use vinyl_typecheck::hir::{
     HirStatementKind, Type,
 };
 
-use crate::CraneliftError;
 use super::state::CodegenCtx;
 use super::types::{element_byte_size, ir_type_from_primitive, is_large_aggregate};
+use crate::CraneliftError;
 
 pub struct IfExprBundle<'a> {
     pub condition: &'a HirExpression,

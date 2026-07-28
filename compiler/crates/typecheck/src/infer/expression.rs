@@ -71,9 +71,10 @@ impl InferState {
                         kind: HirExpressionKind::Ident(name.clone(), *span),
                         type_: Type::Primitive(Primitive::Unit),
                     }),
-                    None => Err(Box::new(self
-                        .source
-                        .error(*span, TypeDiagnosticKind::UndefinedName { name: name.clone() }))),
+                    None => Err(Box::new(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::UndefinedName { name: name.clone() },
+                    ))),
                 }
             }
             Expression::ValuePath { segments, span } => Ok(HirExpression {
@@ -240,7 +241,10 @@ impl InferState {
                         {
                             self.errors.push(self.source.error(
                                 arg.span(),
-                                TypeDiagnosticKind::MustBeReference { callee: name.clone(), index: i + 1 },
+                                TypeDiagnosticKind::MustBeReference {
+                                    callee: name.clone(),
+                                    index: i + 1,
+                                },
                             ));
                             continue;
                         }
@@ -329,10 +333,12 @@ impl InferState {
                     Type::Array { element, .. } => *element.clone(),
                     Type::Primitive(Primitive::String) => Type::Primitive(Primitive::Char),
                     _ => {
-                        self.errors.push(
-                            self.source
-                                .error(expr.span(), TypeDiagnosticKind::CannotIndex { type_name: format!("{array_type}") }),
-                        );
+                        self.errors.push(self.source.error(
+                            expr.span(),
+                            TypeDiagnosticKind::CannotIndex {
+                                type_name: format!("{array_type}"),
+                            },
+                        ));
                         self.subs.fresh_var()
                     }
                 };
@@ -348,10 +354,10 @@ impl InferState {
             Expression::Paren(inner, _) => self.infer_expr(inner, signatures),
             Expression::Ref { span, operand } => {
                 if matches!(operand.as_ref(), Expression::Index { .. }) {
-                    return Err(Box::new(self.source.error(
-                        *span,
-                        TypeDiagnosticKind::CannotRefArrayElement,
-                    )));
+                    return Err(Box::new(
+                        self.source
+                            .error(*span, TypeDiagnosticKind::CannotRefArrayElement),
+                    ));
                 }
                 let hir_operand = self.infer_expr(operand, signatures)?;
                 let operand_type = self.subs.apply(&hir_operand.type_);
@@ -471,7 +477,7 @@ impl InferState {
                                 self.subs
                                     .unify(&self.source, &arg_type, &param.type_, arg.span())
                             {
-                    self.errors.push(*error);
+                                self.errors.push(*error);
                             }
                         }
                         hir_args.push(hir_arg);
@@ -628,9 +634,12 @@ impl InferState {
                         Type::Named(type_name.clone())
                     }
                     _ => {
-                        return Err(Box::new(self
-                            .source
-                            .error(*span, TypeDiagnosticKind::NotAStruct { name: type_name.clone() })));
+                        return Err(Box::new(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::NotAStruct {
+                                name: type_name.clone(),
+                            },
+                        )));
                     }
                 };
                 Ok(HirExpression {
@@ -642,9 +651,12 @@ impl InferState {
                     type_: struct_type,
                 })
             }
-            Expression::Match { span, .. } => Err(Box::new(self
-                .source
-                .error(*span, TypeDiagnosticKind::UnsupportedFeature { feature: "match expressions".to_string() }))),
+            Expression::Match { span, .. } => Err(Box::new(self.source.error(
+                *span,
+                TypeDiagnosticKind::UnsupportedFeature {
+                    feature: "match expressions".to_string(),
+                },
+            ))),
         }
     }
 
@@ -660,13 +672,13 @@ impl InferState {
                     if let Some(field) = s.fields.iter().find(|f| f.name == field_name) {
                         return field.type_.clone();
                     }
-                    self.errors.push(
-                        self.source
-                            .error(span, TypeDiagnosticKind::NoField {
-                                type_name: name.clone(),
-                                field_name: field_name.to_string(),
-                            }),
-                    );
+                    self.errors.push(self.source.error(
+                        span,
+                        TypeDiagnosticKind::NoField {
+                            type_name: name.clone(),
+                            field_name: field_name.to_string(),
+                        },
+                    ));
                     return self.subs.fresh_var();
                 }
                 if let Some(HirItemKind::TupleStruct(t)) = self.types.get(name) {
@@ -692,10 +704,12 @@ impl InferState {
                 {
                     return elements[index].clone();
                 }
-                self.errors.push(
-                    self.source
-                        .error(span, TypeDiagnosticKind::TupleIndexOutOfBounds { index: field_name.to_string() }),
-                );
+                self.errors.push(self.source.error(
+                    span,
+                    TypeDiagnosticKind::TupleIndexOutOfBounds {
+                        index: field_name.to_string(),
+                    },
+                ));
                 self.subs.fresh_var()
             }
             _ => self.subs.fresh_var(),

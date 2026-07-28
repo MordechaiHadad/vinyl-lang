@@ -2,10 +2,12 @@ use miette::SourceSpan;
 use tree_sitter::Node;
 
 use crate::{
-    ParserDiagnostic, ast::item::{
+    ParserDiagnostic,
+    ast::item::{
         Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, ImportDef,
         Item, StructDef, StructField, TupleDef,
-    }, lower::{Lowerer, helpers::node_text}
+    },
+    lower::{Lowerer, helpers::node_text},
 };
 
 impl<'a> Lowerer<'a> {
@@ -58,7 +60,10 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    pub(super) fn lower_field_definition(&self, node: &Node) -> Result<StructField, ParserDiagnostic> {
+    pub(super) fn lower_field_definition(
+        &self,
+        node: &Node,
+    ) -> Result<StructField, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let type_ = self.lower_type_annotation_child(node)?;

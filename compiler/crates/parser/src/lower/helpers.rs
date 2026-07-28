@@ -1,8 +1,8 @@
 use miette::{NamedSource, SourceSpan};
 use tree_sitter::Node;
 
-use crate::{ParserDiagnostic, lower::{Lowerer}};
 use crate::error::ParserDiagnosticKind;
+use crate::{ParserDiagnostic, lower::Lowerer};
 
 impl<'a> Lowerer<'a> {
     pub(super) fn invalid_kind(&self, node: &Node, kind: &str, context: &str) -> ParserDiagnostic {

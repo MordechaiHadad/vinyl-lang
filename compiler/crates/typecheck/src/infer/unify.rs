@@ -85,14 +85,26 @@ impl SubstitutionState {
         match (&a, &b) {
             (Type::Var(id_a), _) => {
                 if self.occurs(*id_a, &b) {
-                    return Err(Box::new(source.error(span, TypeDiagnosticKind::RecursiveType { a: a.clone(), b: b.clone() })));
+                    return Err(Box::new(source.error(
+                        span,
+                        TypeDiagnosticKind::RecursiveType {
+                            a: a.clone(),
+                            b: b.clone(),
+                        },
+                    )));
                 }
                 self.subs.insert(*id_a, b.clone());
                 Ok(())
             }
             (_, Type::Var(id_b)) => {
                 if self.occurs(*id_b, &a) {
-                    return Err(Box::new(source.error(span, TypeDiagnosticKind::RecursiveType { a: b.clone(), b: a.clone() })));
+                    return Err(Box::new(source.error(
+                        span,
+                        TypeDiagnosticKind::RecursiveType {
+                            a: b.clone(),
+                            b: a.clone(),
+                        },
+                    )));
                 }
                 self.subs.insert(*id_b, a.clone());
                 Ok(())

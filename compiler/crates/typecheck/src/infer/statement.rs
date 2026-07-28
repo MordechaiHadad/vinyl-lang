@@ -45,10 +45,10 @@ impl InferState {
 
         let resolved_ret = self.subs.apply(&return_type);
         if let Type::Ref(_) = &resolved_ret {
-            self.errors.push(self.source.error(
-                func.span,
-                TypeDiagnosticKind::CannotReturnRef,
-            ));
+            self.errors.push(
+                self.source
+                    .error(func.span, TypeDiagnosticKind::CannotReturnRef),
+            );
         }
 
         let prev_return = self.current_return_type.replace(return_type.clone());
@@ -224,9 +224,10 @@ impl InferState {
             }
             Statement::Break(span) => {
                 if self.loop_depth == 0 {
-                    return Err(Box::new(self
-                        .source
-                        .error(*span, TypeDiagnosticKind::BreakOutsideLoop)));
+                    return Err(Box::new(
+                        self.source
+                            .error(*span, TypeDiagnosticKind::BreakOutsideLoop),
+                    ));
                 }
                 Ok(HirStatement {
                     kind: HirStatementKind::Break(*span),
@@ -234,9 +235,10 @@ impl InferState {
             }
             Statement::Continue(span) => {
                 if self.loop_depth == 0 {
-                    return Err(Box::new(self
-                        .source
-                        .error(*span, TypeDiagnosticKind::ContinueOutsideLoop)));
+                    return Err(Box::new(
+                        self.source
+                            .error(*span, TypeDiagnosticKind::ContinueOutsideLoop),
+                    ));
                 }
                 Ok(HirStatement {
                     kind: HirStatementKind::Continue(*span),
@@ -281,8 +283,10 @@ impl InferState {
         match target {
             AssignTarget::Ident(name, name_span) => {
                 let scheme = self.scope.lookup(name).cloned().ok_or_else(|| {
-                    self.source
-                        .error(*name_span, TypeDiagnosticKind::UndefinedName { name: name.clone() })
+                    self.source.error(
+                        *name_span,
+                        TypeDiagnosticKind::UndefinedName { name: name.clone() },
+                    )
                 })?;
                 let resolved_type = self.subs.apply(&scheme.type_);
 
@@ -299,7 +303,9 @@ impl InferState {
                 {
                     return Err(Box::new(self.source.error(
                         *ref_span,
-                        TypeDiagnosticKind::InnerScopeRef { name: ref_name.clone() },
+                        TypeDiagnosticKind::InnerScopeRef {
+                            name: ref_name.clone(),
+                        },
                     )));
                 }
 

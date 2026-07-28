@@ -1,14 +1,19 @@
 use tree_sitter::Node;
 
 use crate::{
-    ParserDiagnostic, ast::types::{Primitive, Type}, lower::{
+    ParserDiagnostic,
+    ast::types::{Primitive, Type},
+    lower::{
         Lowerer,
         helpers::{children, node_text},
-    }
+    },
 };
 
 impl<'a> Lowerer<'a> {
-    pub(super) fn lower_type_annotation_child(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
+    pub(super) fn lower_type_annotation_child(
+        &self,
+        node: &Node,
+    ) -> Result<Type, ParserDiagnostic> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32)
                 && child.kind() == "type_annotation"

@@ -56,13 +56,12 @@ fn init_tracing(verbose: u8) -> eyre::Result<()> {
 }
 
 fn compile_and_report(file: &std::path::Path) -> eyre::Result<Vec<vinyl_typecheck::hir::HirItem>> {
-    let (compiled, warnings) =
-        vinyl_compiler::compile_entry(file, None).map_err(|errors| {
-            for error in errors {
-                eprintln!("{:?}", Report::from(error));
-            }
-            eyre::eyre!("compilation failed")
-        })?;
+    let (compiled, warnings) = vinyl_compiler::compile_entry(file, None).map_err(|errors| {
+        for error in errors {
+            eprintln!("{:?}", Report::from(error));
+        }
+        eyre::eyre!("compilation failed")
+    })?;
     for w in warnings {
         eprintln!("{:?}", Report::from(w));
     }

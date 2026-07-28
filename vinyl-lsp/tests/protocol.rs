@@ -344,9 +344,18 @@ fn serves_core_lsp_features_over_stdio() {
     }));
     let completion = lsp.response(12);
     let items = completion["result"].as_array().unwrap();
-    let answer_item = items.iter().find(|item| item["label"] == "answer").expect("answer should be in completions");
-    assert!(answer_item["detail"].as_str().is_some(), "completion item should have type detail");
-    assert!(answer_item["detail"].as_str().unwrap().contains("answer"), "detail should contain function signature");
+    let answer_item = items
+        .iter()
+        .find(|item| item["label"] == "answer")
+        .expect("answer should be in completions");
+    assert!(
+        answer_item["detail"].as_str().is_some(),
+        "completion item should have type detail"
+    );
+    assert!(
+        answer_item["detail"].as_str().unwrap().contains("answer"),
+        "detail should contain function signature"
+    );
 
     // completion in main.vn also shows type detail for prefixed module functions
     lsp.send(json!({
@@ -360,9 +369,18 @@ fn serves_core_lsp_features_over_stdio() {
     }));
     let completion_main = lsp.response(13);
     let main_items = completion_main["result"].as_array().unwrap();
-    let math_answer = main_items.iter().find(|item| item["label"] == "math::answer").expect("math::answer should be in main completions");
-    assert!(math_answer["detail"].as_str().is_some(), "math::answer should have type detail");
-    assert!(math_answer["detail"].as_str().unwrap().contains("answer"), "math::answer detail should contain signature");
+    let math_answer = main_items
+        .iter()
+        .find(|item| item["label"] == "math::answer")
+        .expect("math::answer should be in main completions");
+    assert!(
+        math_answer["detail"].as_str().is_some(),
+        "math::answer should have type detail"
+    );
+    assert!(
+        math_answer["detail"].as_str().unwrap().contains("answer"),
+        "math::answer detail should contain signature"
+    );
 
     // auto-import: create a self-contained module, open it, then request completion for its function
     // from a file that doesn't import it
