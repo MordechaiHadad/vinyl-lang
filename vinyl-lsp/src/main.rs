@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use clap::{ArgAction, Parser};
 use eyre::{Result, eyre};
+use line_index::{LineCol, LineIndex, TextSize, WideEncoding, WideLineCol};
 use tokio::sync::RwLock;
+use tower_lsp::lsp_types::notification::Progress;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{debug, info};
@@ -68,6 +70,7 @@ impl Vfs {
 struct Analysis {
     path: PathBuf,
     source: String,
+    line_index: LineIndex,
     result: vinyl_typecheck::TypeckResult,
 }
 
@@ -161,7 +164,31 @@ impl Backend {
             if state.read().await.update_version != version {
                 return;
             }
+            let token = ProgressToken::String(format!("vinyl-lsp-update-{version}"));
+            client
+                .send_notification::<Progress>(ProgressParams {
+                    token: token.clone(),
+                    value: ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(
+                        WorkDoneProgressBegin {
+                            title: "Analyzing workspace".into(),
+                            cancellable: Some(false),
+                            message: None,
+                            percentage: None,
+                        },
+                    )),
+                })
+                .await;
             perform_update(&state, &client, &uri).await;
+            client
+                .send_notification::<Progress>(ProgressParams {
+                    token,
+                    value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(
+                        WorkDoneProgressEnd {
+                            message: None,
+                        },
+                    )),
+                })
+                .await;
         });
     }
 
@@ -181,9 +208,7 @@ impl Backend {
             .into_iter()
             .flat_map(|analysis| {
                 let uri = Url::from_file_path(&analysis.path).ok();
-                let source = analysis.source.clone();
-                let reference_uri = uri.clone();
-                let reference_source = source.clone();
+                let line_index = &analysis.line_index;
                 let mut locations = analysis
                     .result
                     .references
@@ -196,11 +221,11 @@ impl Backend {
                             .unwrap_or(&definition.name)
                             == target_name
                     })
-                    .filter_map(move |(offset, definition)| {
-                        reference_uri.clone().map(|uri| {
+                    .filter_map(|(offset, definition)| {
+                        uri.clone().map(|uri| {
                             Location::new(
                                 uri,
-                                span_range(&reference_source, *offset, definition.name.len()),
+                                span_range(line_index, *offset, definition.name.len()),
                             )
                         })
                     })
@@ -219,7 +244,7 @@ impl Backend {
                 {
                     locations.push(Location::new(
                         uri,
-                        span_range(&source, definition.span.offset(), definition.name.len()),
+                        span_range(line_index, definition.span.offset(), definition.name.len()),
                     ));
                 }
                 locations
@@ -267,6 +292,71 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
+    async fn initialized(&self, _params: InitializedParams) {
+        let state = self.state.read().await;
+        let has_workspace = state.workspace_root.is_some();
+        drop(state);
+
+        if !has_workspace {
+            return;
+        }
+
+        let token = ProgressToken::String("vinyl-lsp-workspace".to_string());
+        self.client
+            .send_notification::<Progress>(ProgressParams {
+                token: token.clone(),
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(
+                    WorkDoneProgressBegin {
+                        title: "Analyzing workspace".into(),
+                        cancellable: Some(false),
+                        message: None,
+                        percentage: None,
+                    },
+                )),
+            })
+            .await;
+
+        let uri = {
+            let state = self.state.read().await;
+            state
+                .workspace_root
+                .as_ref()
+                .and_then(|root| {
+                    [root.join("main.vn"), root.join("lib.vn")]
+                        .into_iter()
+                        .find(|p| p.exists())
+                        .or_else(|| {
+                            std::fs::read_dir(root)
+                                .ok()
+                                .and_then(|mut entries| {
+                                    entries.find_map(|e| {
+                                        e.ok().filter(|e| {
+                                            e.path().extension().is_some_and(|ext| ext == "vn")
+                                        })
+                                    })
+                                })
+                                .map(|e| e.path())
+                        })
+                })
+                .and_then(|path| Url::from_file_path(path).ok())
+        };
+
+        if let Some(uri) = uri {
+            perform_update(&self.state, &self.client, &uri).await;
+        }
+
+        self.client
+            .send_notification::<Progress>(ProgressParams {
+                token,
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(
+                    WorkDoneProgressEnd {
+                        message: None,
+                    },
+                )),
+            })
+            .await;
+    }
+
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         if let Ok(path) = params.text_document.uri.to_file_path() {
             self.state
@@ -306,7 +396,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let offset = offset_at(
-            &analysis.source,
+            &analysis.line_index,
             params.text_document_position_params.position,
         );
         let Some(expression) = analysis
@@ -337,7 +427,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let offset = offset_at(
-            &analysis.source,
+            &analysis.line_index,
             params.text_document_position_params.position,
         );
         let Some((_, definition)) = analysis
@@ -375,10 +465,11 @@ impl LanguageServer for Backend {
             .vfs
             .source(&target_path)
             .unwrap_or_default();
+        let target_line_index = LineIndex::new(&target_source);
         Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
             Url::from_file_path(&target_path).unwrap_or(uri),
             span_range(
-                &target_source,
+                &target_line_index,
                 definition.span.offset(),
                 definition.span.len(),
             ),
@@ -407,7 +498,7 @@ impl LanguageServer for Backend {
         let Some(analysis) = self.analysis(uri).await else {
             return Ok(None);
         };
-        let offset = offset_at(&analysis.source, params.text_document_position.position);
+        let offset = offset_at(&analysis.line_index, params.text_document_position.position);
         let prefix = word_prefix(&analysis.source, offset);
 
         let mut items: Vec<CompletionItem> = Vec::new();
@@ -516,11 +607,11 @@ impl LanguageServer for Backend {
                     );
                     let qualified = format!("{import_path}::{name}");
                     let edit_range = Range::new(
-                        position_at(&analysis.source, offset.saturating_sub(prefix.len())),
+                        position_at(&analysis.line_index, offset.saturating_sub(prefix.len())),
                         params.text_document_position.position,
                     );
                     let import_edit =
-                        TextEdit::new(import_edit_range(&analysis.source), format!("import {import_path};\n"));
+                        TextEdit::new(import_edit_range(&analysis.line_index, &analysis.source), format!("import {import_path};\n"));
                     items.push(CompletionItem {
                         label: qualified.clone(),
                         kind: Some(kind),
@@ -548,7 +639,7 @@ impl LanguageServer for Backend {
         let Some(analysis) = self.analysis(&uri).await else {
             return Ok(None);
         };
-        let offset = offset_at(&analysis.source, params.text_document_position.position);
+        let offset = offset_at(&analysis.line_index, params.text_document_position.position);
         let Some((_, target)) = analysis.result.references.range(..=offset).next_back() else {
             return Ok(Some(Vec::new()));
         };
@@ -564,7 +655,7 @@ impl LanguageServer for Backend {
         let Some(analysis) = self.analysis(&uri).await else {
             return Ok(None);
         };
-        let offset = offset_at(&analysis.source, params.text_document_position.position);
+        let offset = offset_at(&analysis.line_index, params.text_document_position.position);
         let Some((_, target)) = analysis.result.references.range(..=offset).next_back() else {
             return Ok(None);
         };
@@ -616,9 +707,9 @@ impl LanguageServer for Backend {
                         kind,
                         tags: None,
                         deprecated: None,
-                        range: span_range(&analysis.source, item.span.offset(), item.span.len()),
+                        range: span_range(&analysis.line_index, item.span.offset(), item.span.len()),
                         selection_range: span_range(
-                            &analysis.source,
+                            &analysis.line_index,
                             item.span.offset(),
                             item.span.len(),
                         ),
@@ -641,7 +732,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let offset = offset_at(
-            &analysis.source,
+            &analysis.line_index,
             params.text_document_position_params.position,
         );
         let prefix = word_prefix(&analysis.source, offset);
@@ -699,6 +790,7 @@ impl LanguageServer for Backend {
         let Ok(formatted) = vinyl_formatter::format_source(&source) else {
             return Ok(None);
         };
+        let source_line_index = LineIndex::new(&source);
         actions.push(CodeActionOrCommand::CodeAction(CodeAction {
             title: "Format document".to_string(),
             kind: Some(CodeActionKind::SOURCE_FIX_ALL),
@@ -706,7 +798,7 @@ impl LanguageServer for Backend {
             edit: Some(WorkspaceEdit {
                 changes: Some(HashMap::from([(
                     uri.clone(),
-                    vec![TextEdit::new(full_range(&source), formatted)],
+                    vec![TextEdit::new(full_range(&source_line_index), formatted)],
                 )])),
                 ..WorkspaceEdit::default()
             }),
@@ -716,7 +808,7 @@ impl LanguageServer for Backend {
             data: None,
         }));
 
-        let cursor_offset = offset_at(&source, params.range.start);
+        let cursor_offset = offset_at(&source_line_index, params.range.start);
         let prefix = word_prefix(&source, cursor_offset);
         if !prefix.is_empty() {
             let analysis = self.analysis(&uri).await;
@@ -767,7 +859,8 @@ impl LanguageServer for Backend {
                             continue;
                         }
                         if module_analysis.result.definitions.contains_key(&prefix) {
-                            let edit_range = import_edit_range(&source);
+                            let line_index = LineIndex::new(&source);
+                            let edit_range = import_edit_range(&line_index, &source);
                             let title = format!("Add import `{import_path}`");
                             actions.push(CodeActionOrCommand::CodeAction(CodeAction {
                                 title,
@@ -812,7 +905,8 @@ impl Backend {
             Ok(formatted) => formatted,
             Err(_) => return Ok(None),
         };
-        Ok(Some(vec![TextEdit::new(full_range(&source), formatted)]))
+        let line_index = LineIndex::new(&source);
+        Ok(Some(vec![TextEdit::new(full_range(&line_index), formatted)]))
     }
 }
 
@@ -856,6 +950,7 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
         Ok((analyses, diagnostics, resolver, module_table)) => {
             info!(files = analyses.len(), "workspace analysis complete");
             let entry_source = vfs.source(&entry_path).unwrap_or_default();
+            let entry_line_index = LineIndex::new(&entry_source);
             let mut entry_diagnostics: Vec<Diagnostic> = diagnostics
                 .get(&entry_path)
                 .map(|diags| {
@@ -863,7 +958,7 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
                         .iter()
                         .map(|d| {
                             Diagnostic::new_simple(
-                                span_range(&entry_source, d.offset, d.length),
+                                span_range(&entry_line_index, d.offset, d.length),
                                 d.message.clone(),
                             )
                         })
@@ -880,7 +975,7 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
                     for definition in &analysis.result.unused {
                         entry_diagnostics.push(Diagnostic {
                             range: span_range(
-                                &entry_source,
+                                &entry_line_index,
                                 definition.span.offset(),
                                 definition.span.len(),
                             ),
@@ -921,49 +1016,41 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
     }
 }
 
-fn offset_at(source: &str, position: Position) -> usize {
-    let line_start = source
-        .split_inclusive('\n')
-        .take(position.line as usize)
-        .map(str::len)
-        .sum::<usize>();
-    let line = &source[line_start.min(source.len())..];
-    line_start + utf16_offset(line, position.character as usize).min(line.len())
+fn offset_at(line_index: &LineIndex, position: Position) -> usize {
+    let wide_col = WideLineCol {
+        line: position.line,
+        col: position.character,
+    };
+    let line_col = line_index
+        .to_utf8(WideEncoding::Utf16, wide_col)
+        .unwrap_or(LineCol {
+            line: position.line,
+            col: 0,
+        });
+    line_index.offset(line_col).map(TextSize::into).unwrap_or(0)
 }
 
-fn span_range(source: &str, offset: usize, length: usize) -> Range {
+fn span_range(line_index: &LineIndex, offset: usize, length: usize) -> Range {
     Range::new(
-        position_at(source, offset),
-        position_at(source, offset + length),
+        position_at(line_index, offset),
+        position_at(line_index, offset + length),
     )
 }
 
-fn full_range(source: &str) -> Range {
-    Range::new(Position::new(0, 0), position_at(source, source.len()))
+fn full_range(line_index: &LineIndex) -> Range {
+    Range::new(Position::new(0, 0), position_at(line_index, line_index.len().into()))
 }
 
-fn position_at(source: &str, offset: usize) -> Position {
-    let offset = offset.min(source.len());
-    let line = source[..offset]
-        .bytes()
-        .filter(|byte| *byte == b'\n')
-        .count();
-    let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
-    Position::new(
-        line as u32,
-        source[line_start..offset].encode_utf16().count() as u32,
-    )
-}
-
-fn utf16_offset(source: &str, column: usize) -> usize {
-    let mut utf16 = 0;
-    for (offset, character) in source.char_indices() {
-        if utf16 >= column {
-            return offset;
-        }
-        utf16 += character.len_utf16();
-    }
-    source.len()
+fn position_at(line_index: &LineIndex, offset: usize) -> Position {
+    let offset = TextSize::try_from(offset).unwrap_or(line_index.len());
+    let line_col = line_index.line_col(offset.min(line_index.len()));
+    let wide_col = line_index
+        .to_wide(WideEncoding::Utf16, line_col)
+        .unwrap_or(WideLineCol {
+            line: line_col.line,
+            col: 0,
+        });
+    Position::new(wide_col.line, wide_col.col)
 }
 
 fn word_prefix(source: &str, offset: usize) -> String {
@@ -1089,7 +1176,7 @@ fn function_signature(function: &HirFunction, source: &str) -> String {
     )
 }
 
-fn import_edit_range(source: &str) -> Range {
+fn import_edit_range(line_index: &LineIndex, source: &str) -> Range {
     let mut offset = 0usize;
     for line in source.lines() {
         if line.trim_start().starts_with("import ") {
@@ -1098,7 +1185,7 @@ fn import_edit_range(source: &str) -> Range {
             break;
         }
     }
-    let pos = position_at(source, offset.min(source.len()));
+    let pos = position_at(line_index, offset.min(source.len()));
     Range::new(pos, pos)
 }
 
@@ -1133,6 +1220,7 @@ fn analyze_with_diagnostics(
     Ok(Arc::new(Analysis {
         path: path.to_path_buf(),
         source: source.to_string(),
+        line_index: LineIndex::new(source),
         result,
     }))
 }
@@ -1418,7 +1506,8 @@ mod tests {
     #[test]
     fn positions_use_utf16_columns() {
         let source = "😀value";
-        assert_eq!(offset_at(source, Position::new(0, 2)), 4);
-        assert_eq!(position_at(source, 4), Position::new(0, 2));
+        let line_index = LineIndex::new(source);
+        assert_eq!(offset_at(&line_index, Position::new(0, 2)), 4);
+        assert_eq!(position_at(&line_index, 4), Position::new(0, 2));
     }
 }
