@@ -514,12 +514,21 @@ impl LanguageServer for Backend {
                             .map(|d| format!("{d} (from {import_path})"))
                             .unwrap_or_else(|| format!("(from {import_path})")),
                     );
-                    let edit_range = import_edit_range(&analysis.source);
-                    let import_edit = TextEdit::new(edit_range, format!("import {import_path};\n"));
+                    let qualified = format!("{import_path}::{name}");
+                    let edit_range = Range::new(
+                        position_at(&analysis.source, offset.saturating_sub(prefix.len())),
+                        params.text_document_position.position,
+                    );
+                    let import_edit =
+                        TextEdit::new(import_edit_range(&analysis.source), format!("import {import_path};\n"));
                     items.push(CompletionItem {
-                        label: name.clone(),
+                        label: qualified.clone(),
                         kind: Some(kind),
                         detail,
+                        text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                            edit_range,
+                            qualified,
+                        ))),
                         additional_text_edits: Some(vec![import_edit]),
                         ..CompletionItem::default()
                     });
@@ -813,7 +822,7 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
         return;
     };
 
-    let (vfs, root, entry_path) = {
+    let (vfs, root, entry_path, existing_resolver) = {
         let guard = state.read().await;
         if guard.vfs.source(&path).is_none() {
             return;
@@ -829,10 +838,21 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
             .into_iter()
             .find(|candidate| candidate.exists())
             .unwrap_or(path.clone());
-        (guard.vfs.clone(), root, entry_path)
+        let reuse = guard.resolver.as_ref().is_some_and(|resolver| {
+            resolver
+                .all_modules()
+                .values()
+                .any(|info| same_file(&info.file_path, &path))
+        });
+        (
+            guard.vfs.clone(),
+            root,
+            entry_path,
+            if reuse { guard.resolver.clone() } else { None },
+        )
     };
 
-    match analyze_workspace(&vfs, &root, &entry_path) {
+    match analyze_workspace(&vfs, &root, &entry_path, existing_resolver.as_ref()) {
         Ok((analyses, diagnostics, resolver, module_table)) => {
             info!(files = analyses.len(), "workspace analysis complete");
             let entry_source = vfs.source(&entry_path).unwrap_or_default();
@@ -1220,8 +1240,16 @@ fn relative_import_path(from_file: &Path, to_module: &Path, source_root: &Path) 
     }
 }
 
-fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<WorkspaceState> {
-    let resolver = ModuleResolver::new(root)?;
+fn analyze_workspace(
+    vfs: &Vfs,
+    root: &Path,
+    entry_path: &Path,
+    existing_resolver: Option<&ModuleResolver>,
+) -> Result<WorkspaceState> {
+    let resolver = match existing_resolver {
+        Some(r) => r.clone(),
+        None => ModuleResolver::new(root)?,
+    };
     let mut module_table = ModuleTable::new();
     let mut visited = HashSet::new();
     let mut analyses = HashMap::new();

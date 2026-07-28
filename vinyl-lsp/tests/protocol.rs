@@ -431,10 +431,14 @@ fn serves_core_lsp_features_over_stdio() {
     }));
     let auto_import_completion = lsp.response(14);
     let auto_items = auto_import_completion["result"].as_array().unwrap();
-    let auto_helper = auto_items.iter().find(|item| item["label"] == "helper");
+    let auto_helper = auto_items.iter().find(|item| {
+        item["label"]
+            .as_str()
+            .is_some_and(|l| l == "utils::helper")
+    });
     assert!(
         auto_helper.is_some(),
-        "helper should appear as auto-import in app.vn"
+        "utils::helper should appear as auto-import in app.vn"
     );
     if let Some(helper) = auto_helper {
         assert!(
@@ -445,6 +449,10 @@ fn serves_core_lsp_features_over_stdio() {
             helper["detail"].as_str().unwrap().contains("from utils"),
             "auto-import detail should mention module: got {:?}",
             helper["detail"]
+        );
+        assert!(
+            helper.get("textEdit").is_some(),
+            "auto-import completion should have textEdit for qualified insertion"
         );
     }
 
