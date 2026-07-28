@@ -240,7 +240,8 @@ impl Backend {
             state.update_version
         };
 
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        // tokio::time::sleep(Duration::from_millis(150)).await; temporarily disabling this, as it
+        // makes lsp unusable
 
         if self.state.read().await.update_version != version {
             return;
