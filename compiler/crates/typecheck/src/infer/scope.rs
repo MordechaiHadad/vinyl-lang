@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use miette::SourceSpan;
 
-use crate::error::TypeError;
+use crate::error::{InferResult, TypeDiagnosticKind};
 use crate::infer::SourceContext;
 use crate::infer::TypeScheme;
 
@@ -54,18 +54,18 @@ impl ScopeState {
         source: &SourceContext,
         name: &str,
         span: SourceSpan,
-    ) -> Result<(), TypeError> {
+    ) -> InferResult<()> {
         for scope in self.scopes.iter().rev() {
             if let Some(scheme) = scope.get(name) {
                 if !scheme.mutable {
-                    return Err(source.error(
+                    return Err(Box::new(source.error(
                         span,
-                        format!("cannot assign to immutable variable `{name}`"),
-                    ));
+                        TypeDiagnosticKind::AssignToImmutable { name: name.to_string() },
+                    )));
                 }
                 return Ok(());
             }
         }
-        Err(source.error(span, format!("variable `{name}` not found")))
+        Err(Box::new(source.error(span, TypeDiagnosticKind::UndefinedName { name: name.to_string() })))
     }
 }

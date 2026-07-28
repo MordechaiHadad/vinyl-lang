@@ -854,6 +854,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "thiserror"
+version = "2.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09a43598840e33d5b0331f38c5e30d13bb11c11210a4b58f0d9b18a5a5eefcd9"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43cbfe0cf76104d42a574802844187e84a305e531ed54455f11fbde0f10541cd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
 name = "thread_local"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1102,6 +1122,8 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 name = "vinyl-formatter"
 version = "0.1.0"
 dependencies = [
+ "miette",
+ "thiserror",
  "tree-sitter",
  "vinyl-parser",
  "vinyl-resolver",
@@ -1130,18 +1152,24 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "miette",
+ "thiserror",
  "tree-sitter",
 ]
 
 [[package]]
 name = "vinyl-resolver"
 version = "0.1.0"
+dependencies = [
+ "miette",
+ "thiserror",
+]
 
 [[package]]
 name = "vinyl-typecheck"
 version = "0.1.0"
 dependencies = [
  "miette",
+ "thiserror",
  "vinyl-parser",
 ]
 

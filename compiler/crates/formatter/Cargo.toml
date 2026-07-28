@@ -7,3 +7,5 @@ edition = "2024"
 tree-sitter = "0.26.3"
 vinyl-parser = { version = "0.1.0", path = "../parser" }
 vinyl-resolver = { version = "0.1.0", path = "../resolver" }
+thiserror = { workspace = true }
+miette = { workspace = true }

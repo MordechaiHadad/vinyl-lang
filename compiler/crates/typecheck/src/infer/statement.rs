@@ -7,7 +7,7 @@ use vinyl_parser::ast::operator::AssignOp;
 use vinyl_parser::ast::statement::{AssignTarget, Statement};
 use vinyl_parser::ast::types::Primitive;
 
-use crate::error::TypeError;
+use crate::error::{InferResult, TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
     HirAssignTarget, HirExpression, HirExpressionKind, HirFunction, HirParam, HirStatement,
     HirStatementKind, Type,
@@ -19,7 +19,7 @@ impl InferState {
         &mut self,
         func: &FunctionDef,
         signatures: &HashMap<&str, &FunctionDef>,
-    ) -> Result<HirFunction, TypeError> {
+    ) -> InferResult<HirFunction> {
         let mut params = Vec::new();
         for param in &func.params {
             let mutable = true;
@@ -47,7 +47,7 @@ impl InferState {
         if let Type::Ref(_) = &resolved_ret {
             self.errors.push(self.source.error(
                 func.span,
-                "functions cannot return reference types".to_string(),
+                TypeDiagnosticKind::CannotReturnRef,
             ));
         }
 
@@ -68,7 +68,7 @@ impl InferState {
                 .subs
                 .unify(&self.source, &value_type, &ret_type, func.span)
             {
-                self.errors.push(e);
+                self.errors.push(*e);
             }
         }
 
@@ -98,14 +98,14 @@ impl InferState {
         &mut self,
         stmts: &[Statement],
         signatures: &HashMap<&str, &FunctionDef>,
-    ) -> Result<Vec<HirStatement>, TypeError> {
+    ) -> InferResult<Vec<HirStatement>> {
         let mut hir_stmts = Vec::new();
         let mut terminated = false;
         for stmt in stmts {
             if terminated {
-                self.warnings.push(
+                self.errors.push(
                     self.source
-                        .warn(stmt.span(), "unreachable statement".to_string()),
+                        .error(stmt.span(), TypeDiagnosticKind::UnreachableStatement),
                 );
             }
             hir_stmts.push(self.infer_stmt(stmt, signatures)?);
@@ -123,7 +123,7 @@ impl InferState {
         &mut self,
         stmt: &Statement,
         signatures: &HashMap<&str, &FunctionDef>,
-    ) -> Result<HirStatement, TypeError> {
+    ) -> InferResult<HirStatement> {
         match stmt {
             Statement::Let {
                 span,
@@ -137,7 +137,7 @@ impl InferState {
                 if let Some(ann) = type_ {
                     let resolved = self.subs.apply(&hir_value.type_);
                     if let Err(e) = self.subs.unify(&self.source, ann, &resolved, *span) {
-                        self.errors.push(e);
+                        self.errors.push(*e);
                     }
                 }
 
@@ -177,7 +177,7 @@ impl InferState {
                                 self.subs
                                     .unify(&self.source, &val.type_, &return_type, *span)
                             {
-                                self.errors.push(e);
+                                self.errors.push(*e);
                             }
                         }
                         None => {
@@ -187,7 +187,7 @@ impl InferState {
                                 &return_type,
                                 *span,
                             ) {
-                                self.errors.push(e);
+                                self.errors.push(*e);
                             }
                         }
                     }
@@ -224,9 +224,9 @@ impl InferState {
             }
             Statement::Break(span) => {
                 if self.loop_depth == 0 {
-                    return Err(self
+                    return Err(Box::new(self
                         .source
-                        .error(*span, "break outside of loop".to_string()));
+                        .error(*span, TypeDiagnosticKind::BreakOutsideLoop)));
                 }
                 Ok(HirStatement {
                     kind: HirStatementKind::Break(*span),
@@ -234,9 +234,9 @@ impl InferState {
             }
             Statement::Continue(span) => {
                 if self.loop_depth == 0 {
-                    return Err(self
+                    return Err(Box::new(self
                         .source
-                        .error(*span, "continue outside of loop".to_string()));
+                        .error(*span, TypeDiagnosticKind::ContinueOutsideLoop)));
                 }
                 Ok(HirStatement {
                     kind: HirStatementKind::Continue(*span),
@@ -277,12 +277,12 @@ impl InferState {
         span: SourceSpan,
         signatures: &HashMap<&str, &FunctionDef>,
         value_expr: &Expression,
-    ) -> Result<HirAssignTarget, TypeError> {
+    ) -> InferResult<HirAssignTarget> {
         match target {
             AssignTarget::Ident(name, name_span) => {
                 let scheme = self.scope.lookup(name).cloned().ok_or_else(|| {
                     self.source
-                        .error(*name_span, format!("undefined variable `{name}`"))
+                        .error(*name_span, TypeDiagnosticKind::UndefinedName { name: name.clone() })
                 })?;
                 let resolved_type = self.subs.apply(&scheme.type_);
 
@@ -297,10 +297,10 @@ impl InferState {
                     )
                     && ref_depth > target_depth
                 {
-                    return Err(self.source.error(
+                    return Err(Box::new(self.source.error(
                         *ref_span,
-                        format!("cannot reference inner scope variable `{ref_name}`"),
-                    ));
+                        TypeDiagnosticKind::InnerScopeRef { name: ref_name.clone() },
+                    )));
                 }
 
                 if let Type::Ref(inner) = &resolved_type {
@@ -308,19 +308,19 @@ impl InferState {
                         if let Some(e) =
                             self.check_assign_type_change(inner, value_type, *name_span)
                         {
-                            self.errors.push(e);
+                            self.errors.push(*e);
                             return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
                         }
                         if let Err(e) =
                             self.subs
                                 .unify(&self.source, value_type, &resolved_type, span)
                         {
-                            self.errors.push(e);
+                            self.errors.push(*e);
                         }
                         return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
                     }
                     if let Some(e) = self.check_assign_type_change(inner, value_type, *name_span) {
-                        self.errors.push(e);
+                        self.errors.push(*e);
                         return Ok(HirAssignTarget::Deref(
                             Box::new(HirExpression {
                                 kind: HirExpressionKind::Ident(name.clone(), *name_span),
@@ -330,7 +330,7 @@ impl InferState {
                         ));
                     }
                     if let Err(e) = self.subs.unify(&self.source, value_type, inner, span) {
-                        self.errors.push(e);
+                        self.errors.push(*e);
                     }
                     return Ok(HirAssignTarget::Deref(
                         Box::new(HirExpression {
@@ -344,14 +344,14 @@ impl InferState {
                 if let Some(e) =
                     self.check_assign_type_change(&resolved_type, value_type, *name_span)
                 {
-                    self.errors.push(e);
+                    self.errors.push(*e);
                     return Ok(HirAssignTarget::Ident(name.clone(), *name_span));
                 }
                 if let Err(e) = self
                     .subs
                     .unify(&self.source, value_type, &resolved_type, span)
                 {
-                    self.errors.push(e);
+                    self.errors.push(*e);
                 }
                 Ok(HirAssignTarget::Ident(name.clone(), *name_span))
             }
@@ -388,31 +388,32 @@ impl InferState {
         target_type: &Type,
         value_type: &Type,
         span: SourceSpan,
-    ) -> Option<TypeError> {
+    ) -> Option<Box<TypeDiagnostic>> {
         let resolved = self.subs.resolve(target_type);
-        if let Type::Var(id) = &resolved {
-            if !self.subs.subs.contains_key(id) {
-                let resolved_value = self.subs.resolve(value_type);
-                let inner_value = match &resolved_value {
-                    Type::Ref(inner) => self.subs.resolve(inner),
-                    other => other.clone(),
+        if let Type::Var(id) = &resolved
+            && !self.subs.subs.contains_key(id)
+        {
+            let resolved_value = self.subs.resolve(value_type);
+            let inner_value = match &resolved_value {
+                Type::Ref(inner) => self.subs.resolve(inner),
+                other => other.clone(),
+            };
+            if !matches!(&inner_value, Type::Var(_)) {
+                let is_float = self.subs.float_vars.contains(id);
+                let compatible = if is_float {
+                    inner_value.is_float()
+                } else {
+                    inner_value.is_numeric()
                 };
-                if !matches!(&inner_value, Type::Var(_)) {
-                    let is_float = self.subs.float_vars.contains(id);
-                    let compatible = if is_float {
-                        inner_value.is_float()
-                    } else {
-                        inner_value.is_numeric()
-                    };
-                    if !compatible {
-                        let default_type = if is_float { "float64" } else { "int64" };
-                        return Some(self.source.error(
-                            span,
-                            format!(
-                                "type mismatch: expected `{default_type}`, found `{value_type}`"
-                            ),
-                        ));
-                    }
+                if !compatible {
+                    let default_type = if is_float { "float64" } else { "int64" };
+                    return Some(Box::new(self.source.error(
+                        span,
+                        TypeDiagnosticKind::AssignTypeMismatch {
+                            expected: default_type.to_string(),
+                            found: value_type.clone(),
+                        },
+                    )));
                 }
             }
         }

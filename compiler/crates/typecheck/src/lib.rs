@@ -4,8 +4,7 @@ pub mod index;
 pub mod infer;
 pub mod module;
 
-pub use error::CompileWarning;
-pub use error::TypeError;
+pub use error::{InferResult, TypeDiagnostic};
 pub use infer::typeck;
 pub use infer::typeck_with_index;
 pub use infer::typeck_with_modules;

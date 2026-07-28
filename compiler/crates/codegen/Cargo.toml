@@ -12,3 +12,5 @@ cranelift-codegen = "0.133.1"
 cranelift-frontend = "0.133.1"
 target-lexicon = "0.13.5"
 tracing = "0.1"
+thiserror = { workspace = true }
+miette = { workspace = true }

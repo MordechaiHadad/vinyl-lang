@@ -1050,7 +1050,9 @@ dependencies = [
  "cranelift-frontend",
  "cranelift-jit",
  "cranelift-module",
+ "miette",
  "target-lexicon",
+ "thiserror",
  "tracing",
  "vinyl-parser",
  "vinyl-typecheck",
@@ -1075,12 +1077,16 @@ dependencies = [
  "miette",
  "thiserror",
  "vinyl-parser",
+ "vinyl-resolver",
+ "vinyl-typecheck",
 ]
 
 [[package]]
 name = "vinyl-formatter"
 version = "0.1.0"
 dependencies = [
+ "miette",
+ "thiserror",
  "tree-sitter",
  "vinyl-parser",
  "vinyl-resolver",
@@ -1099,6 +1105,10 @@ dependencies = [
 [[package]]
 name = "vinyl-resolver"
 version = "0.1.0"
+dependencies = [
+ "miette",
+ "thiserror",
+]
 
 [[package]]
 name = "vinyl-runtime"
@@ -1114,7 +1124,6 @@ version = "0.1.0"
 dependencies = [
  "miette",
  "thiserror",
- "vinyl-diagnostics",
  "vinyl-parser",
 ]
 

@@ -5,7 +5,7 @@ use cranelift_frontend::FunctionBuilder;
 
 use vinyl_typecheck::hir::Type;
 
-use super::CraneliftError;
+use crate::CraneliftError;
 use super::state::{CodegenCtx, VarSlot};
 use super::types::ir_type_from_primitive;
 

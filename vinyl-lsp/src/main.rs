@@ -991,14 +991,13 @@ fn analyze_with_diagnostics(
     module_table: &ModuleTable,
 ) -> std::result::Result<Arc<Analysis>, Vec<SourceDiagnostic>> {
     let name = path.to_string_lossy();
-    let mut warnings = Vec::new();
-    let result =
-        vinyl_typecheck::typeck_with_index(items, source, &name, &mut warnings, module_table)
+    let (result, _warnings) =
+        vinyl_typecheck::typeck_with_index(items, source, &name, module_table)
             .map_err(|errors| {
                 errors
                     .into_iter()
                     .map(|error| SourceDiagnostic {
-                        message: error.message,
+                        message: format!("{error}"),
                         offset: error.span.offset(),
                         length: error.span.len(),
                     })
@@ -1020,7 +1019,7 @@ fn parse_file(vfs: &Vfs, path: &Path) -> Result<(String, Vec<Item>)> {
         eyre!(
             errors
                 .into_iter()
-                .map(|error| error.message)
+                .map(|error| format!("{error}"))
                 .collect::<Vec<_>>()
                 .join("\n")
         )
@@ -1029,7 +1028,7 @@ fn parse_file(vfs: &Vfs, path: &Path) -> Result<(String, Vec<Item>)> {
         eyre!(
             errors
                 .into_iter()
-                .map(|error| error.message)
+                .map(|error| format!("{error}"))
                 .collect::<Vec<_>>()
                 .join("\n")
         )
@@ -1058,7 +1057,7 @@ fn parse_file_with_diagnostics(
             return Err(errors
                 .into_iter()
                 .map(|error| SourceDiagnostic {
-                    message: error.message,
+                    message: format!("{error}"),
                     offset: error.span.offset(),
                     length: error.span.len(),
                 })
@@ -1071,7 +1070,7 @@ fn parse_file_with_diagnostics(
             return Err(errors
                 .into_iter()
                 .map(|error| SourceDiagnostic {
-                    message: error.message,
+                    message: format!("{error}"),
                     offset: error.span.offset(),
                     length: error.span.len(),
                 })

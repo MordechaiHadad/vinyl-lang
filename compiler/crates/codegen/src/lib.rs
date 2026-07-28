@@ -7,6 +7,8 @@ pub trait CodegenBackend {
 }
 
 pub mod cranelift;
+pub mod error;
 pub mod layout;
 
 pub use cranelift::CraneliftBackend;
+pub use error::CraneliftError;

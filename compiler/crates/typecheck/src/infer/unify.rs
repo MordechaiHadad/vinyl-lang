@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use miette::SourceSpan;
 
-use crate::error::TypeError;
+use crate::error::{InferResult, TypeDiagnosticKind};
 use crate::hir::types::Type;
 use crate::infer::SourceContext;
 
@@ -74,7 +74,7 @@ impl SubstitutionState {
         a: &Type,
         b: &Type,
         span: SourceSpan,
-    ) -> Result<(), TypeError> {
+    ) -> InferResult<()> {
         let a = self.resolve(a);
         let b = self.resolve(b);
 
@@ -85,14 +85,14 @@ impl SubstitutionState {
         match (&a, &b) {
             (Type::Var(id_a), _) => {
                 if self.occurs(*id_a, &b) {
-                    return Err(source.error(span, format!("recursive type: `{a}` contains `{b}`")));
+                    return Err(Box::new(source.error(span, TypeDiagnosticKind::RecursiveType { a: a.clone(), b: b.clone() })));
                 }
                 self.subs.insert(*id_a, b.clone());
                 Ok(())
             }
             (_, Type::Var(id_b)) => {
                 if self.occurs(*id_b, &a) {
-                    return Err(source.error(span, format!("recursive type: `{b}` contains `{a}`")));
+                    return Err(Box::new(source.error(span, TypeDiagnosticKind::RecursiveType { a: b.clone(), b: a.clone() })));
                 }
                 self.subs.insert(*id_b, a.clone());
                 Ok(())
@@ -124,7 +124,7 @@ impl SubstitutionState {
                 }
                 Ok(())
             }
-            _ => Err(source.type_mismatch(span, b, a)),
+            _ => Err(Box::new(source.type_mismatch(span, b, a))),
         }
     }
 

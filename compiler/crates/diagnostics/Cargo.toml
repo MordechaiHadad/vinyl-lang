@@ -7,3 +7,5 @@ edition = "2024"
 miette = { workspace = true }
 thiserror = { workspace = true }
 vinyl-parser = { path = "../parser" }
+vinyl-typecheck = { path = "../typecheck" }
+vinyl-resolver = { path = "../resolver" }

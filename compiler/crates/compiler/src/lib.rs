@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 use miette::Diagnostic;
 use thiserror::Error;
 use vinyl_parser::ast::item::{ImportDef, Item};
-use vinyl_resolver::ResolveError;
-use vinyl_typecheck::CompileWarning;
-use vinyl_typecheck::TypeError;
+use vinyl_resolver::ResolveDiagnostic;
+use vinyl_typecheck::TypeDiagnostic;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
 #[derive(Debug, Error, Diagnostic)]
@@ -16,7 +15,7 @@ pub enum CompileError {
     Parse(#[from] vinyl_parser::ParserDiagnostic),
     #[error(transparent)]
     #[diagnostic(transparent)]
-    TypeError(#[from] TypeError),
+    TypeDiagnostic(#[from] TypeDiagnostic),
     #[error("io error: {0}")]
     #[diagnostic(code(compiler::io_error))]
     Io(#[from] std::io::Error),
@@ -25,7 +24,7 @@ pub enum CompileError {
     Module(#[from] ModuleError),
     #[error("module resolution error: {0}")]
     #[diagnostic(code(compiler::module_resolution_error))]
-    ModResolve(#[from] ResolveError),
+    ModResolve(#[from] ResolveDiagnostic),
 }
 
 #[derive(Debug, Error, Diagnostic)]
@@ -199,8 +198,7 @@ fn resolve_imports(
 pub fn compile_entry(
     file_path: &Path,
     source_root: Option<&Path>,
-    warnings: &mut Vec<CompileWarning>,
-) -> Result<CompiledModule, Vec<CompileError>> {
+) -> Result<(CompiledModule, Vec<TypeDiagnostic>), Vec<CompileError>> {
     let source_root = match source_root {
         Some(root) => root.to_path_buf(),
         None => find_source_root(file_path),
@@ -231,24 +229,23 @@ pub fn compile_entry(
     let entry_items = all_items.clone();
     let module_table = resolve_imports(&entry_items, &resolver, &mut all_items, &mut visited)?;
 
-    let hir = vinyl_typecheck::typeck_with_modules(
+    let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,
         &entry_source,
         &entry_source_name,
-        warnings,
         &module_table,
     )
     .map_err(|errors| {
         errors
             .into_iter()
-            .map(CompileError::TypeError)
+            .map(CompileError::TypeDiagnostic)
             .collect::<Vec<_>>()
     })?;
 
-    Ok(CompiledModule {
+    Ok((CompiledModule {
         items: hir,
         module_table,
-    })
+    }, warnings))
 }
 
 #[cfg(test)]
@@ -279,11 +276,9 @@ mod tests {
                 ("src/math.vn", "public fn answer(): int { 42 }"),
             ],
         );
-        let mut warnings = Vec::new();
         let result = compile_entry(
             &root.join("src/main.vn"),
             Some(&root.join("src")),
-            &mut warnings,
         );
         assert!(result.is_ok(), "{result:?}");
     }
@@ -300,11 +295,9 @@ mod tests {
                 ("src/math.vn", "fn answer(): int { 42 }"),
             ],
         );
-        let mut warnings = Vec::new();
         let result = compile_entry(
             &root.join("src/main.vn"),
             Some(&root.join("src")),
-            &mut warnings,
         );
         assert!(result.is_err());
     }
@@ -321,11 +314,9 @@ mod tests {
                 ("src/math/math.vn", "public fn answer(): int { 42 }"),
             ],
         );
-        let mut warnings = Vec::new();
         let result = compile_entry(
             &root.join("src/main.vn"),
             Some(&root.join("src")),
-            &mut warnings,
         );
         assert!(result.is_ok(), "{result:?}");
     }

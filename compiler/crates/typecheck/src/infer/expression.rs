@@ -6,7 +6,7 @@ use vinyl_parser::ast::item::FunctionDef;
 use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
 use vinyl_parser::ast::types::Primitive;
 
-use crate::error::TypeError;
+use crate::error::{InferResult, TypeDiagnosticKind};
 use crate::hir::{
     HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirStatement,
     HirStatementKind, Type,
@@ -18,7 +18,7 @@ impl InferState {
         &mut self,
         expr: &Expression,
         signatures: &HashMap<&str, &FunctionDef>,
-    ) -> Result<HirExpression, TypeError> {
+    ) -> InferResult<HirExpression> {
         match expr {
             Expression::Int(v, span) => Ok(HirExpression {
                 kind: HirExpressionKind::Int(*v, *span),
@@ -71,9 +71,9 @@ impl InferState {
                         kind: HirExpressionKind::Ident(name.clone(), *span),
                         type_: Type::Primitive(Primitive::Unit),
                     }),
-                    None => Err(self
+                    None => Err(Box::new(self
                         .source
-                        .error(*span, format!("undefined variable `{name}`"))),
+                        .error(*span, TypeDiagnosticKind::UndefinedName { name: name.clone() }))),
                 }
             }
             Expression::ValuePath { segments, span } => Ok(HirExpression {
@@ -95,7 +95,7 @@ impl InferState {
                     .subs
                     .unify(&self.source, &left_type, &right_type, *span)
                 {
-                    self.errors.push(e);
+                    self.errors.push(*e);
                 }
 
                 let result_type = match op {
@@ -131,7 +131,7 @@ impl InferState {
                             &Type::Primitive(Primitive::Bool),
                             *span,
                         ) {
-                            self.errors.push(e);
+                            self.errors.push(*e);
                         }
                         Ok(HirExpression {
                             kind: HirExpressionKind::Unary {
@@ -183,13 +183,11 @@ impl InferState {
                     if hir_args.len() != module_function.params.len() {
                         self.errors.push(self.source.error(
                             *span,
-                            format!(
-                                "function `{}::{}` expects {} arguments, got {}",
-                                segments[0],
-                                segments[1],
-                                module_function.params.len(),
-                                hir_args.len()
-                            ),
+                            TypeDiagnosticKind::ArgCountMismatch {
+                                callee: format!("{}::{}", segments[0], segments[1]),
+                                expected: module_function.params.len(),
+                                found: hir_args.len(),
+                            },
                         ));
                     }
                     for (index, (argument, parameter)) in
@@ -202,7 +200,7 @@ impl InferState {
                             &parameter.type_,
                             argument.span(),
                         ) {
-                            self.errors.push(error);
+                            self.errors.push(*error);
                         }
                     }
                     return Ok(HirExpression {
@@ -227,11 +225,11 @@ impl InferState {
                     if hir_args.len() != sig.params.len() {
                         self.errors.push(self.source.error(
                             *span,
-                            format!(
-                                "function `{name}` expects {} arguments, got {}",
-                                sig.params.len(),
-                                hir_args.len()
-                            ),
+                            TypeDiagnosticKind::ArgCountMismatch {
+                                callee: name.clone(),
+                                expected: sig.params.len(),
+                                found: hir_args.len(),
+                            },
                         ));
                     }
 
@@ -242,10 +240,7 @@ impl InferState {
                         {
                             self.errors.push(self.source.error(
                                 arg.span(),
-                                format!(
-                                    "argument {} to `{name}` must be a reference; use `&`",
-                                    i + 1
-                                ),
+                                TypeDiagnosticKind::MustBeReference { callee: name.clone(), index: i + 1 },
                             ));
                             continue;
                         }
@@ -253,7 +248,7 @@ impl InferState {
                             self.subs
                                 .unify(&self.source, &arg_type, &param.type_, arg.span())
                         {
-                            self.errors.push(e);
+                            self.errors.push(*e);
                         }
                         if let Type::Ref(_) = &param.type_
                             && let Expression::Ref { operand, .. } = arg
@@ -263,9 +258,7 @@ impl InferState {
                         {
                             self.errors.push(self.source.error(
                                 arg.span(),
-                                format!(
-                                    "cannot pass immutable binding `{name}` as mutable reference"
-                                ),
+                                TypeDiagnosticKind::ImmutableAsMutable { name: name.clone() },
                             ));
                         }
                     }
@@ -285,7 +278,7 @@ impl InferState {
 
                 self.errors.push(
                     self.source
-                        .error(*span, "cannot infer call target type".to_string()),
+                        .error(*span, TypeDiagnosticKind::CannotInferCallTarget),
                 );
                 Ok(HirExpression {
                     kind: HirExpressionKind::Call {
@@ -315,7 +308,7 @@ impl InferState {
                         self.subs
                             .unify(&self.source, &resolved, &element_var, element.span())
                     {
-                        self.errors.push(e);
+                        self.errors.push(*e);
                     }
                     hir_elements.push(hir);
                 }
@@ -338,7 +331,7 @@ impl InferState {
                     _ => {
                         self.errors.push(
                             self.source
-                                .error(expr.span(), format!("cannot index type `{}`", array_type)),
+                                .error(expr.span(), TypeDiagnosticKind::CannotIndex { type_name: format!("{array_type}") }),
                         );
                         self.subs.fresh_var()
                     }
@@ -355,10 +348,10 @@ impl InferState {
             Expression::Paren(inner, _) => self.infer_expr(inner, signatures),
             Expression::Ref { span, operand } => {
                 if matches!(operand.as_ref(), Expression::Index { .. }) {
-                    return Err(self.source.error(
+                    return Err(Box::new(self.source.error(
                         *span,
-                        "cannot take reference to array index element".to_string(),
-                    ));
+                        TypeDiagnosticKind::CannotRefArrayElement,
+                    )));
                 }
                 let hir_operand = self.infer_expr(operand, signatures)?;
                 let operand_type = self.subs.apply(&hir_operand.type_);
@@ -382,7 +375,7 @@ impl InferState {
                     &Type::Primitive(Primitive::Bool),
                     condition.span(),
                 ) {
-                    self.errors.push(e);
+                    self.errors.push(*e);
                 }
 
                 self.scope.push_scope();
@@ -399,7 +392,7 @@ impl InferState {
                         &Type::Primitive(Primitive::Bool),
                         cond.span(),
                     ) {
-                        self.errors.push(e);
+                        self.errors.push(*e);
                     }
                     self.scope.push_scope();
                     let b = self.infer_block(block, signatures)?;
@@ -478,7 +471,7 @@ impl InferState {
                                 self.subs
                                     .unify(&self.source, &arg_type, &param.type_, arg.span())
                             {
-                                self.errors.push(error);
+                    self.errors.push(*error);
                             }
                         }
                         hir_args.push(hir_arg);
@@ -486,11 +479,12 @@ impl InferState {
                     if args.len() != function.params.len() {
                         self.errors.push(self.source.error(
                             *span,
-                            format!(
-                                "function `{type_name}::{variant_name}` expects {} arguments, got {}",
-                                function.params.len(),
-                                args.len()
-                            ),
+                            TypeDiagnosticKind::VariantArgCountMismatch {
+                                type_name: type_name.clone(),
+                                variant_name: variant_name.clone(),
+                                expected: function.params.len(),
+                                found: args.len(),
+                            },
                         ));
                     }
                     return Ok(HirExpression {
@@ -512,10 +506,13 @@ impl InferState {
                     });
                 }
                 if self.module_table.contains_key(type_name) {
-                    return Err(self.source.error(
+                    return Err(Box::new(self.source.error(
                         *span,
-                        format!("item `{type_name}::{variant_name}` is private or not found"),
-                    ));
+                        TypeDiagnosticKind::VariantPrivate {
+                            type_name: type_name.clone(),
+                            variant_name: variant_name.clone(),
+                        },
+                    )));
                 }
                 let variant_info = self.types.get(type_name).and_then(|kind| {
                     if let HirItemKind::Enum(e) = kind {
@@ -540,20 +537,24 @@ impl InferState {
                 let (variant_index, expected_types) = match variant_info {
                     Some(info) => info,
                     None => {
-                        return Err(self.source.error(
+                        return Err(Box::new(self.source.error(
                             *span,
-                            format!("enum `{type_name}` has no variant `{variant_name}`"),
-                        ));
+                            TypeDiagnosticKind::VariantNotFound {
+                                type_name: type_name.clone(),
+                                variant_name: variant_name.clone(),
+                            },
+                        )));
                     }
                 };
                 if args.len() != expected_types.len() {
                     self.errors.push(self.source.error(
                         *span,
-                        format!(
-                            "variant `{variant_name}` expects {} arguments, got {}",
-                            expected_types.len(),
-                            args.len()
-                        ),
+                        TypeDiagnosticKind::VariantArgCountMismatch {
+                            type_name: type_name.clone(),
+                            variant_name: variant_name.clone(),
+                            expected: expected_types.len(),
+                            found: args.len(),
+                        },
                     ));
                 }
                 let mut payload = Vec::new();
@@ -565,7 +566,7 @@ impl InferState {
                             self.subs
                                 .unify(&self.source, &arg_type, expected, arg.span())
                         {
-                            self.errors.push(e);
+                            self.errors.push(*e);
                         }
                     }
                     payload.push(hir_arg);
@@ -597,12 +598,15 @@ impl InferState {
                                 &field.type_,
                                 expr.span(),
                             ) {
-                                self.errors.push(e);
+                                self.errors.push(*e);
                             }
                         } else {
                             self.errors.push(self.source.error(
                                 expr.span(),
-                                format!("struct `{type_name}` has no field `{name}`"),
+                                TypeDiagnosticKind::NoField {
+                                    type_name: type_name.clone(),
+                                    field_name: name.clone(),
+                                },
                             ));
                         }
                     }
@@ -614,19 +618,19 @@ impl InferState {
                             if !hir_fields.iter().any(|(n, _)| n == &field.name) {
                                 self.errors.push(self.source.error(
                                     *span,
-                                    format!(
-                                        "struct `{type_name}` is missing field `{}`",
-                                        field.name
-                                    ),
+                                    TypeDiagnosticKind::MissingField {
+                                        type_name: type_name.clone(),
+                                        field_name: field.name.clone(),
+                                    },
                                 ));
                             }
                         }
                         Type::Named(type_name.clone())
                     }
                     _ => {
-                        return Err(self
+                        return Err(Box::new(self
                             .source
-                            .error(*span, format!("`{type_name}` is not a struct")));
+                            .error(*span, TypeDiagnosticKind::NotAStruct { name: type_name.clone() })));
                     }
                 };
                 Ok(HirExpression {
@@ -638,9 +642,9 @@ impl InferState {
                     type_: struct_type,
                 })
             }
-            Expression::Match { span, .. } => Err(self
+            Expression::Match { span, .. } => Err(Box::new(self
                 .source
-                .error(*span, "match expressions not supported yet".to_string())),
+                .error(*span, TypeDiagnosticKind::UnsupportedFeature { feature: "match expressions".to_string() }))),
         }
     }
 
@@ -658,7 +662,10 @@ impl InferState {
                     }
                     self.errors.push(
                         self.source
-                            .error(span, format!("struct `{name}` has no field `{field_name}`")),
+                            .error(span, TypeDiagnosticKind::NoField {
+                                type_name: name.clone(),
+                                field_name: field_name.to_string(),
+                            }),
                     );
                     return self.subs.fresh_var();
                 }
@@ -670,7 +677,10 @@ impl InferState {
                     }
                     self.errors.push(self.source.error(
                         span,
-                        format!("tuple struct `{name}` has no field `{field_name}`"),
+                        TypeDiagnosticKind::NoField {
+                            type_name: name.clone(),
+                            field_name: field_name.to_string(),
+                        },
                     ));
                     return self.subs.fresh_var();
                 }
@@ -684,7 +694,7 @@ impl InferState {
                 }
                 self.errors.push(
                     self.source
-                        .error(span, format!("tuple index out of bounds: `{field_name}`")),
+                        .error(span, TypeDiagnosticKind::TupleIndexOutOfBounds { index: field_name.to_string() }),
                 );
                 self.subs.fresh_var()
             }
@@ -698,7 +708,7 @@ impl InferState {
         else_if: &[(HirExpression, Vec<HirStatement>)],
         else_: &Option<Vec<HirStatement>>,
         span: SourceSpan,
-    ) -> Result<Type, TypeError> {
+    ) -> InferResult<Type> {
         let then_type = self.block_result_type(then);
         let mut types = vec![then_type];
         for (_, block) in else_if {
@@ -712,7 +722,7 @@ impl InferState {
         let result = self.subs.fresh_var();
         for t in &types {
             if let Err(e) = self.subs.unify(&self.source, &result, t, span) {
-                self.errors.push(e);
+                self.errors.push(*e);
             }
         }
         Ok(self.subs.apply(&result))

@@ -1,41 +1,15 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+pub mod error;
+pub use error::ResolveDiagnostic;
+
 #[derive(Debug, Clone)]
 pub struct ModuleInfo {
     pub path: Vec<String>,
     pub file_path: PathBuf,
     pub import_name: String,
 }
-
-#[derive(Debug)]
-pub enum ResolveError {
-    NotFound {
-        import_path: Vec<String>,
-        searched: Vec<PathBuf>,
-    },
-    Io(std::io::Error),
-}
-
-impl std::fmt::Display for ResolveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResolveError::NotFound {
-                import_path,
-                searched,
-            } => {
-                write!(f, "module `{}` not found", import_path.join("::"))?;
-                for path in searched {
-                    write!(f, "\n  searched: {}", path.display())?;
-                }
-                Ok(())
-            }
-            ResolveError::Io(e) => write!(f, "io error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for ResolveError {}
 
 #[derive(Debug, Clone)]
 pub struct ModuleResolver {
@@ -44,17 +18,17 @@ pub struct ModuleResolver {
 }
 
 impl ModuleResolver {
-    pub fn new(source_root: &Path) -> Result<Self, ResolveError> {
+    pub fn new(source_root: &Path) -> Result<Self, ResolveDiagnostic> {
         let mut modules = HashMap::new();
-        let source_root = source_root.canonicalize().map_err(ResolveError::Io)?;
-        collect_modules(&source_root, &source_root, &mut modules).map_err(ResolveError::Io)?;
+        let source_root = source_root.canonicalize().map_err(ResolveDiagnostic::Io)?;
+        collect_modules(&source_root, &source_root, &mut modules).map_err(ResolveDiagnostic::Io)?;
         Ok(ModuleResolver {
             source_root,
             modules,
         })
     }
 
-    pub fn resolve(&self, import_path: &[String]) -> Result<&ModuleInfo, ResolveError> {
+    pub fn resolve(&self, import_path: &[String]) -> Result<&ModuleInfo, ResolveDiagnostic> {
         if let Some(info) = self.modules.get(import_path) {
             return Ok(info);
         }
@@ -68,7 +42,7 @@ impl ModuleResolver {
                 file_path.display()
             );
         }
-        Err(ResolveError::NotFound {
+        Err(ResolveDiagnostic::NotFound {
             import_path: import_path.to_vec(),
             searched,
         })
@@ -78,7 +52,7 @@ impl ModuleResolver {
         &self,
         import_path: &[String],
         from_file: &Path,
-    ) -> Result<ModuleInfo, ResolveError> {
+    ) -> Result<ModuleInfo, ResolveDiagnostic> {
         if let Some(info) = self.modules.get(import_path) {
             return Ok(info.clone());
         }
@@ -97,7 +71,7 @@ impl ModuleResolver {
             });
         }
         let searched = vec![self.module_file_path(import_path, ext)];
-        Err(ResolveError::NotFound {
+        Err(ResolveDiagnostic::NotFound {
             import_path: import_path.to_vec(),
             searched,
         })
@@ -138,14 +112,14 @@ impl ModuleResolver {
         &self.source_root
     }
 
-    pub fn add_module(&mut self, path: &Path) -> Result<(), ResolveError> {
-        let canonical = path.canonicalize().map_err(ResolveError::Io)?;
+    pub fn add_module(&mut self, path: &Path) -> Result<(), ResolveDiagnostic> {
+        let canonical = path.canonicalize().map_err(ResolveDiagnostic::Io)?;
         if canonical.is_dir() {
             collect_modules(&canonical, &self.source_root, &mut self.modules)
-                .map_err(ResolveError::Io)?;
+                .map_err(ResolveDiagnostic::Io)?;
         } else {
             add_module_path(&canonical, &self.source_root, &mut self.modules)
-                .map_err(ResolveError::Io)?;
+                .map_err(ResolveDiagnostic::Io)?;
         }
         Ok(())
     }
@@ -284,7 +258,7 @@ mod tests {
         let dir = setup_test_dir("not_found", &["foo.vn"]);
         let resolver = ModuleResolver::new(&dir).unwrap();
         let err = resolver.resolve(&["nonexistent".to_string()]).unwrap_err();
-        assert!(matches!(err, ResolveError::NotFound { .. }));
+        assert!(matches!(err, ResolveDiagnostic::NotFound { .. }));
     }
 
     #[test]

@@ -7,7 +7,7 @@ use vinyl_typecheck::hir::{
     Type,
 };
 
-use super::CraneliftError;
+use crate::CraneliftError;
 use super::state::{CodegenCtx, VarInfo, VarSlot};
 use super::types::{
     element_byte_size, extract_array_element_type, ir_type_from_primitive, is_large_aggregate,

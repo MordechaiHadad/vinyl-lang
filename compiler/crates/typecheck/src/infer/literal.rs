@@ -1,4 +1,4 @@
-use crate::error::TypeError;
+use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{HirExpression, HirExpressionKind, HirStatement, HirStatementKind};
 use crate::infer::InferState;
 
@@ -6,7 +6,7 @@ impl InferState {
     pub(super) fn validate_literal_types_stmt(
         &self,
         stmt: &HirStatement,
-        errors: &mut Vec<TypeError>,
+        errors: &mut Vec<TypeDiagnostic>,
     ) {
         match &stmt.kind {
             HirStatementKind::Let { value, .. } => self.validate_literal_types_expr(value, errors),
@@ -27,21 +27,18 @@ impl InferState {
         }
     }
 
-    fn validate_literal_types_expr(&self, expr: &HirExpression, errors: &mut Vec<TypeError>) {
+    fn validate_literal_types_expr(&self, expr: &HirExpression, errors: &mut Vec<TypeDiagnostic>) {
         match &expr.kind {
             HirExpressionKind::Int(_, span) if !expr.type_.is_numeric() => {
                 errors.push(self.source.error(
                     *span,
-                    format!(
-                        "integer literal must be a numeric type, found `{}`",
-                        expr.type_
-                    ),
+                    TypeDiagnosticKind::IntLiteralMismatch { found: expr.type_.clone() },
                 ));
             }
             HirExpressionKind::Float(_, span) if !expr.type_.is_float() => {
                 errors.push(self.source.error(
                     *span,
-                    format!("float literal must be a float type, found `{}`", expr.type_),
+                    TypeDiagnosticKind::FloatLiteralMismatch { found: expr.type_.clone() },
                 ));
             }
             HirExpressionKind::Binary { left, right, .. } => {
@@ -64,7 +61,7 @@ impl InferState {
                 if !index.type_.is_int() && !index.type_.is_uint() {
                     errors.push(self.source.error(
                         *span,
-                        format!("index type must be an integer, found `{}`", index.type_),
+                        TypeDiagnosticKind::IndexMustBeInteger { found: index.type_.clone() },
                     ));
                 }
             }
@@ -94,13 +91,13 @@ impl InferState {
         }
     }
 
-    pub(super) fn collect_literal_type_errors(&self, stmts: &[HirStatement]) -> Vec<TypeError> {
+    pub(super) fn collect_literal_type_errors(&self, stmts: &[HirStatement]) -> Vec<TypeDiagnostic> {
         let mut errors = Vec::new();
         self.validate_literal_types(stmts, &mut errors);
         errors
     }
 
-    fn validate_literal_types(&self, stmts: &[HirStatement], errors: &mut Vec<TypeError>) {
+    fn validate_literal_types(&self, stmts: &[HirStatement], errors: &mut Vec<TypeDiagnostic>) {
         for stmt in stmts {
             self.validate_literal_types_stmt(stmt, errors);
         }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
 
-use crate::error::{CompileWarning, TypeError, TypeErrorKind};
+use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
     HirTupleStruct, Type,
@@ -42,25 +42,17 @@ impl SourceContext {
         }
     }
 
-    pub(super) fn error(&self, span: SourceSpan, message: String) -> TypeError {
-        TypeError {
-            kind: TypeErrorKind::Message(message),
+    pub(super) fn error(&self, span: SourceSpan, kind: TypeDiagnosticKind) -> TypeDiagnostic {
+        TypeDiagnostic {
+            kind,
             source_code: NamedSource::new(&self.source_name, self.source.to_string()),
             span,
         }
     }
 
-    pub(super) fn type_mismatch(&self, span: SourceSpan, expected: Type, found: Type) -> TypeError {
-        TypeError {
-            kind: TypeErrorKind::Mismatch { expected, found },
-            source_code: NamedSource::new(&self.source_name, self.source.to_string()),
-            span,
-        }
-    }
-
-    pub(super) fn warn(&self, span: SourceSpan, message: String) -> CompileWarning {
-        CompileWarning {
-            message,
+    pub(super) fn type_mismatch(&self, span: SourceSpan, expected: Type, found: Type) -> TypeDiagnostic {
+        TypeDiagnostic {
+            kind: TypeDiagnosticKind::Mismatch { expected, found },
             source_code: NamedSource::new(&self.source_name, self.source.to_string()),
             span,
         }
@@ -74,8 +66,7 @@ struct InferState {
     subs: SubstitutionState,
     current_return_type: Option<Type>,
     loop_depth: usize,
-    errors: Vec<TypeError>,
-    warnings: Vec<CompileWarning>,
+    errors: Vec<TypeDiagnostic>,
     module_table: ModuleTable,
 }
 
@@ -89,7 +80,6 @@ impl InferState {
             current_return_type: None,
             loop_depth: 0,
             errors: Vec::new(),
-            warnings: Vec::new(),
             module_table: module_table.clone(),
         }
     }
@@ -99,18 +89,16 @@ pub fn typeck(
     items: &[Item],
     source: &str,
     source_name: &str,
-    warnings: &mut Vec<CompileWarning>,
-) -> Result<Vec<HirItem>, Vec<TypeError>> {
-    typeck_with_modules(items, source, source_name, warnings, &ModuleTable::new())
+) -> Result<(Vec<HirItem>, Vec<TypeDiagnostic>), Vec<TypeDiagnostic>> {
+    typeck_with_modules(items, source, source_name, &ModuleTable::new())
 }
 
 pub fn typeck_with_modules(
     items: &[Item],
     source: &str,
     source_name: &str,
-    warnings: &mut Vec<CompileWarning>,
     module_table: &ModuleTable,
-) -> Result<Vec<HirItem>, Vec<TypeError>> {
+) -> Result<(Vec<HirItem>, Vec<TypeDiagnostic>), Vec<TypeDiagnostic>> {
     let mut state = InferState::new(source, source_name, module_table);
 
     let signatures: HashMap<&str, &FunctionDef> = items
@@ -202,17 +190,25 @@ pub fn typeck_with_modules(
                     span: f.span,
                     kind: HirItemKind::Function(hir),
                 }),
-                Err(e) => state.errors.push(e),
+                Err(e) => state.errors.push(*e),
             }
         }
     }
 
-    warnings.append(&mut state.warnings);
-
-    if state.errors.is_empty() {
-        Ok(hir_items)
+    let all_diagnostics = std::mem::take(&mut state.errors);
+    let mut fatal_errors = Vec::new();
+    let mut warnings = Vec::new();
+    for diagnostic in all_diagnostics {
+        if matches!(diagnostic.kind, TypeDiagnosticKind::UnreachableStatement) {
+            warnings.push(diagnostic);
+        } else {
+            fatal_errors.push(diagnostic);
+        }
+    }
+    if fatal_errors.is_empty() {
+        Ok((hir_items, warnings))
     } else {
-        Err(state.errors)
+        Err(fatal_errors)
     }
 }
 
@@ -220,16 +216,15 @@ pub fn typeck_with_index(
     items: &[Item],
     source: &str,
     source_name: &str,
-    warnings: &mut Vec<CompileWarning>,
     module_table: &ModuleTable,
-) -> Result<TypeckResult, Vec<TypeError>> {
-    let hir_items = typeck_with_modules(items, source, source_name, warnings, module_table)?;
+) -> Result<(TypeckResult, Vec<TypeDiagnostic>), Vec<TypeDiagnostic>> {
+    let (hir_items, warnings) = typeck_with_modules(items, source, source_name, module_table)?;
     let index = IndexBuilder::default().build(&hir_items);
-    Ok(TypeckResult {
+    Ok((TypeckResult {
         items: hir_items,
         expr_at_pos: index.expr_at_pos,
         definitions: index.definitions,
         references: index.references,
         unused: index.unused,
-    })
+    }, warnings))
 }

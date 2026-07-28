@@ -11,7 +11,7 @@ use target_lexicon::Triple;
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{HirItem, HirItemKind, HirParam, Type};
 
-use super::CraneliftError;
+use crate::CraneliftError;
 use super::prescan::prescan_function_body;
 use super::state::{CodegenCtx, FuncEnv, ModuleEnv, VarInfo, VarSlot};
 use super::types::{hir_sig_to_clif, param_type_to_clif};

@@ -10,7 +10,7 @@ use vinyl_typecheck::hir::{
     HirStatementKind, Type,
 };
 
-use super::CraneliftError;
+use crate::CraneliftError;
 use super::state::CodegenCtx;
 use super::types::{element_byte_size, ir_type_from_primitive, is_large_aggregate};
 
