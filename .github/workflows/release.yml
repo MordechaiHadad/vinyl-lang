@@ -112,7 +112,7 @@ jobs:
 
       - name: Build Binaries (CLI & LSP)
         run: |
-          cargo build --release --manifest-path compiler/Cargo.toml --target ${{ matrix.target }} -p cli -p lsp
+          cargo build --release --manifest-path compiler/Cargo.toml --target ${{ matrix.target }} -p vinyl-cli -p vinyl-lsp
 
       - name: Package Unix Assets
         if: matrix.os != 'windows-latest'
@@ -148,3 +148,5 @@ jobs:
             vinyl-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-lsp-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-vscode-*.vsix
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
