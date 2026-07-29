@@ -431,11 +431,9 @@ fn serves_core_lsp_features_over_stdio() {
     }));
     let auto_import_completion = lsp.response(14);
     let auto_items = auto_import_completion["result"].as_array().unwrap();
-    let auto_helper = auto_items.iter().find(|item| {
-        item["label"]
-            .as_str()
-            .is_some_and(|l| l == "utils::helper")
-    });
+    let auto_helper = auto_items
+        .iter()
+        .find(|item| item["label"].as_str().is_some_and(|l| l == "utils::helper"));
     assert!(
         auto_helper.is_some(),
         "utils::helper should appear as auto-import in app.vn"

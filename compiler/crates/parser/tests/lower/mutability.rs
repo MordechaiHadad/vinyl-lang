@@ -6,7 +6,7 @@ use vinyl_parser::ast::{
     types::{Primitive, Type},
 };
 
-mod common;
+use super::common;
 
 #[test]
 fn reference_type_in_param() {

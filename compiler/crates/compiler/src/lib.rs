@@ -43,23 +43,6 @@ pub struct CompiledModule {
     pub module_table: ModuleTable,
 }
 
-fn find_source_root(file_path: &Path) -> PathBuf {
-    if let Some(parent) = file_path.parent() {
-        let src_candidate = parent.join("src");
-        if src_candidate.is_dir() {
-            return src_candidate;
-        }
-        parent.to_path_buf()
-    } else {
-        let src_candidate = PathBuf::from("src");
-        if src_candidate.is_dir() {
-            src_candidate
-        } else {
-            PathBuf::from(".")
-        }
-    }
-}
-
 fn parse_file(path: &Path) -> Result<(String, String, Vec<Item>), Vec<CompileError>> {
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -104,14 +87,14 @@ fn find_entry_file(source_root: &Path) -> Option<PathBuf> {
 
 fn resolve_imports(
     items: &[Item],
-    resolver: &vinyl_resolver::ModuleResolver,
+    resolver: &mut vinyl_resolver::Resolver,
     all_items: &mut Vec<Item>,
     visited: &mut HashSet<PathBuf>,
 ) -> Result<ModuleTable, Vec<CompileError>> {
     let mut module_table: ModuleTable = HashMap::new();
 
     for import in collect_imports(items) {
-        let module_info = resolver.resolve(&import).map_err(|e| {
+        let module_info = resolver.resolve_module_path(&import).map_err(|e| {
             vec![CompileError::Module(ModuleError {
                 message: format!("could not resolve import `{}`: {e}", import.join("::")),
             })]
@@ -197,15 +180,15 @@ fn resolve_imports(
 
 pub fn compile_entry(
     file_path: &Path,
-    source_root: Option<&Path>,
+    project_root: Option<&Path>,
 ) -> Result<(CompiledModule, Vec<TypeDiagnostic>), Vec<CompileError>> {
-    let source_root = match source_root {
-        Some(root) => root.to_path_buf(),
-        None => find_source_root(file_path),
+    let mut resolver = if let Some(root) = project_root {
+        vinyl_resolver::Resolver::for_manifest(root)
+            .map_err(|e| vec![CompileError::ModResolve(e)])?
+    } else {
+        vinyl_resolver::Resolver::detect(file_path)
+            .map_err(|e| vec![CompileError::ModResolve(e)])?
     };
-
-    let resolver = vinyl_resolver::ModuleResolver::new(&source_root)
-        .map_err(|e| vec![CompileError::ModResolve(e)])?;
 
     let (entry_source, entry_source_name, mut all_items) = if file_path.is_dir() {
         let entry = find_entry_file(file_path).ok_or_else(|| {
@@ -227,7 +210,7 @@ pub fn compile_entry(
     }
 
     let entry_items = all_items.clone();
-    let module_table = resolve_imports(&entry_items, &resolver, &mut all_items, &mut visited)?;
+    let module_table = resolve_imports(&entry_items, &mut resolver, &mut all_items, &mut visited)?;
 
     let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,
@@ -256,6 +239,18 @@ mod tests {
     use super::*;
     use std::fs;
 
+    fn script_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("vinyl_compiler_script_{name}"));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        for (file, source) in files {
+            let path = root.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, source).unwrap();
+        }
+        root
+    }
+
     fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
         let root = std::env::temp_dir().join(format!("vinyl_compiler_test_{name}"));
         let _ = fs::remove_dir_all(&root);
@@ -264,6 +259,7 @@ mod tests {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, source).unwrap();
         }
+        fs::write(root.join("vinyl.toml"), "").unwrap();
         root
     }
 
@@ -279,7 +275,7 @@ mod tests {
                 ("src/math.vn", "public fn answer(): int { 42 }"),
             ],
         );
-        let result = compile_entry(&root.join("src/main.vn"), Some(&root.join("src")));
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
         assert!(result.is_ok(), "{result:?}");
     }
 
@@ -295,8 +291,76 @@ mod tests {
                 ("src/math.vn", "fn answer(): int { 42 }"),
             ],
         );
-        let result = compile_entry(&root.join("src/main.vn"), Some(&root.join("src")));
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn import_not_found_errors() {
+        let root = project(
+            "import_not_found",
+            &[("src/main.vn", "import math; fn main(): int { 0 }")],
+        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn nested_module_import() {
+        let root = project(
+            "nested_import",
+            &[
+                (
+                    "src/main.vn",
+                    "import utils::format; fn main(): string { format::greet() }",
+                ),
+                (
+                    "src/utils/format.vn",
+                    "public fn greet(): string { \"hi\" }",
+                ),
+            ],
+        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn entry_without_main_or_lib() {
+        let root = project("no_entry", &[("src/foo.vn", "fn foo(): int { 1 }")]);
+        let result = compile_entry(&root, Some(&root));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn compiles_script_project_with_import() {
+        let root = script_project(
+            "script_import",
+            &[
+                (
+                    "main.vn",
+                    "import math; fn main(): int { math::double(21) }",
+                ),
+                ("math.vn", "public fn double(n: int): int { n * 2 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("main.vn"), None);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn compiles_manifest_via_detect() {
+        let root = project(
+            "manifest_detect",
+            &[
+                (
+                    "src/main.vn",
+                    "import math; fn main(): int { math::answer() }",
+                ),
+                ("src/math.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("src/main.vn"), None);
+        assert!(result.is_ok(), "{result:?}");
     }
 
     #[test]
@@ -311,7 +375,7 @@ mod tests {
                 ("src/math/math.vn", "public fn answer(): int { 42 }"),
             ],
         );
-        let result = compile_entry(&root.join("src/main.vn"), Some(&root.join("src")));
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
         assert!(result.is_ok(), "{result:?}");
     }
 }

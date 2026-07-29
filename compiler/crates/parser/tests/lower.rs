@@ -11,6 +11,8 @@ mod expressions;
 mod functions;
 #[path = "lower/literals.rs"]
 mod literals;
+#[path = "lower/mutability.rs"]
+mod mutability;
 #[path = "lower/operators.rs"]
 mod operators;
 #[path = "lower/pipes.rs"]

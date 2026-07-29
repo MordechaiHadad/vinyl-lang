@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{ArgAction, Parser, Subcommand};
 use miette::Report;
@@ -97,16 +97,34 @@ fn main() -> eyre::Result<()> {
 
     match cli.command {
         Command::Check { file } => {
-            let file = file.unwrap_or_else(|| PathBuf::from("src"));
+            let file = file.unwrap_or_else(|| {
+                if Path::new("src").exists() {
+                    PathBuf::from("src")
+                } else {
+                    PathBuf::from(".")
+                }
+            });
             let _items = compile_and_report(&file)?;
         }
         Command::Run { file } => {
-            let file = file.unwrap_or_else(|| PathBuf::from("src"));
+            let file = file.unwrap_or_else(|| {
+                if Path::new("src").exists() {
+                    PathBuf::from("src")
+                } else {
+                    PathBuf::from(".")
+                }
+            });
             let items = compile_and_report(&file)?;
             jit_and_run(&items)?;
         }
         Command::Build { file, output } => {
-            let file = file.unwrap_or_else(|| PathBuf::from("src"));
+            let file = file.unwrap_or_else(|| {
+                if Path::new("src").exists() {
+                    PathBuf::from("src")
+                } else {
+                    PathBuf::from(".")
+                }
+            });
             let items = compile_and_report(&file)?;
             println!(
                 "compiled {} -> {} ({} items, codegen not yet implemented)",

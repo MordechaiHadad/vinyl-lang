@@ -129,3 +129,23 @@ fn char_array_type_mismatch() {
         "typeck should fail: char array type mismatch"
     );
 }
+
+#[test]
+fn char_array_return_int() {
+    let source = "fn main(): int { let arr = ['a', 'b']; arr[0] }";
+    let items = common::compile(source);
+    assert!(
+        items.is_err(),
+        "typeck should fail: recieved char from array, expected int"
+    );
+}
+
+#[test]
+fn bool_array_return_int() {
+    let source = "fn main(): int { let arr = [true, false]; arr[0] }";
+    let items = common::compile(source);
+    assert!(
+        items.is_err(),
+        "typeck should fail: recieved bool from array, expected int"
+    );
+}

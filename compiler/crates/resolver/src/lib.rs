@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 
 pub mod error;
@@ -11,145 +12,372 @@ pub struct ModuleInfo {
     pub import_name: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct ModuleResolver {
-    source_root: PathBuf,
-    modules: HashMap<Vec<String>, ModuleInfo>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportPrefix {
+    Self_,
+    Parent(usize),
+    Package,
 }
 
-impl ModuleResolver {
-    pub fn new(source_root: &Path) -> Result<Self, ResolveDiagnostic> {
-        let mut modules = HashMap::new();
-        let source_root = source_root.canonicalize().map_err(ResolveDiagnostic::Io)?;
-        collect_modules(&source_root, &source_root, &mut modules).map_err(ResolveDiagnostic::Io)?;
-        Ok(ModuleResolver {
-            source_root,
-            modules,
-        })
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolverMode {
+    Manifest,
+    Script,
+}
+
+pub trait FileSystem: Debug + Send + Sync {
+    fn file_exists(&self, path: &Path) -> bool;
+    fn collect_vn_files(&self, dir: &Path) -> Result<Vec<PathBuf>, ResolveDiagnostic>;
+}
+
+#[derive(Debug)]
+pub struct DiskFileSystem;
+
+impl FileSystem for DiskFileSystem {
+    fn file_exists(&self, path: &Path) -> bool {
+        path.is_file()
     }
 
-    pub fn resolve(&self, import_path: &[String]) -> Result<&ModuleInfo, ResolveDiagnostic> {
-        if let Some(info) = self.modules.get(import_path) {
-            return Ok(info);
+    fn collect_vn_files(&self, dir: &Path) -> Result<Vec<PathBuf>, ResolveDiagnostic> {
+        let mut files = Vec::new();
+        let walker = ignore::WalkBuilder::new(dir)
+            .parents(true)
+            .git_ignore(true)
+            .git_global(true)
+            .require_git(false)
+            .build();
+        for result in walker {
+            let entry = result.map_err(|e| ResolveDiagnostic::Io(std::io::Error::other(e)))?;
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "vn") {
+                files.push(path.to_path_buf());
+            }
         }
-        let mut searched = Vec::new();
-        let ext = "vn";
-        let file_path = self.module_file_path(import_path, ext);
-        searched.push(file_path.clone());
-        if file_path.exists() {
-            unreachable!(
-                "file exists but was not discovered by walk: {}",
-                file_path.display()
-            );
-        }
-        Err(ResolveDiagnostic::NotFound {
-            import_path: import_path.to_vec(),
-            searched,
-        })
+        files.sort();
+        Ok(files)
+    }
+}
+
+#[derive(Debug)]
+pub struct Resolver {
+    mode: ResolverMode,
+    root: PathBuf,
+    modules: HashMap<Vec<String>, ModuleInfo>,
+    fs: Box<dyn FileSystem>,
+}
+
+impl Resolver {
+    // -- Convenience constructors (DiskFileSystem) --
+
+    pub fn detect(entry: &Path) -> Result<Self, ResolveDiagnostic> {
+        Self::detect_with(entry, Box::new(DiskFileSystem))
     }
 
-    pub fn resolve_from_file(
-        &self,
-        import_path: &[String],
-        from_file: &Path,
-    ) -> Result<ModuleInfo, ResolveDiagnostic> {
-        if let Some(info) = self.modules.get(import_path) {
-            return Ok(info.clone());
-        }
-        let ext = "vn";
-        let file_stem = import_path.last().cloned().unwrap_or_default();
-        let mut candidate = from_file.parent().unwrap_or(Path::new("")).to_path_buf();
-        for segment in import_path {
-            candidate.push(segment);
-        }
-        candidate.set_extension(ext);
-        if candidate.exists() {
-            return Ok(ModuleInfo {
-                path: import_path.to_vec(),
-                file_path: candidate,
-                import_name: file_stem,
+    pub fn for_manifest(root: &Path) -> Result<Self, ResolveDiagnostic> {
+        Self::for_manifest_with(root, Box::new(DiskFileSystem))
+    }
+
+    pub fn for_script(root: &Path) -> Self {
+        Self::for_script_with(root, Box::new(DiskFileSystem))
+    }
+
+    // -- Custom filesystem constructors --
+
+    pub fn detect_with(entry: &Path, fs: Box<dyn FileSystem>) -> Result<Self, ResolveDiagnostic> {
+        let entry = std::path::absolute(entry)?;
+
+        if entry.is_file() && entry.extension().is_some_and(|e| e != "vn") {
+            return Err(ResolveDiagnostic::NotFound {
+                import_path: vec![
+                    entry
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                ],
+                searched: vec![entry],
             });
         }
-        let searched = vec![self.module_file_path(import_path, ext)];
-        Err(ResolveDiagnostic::NotFound {
-            import_path: import_path.to_vec(),
-            searched,
+
+        let start_dir = if entry.is_dir() {
+            entry.clone()
+        } else {
+            entry.parent().unwrap_or(Path::new("")).to_path_buf()
+        };
+
+        if let Some(root) = find_manifest_dir(&start_dir) {
+            Self::for_manifest_with(&root, fs)
+        } else {
+            let root = if entry.is_dir() {
+                entry
+            } else {
+                entry.parent().unwrap_or(Path::new("")).to_path_buf()
+            };
+            Ok(Self::for_script_with(&root, fs))
+        }
+    }
+
+    pub fn for_manifest_with(
+        root: &Path,
+        fs: Box<dyn FileSystem>,
+    ) -> Result<Self, ResolveDiagnostic> {
+        let root = std::path::absolute(root)?;
+        let src = root.join("src");
+        if !src.is_dir() {
+            return Err(ResolveDiagnostic::MissingSrcDir { root });
+        }
+
+        let files = fs.collect_vn_files(&src)?;
+        let mut modules = HashMap::new();
+        for file_path in &files {
+            add_module_path(file_path, &src, &mut modules);
+        }
+
+        Ok(Resolver {
+            mode: ResolverMode::Manifest,
+            root,
+            modules,
+            fs,
         })
     }
 
-    fn module_file_path(&self, import_path: &[String], ext: &str) -> PathBuf {
-        let mut path = self.source_root.clone();
-        for segment in import_path {
-            path.push(segment);
+    pub fn for_script_with(root: &Path, fs: Box<dyn FileSystem>) -> Self {
+        Resolver {
+            mode: ResolverMode::Script,
+            root: root.to_path_buf(),
+            modules: HashMap::new(),
+            fs,
         }
-        path.set_extension(ext);
-        path
     }
 
-    pub fn module_for_path(&self, file_path: &Path) -> Option<&ModuleInfo> {
-        let canonical = file_path.canonicalize().ok()?;
-        let relative = canonical.strip_prefix(&self.source_root).ok()?;
-        let mut parts: Vec<String> = relative
-            .iter()
-            .map(|s| s.to_string_lossy().to_string())
-            .collect();
-        if let Some(last) = parts.last_mut()
-            && let Some(stem) = last.rsplit_once('.')
-        {
-            *last = stem.0.to_string();
-        }
-        if parts.len() >= 2 && parts.last() == parts.get(parts.len() - 2) {
-            parts.pop();
-        }
-        self.modules.get(&parts)
+    // -- Accessors --
+
+    pub fn mode(&self) -> &ResolverMode {
+        &self.mode
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn all_modules(&self) -> &HashMap<Vec<String>, ModuleInfo> {
         &self.modules
     }
 
-    pub fn source_root(&self) -> &Path {
-        &self.source_root
+    pub fn register_module(&mut self, file_path: &Path) {
+        let source_root = match self.mode {
+            ResolverMode::Manifest => self.root.join("src"),
+            ResolverMode::Script => self.root.clone(),
+        };
+        add_module_path(file_path, &source_root, &mut self.modules);
     }
 
-    pub fn add_module(&mut self, path: &Path) -> Result<(), ResolveDiagnostic> {
-        let canonical = path.canonicalize().map_err(ResolveDiagnostic::Io)?;
-        if canonical.is_dir() {
-            collect_modules(&canonical, &self.source_root, &mut self.modules)
-                .map_err(ResolveDiagnostic::Io)?;
-        } else {
-            add_module_path(&canonical, &self.source_root, &mut self.modules)
-                .map_err(ResolveDiagnostic::Io)?;
+    pub fn resolve_module_path(
+        &mut self,
+        path: &[String],
+    ) -> Result<ModuleInfo, ResolveDiagnostic> {
+        let import_path: Vec<String> = path.to_vec();
+        if let Some(info) = self.modules.get(path) {
+            return Ok(info.clone());
         }
-        Ok(())
+        if let ResolverMode::Script = &self.mode {
+            let mut file_path = self.root.clone();
+            for seg in path {
+                file_path.push(seg);
+            }
+            file_path.set_extension("vn");
+            let normalized = normalize_path(&file_path);
+            if self.fs.file_exists(&normalized) {
+                let relative = normalized
+                    .strip_prefix(&self.root)
+                    .unwrap_or(&normalized)
+                    .to_path_buf();
+                let module_path = path_from_relative(&relative);
+                let import_name = path.last().unwrap_or(&"".to_string()).clone();
+                let info = ModuleInfo {
+                    path: module_path.clone(),
+                    file_path: normalized,
+                    import_name,
+                };
+                return Ok(self.modules.entry(module_path).or_insert(info).clone());
+            }
+            return Err(ResolveDiagnostic::NotFound {
+                import_path,
+                searched: vec![normalized],
+            });
+        }
+        let searched = {
+            let mut p = self.root.join("src");
+            for seg in path {
+                p.push(seg);
+            }
+            p.set_extension("vn");
+            vec![p]
+        };
+        Err(ResolveDiagnostic::NotFound {
+            import_path,
+            searched,
+        })
     }
 
-    pub fn remove_module(&mut self, path: &Path) -> bool {
-        let canonical = path.canonicalize().ok();
-        let len_before = self.modules.len();
-        self.modules.retain(|_, info| {
-            if let Some(ref canonical) = canonical {
-                info.file_path.as_path() != canonical.as_path()
-            } else {
-                info.file_path != path
+    pub fn resolve(
+        &mut self,
+        prefix: &ImportPrefix,
+        path: &[&str],
+        from: &Path,
+    ) -> Result<ModuleInfo, ResolveDiagnostic> {
+        match self.mode {
+            ResolverMode::Manifest => self.resolve_manifest(prefix, path, from),
+            ResolverMode::Script => self.resolve_script(prefix, path, from),
+        }
+    }
+
+    fn resolve_manifest(
+        &self,
+        prefix: &ImportPrefix,
+        path: &[&str],
+        from: &Path,
+    ) -> Result<ModuleInfo, ResolveDiagnostic> {
+        match prefix {
+            ImportPrefix::Package => {
+                let module_path: Vec<String> = path.iter().map(|s| s.to_string()).collect();
+                self.modules.get(&module_path).cloned().ok_or_else(|| {
+                    let searched = vec![self.module_absolute_path(&module_path)];
+                    ResolveDiagnostic::NotFound {
+                        import_path: module_path,
+                        searched,
+                    }
+                })
             }
-        });
-        self.modules.len() != len_before
+            ImportPrefix::Self_ | ImportPrefix::Parent(_) => {
+                let target = compute_target_path(prefix, path, from);
+                let normalized_target = normalize_path(&target);
+                let src = self.root.join("src");
+                let normalized_src = normalize_path(&src);
+
+                if !normalized_target.starts_with(&normalized_src) {
+                    return Err(ResolveDiagnostic::AboveRoot {
+                        import_path: path.iter().map(|s| s.to_string()).collect(),
+                    });
+                }
+
+                let relative = normalized_target
+                    .strip_prefix(&normalized_src)
+                    .unwrap()
+                    .to_path_buf();
+                let mut module_path = path_from_relative(&relative);
+
+                if module_path.len() >= 2
+                    && module_path.last() == module_path.get(module_path.len() - 2)
+                {
+                    module_path.pop();
+                }
+
+                self.modules
+                    .get(&module_path)
+                    .cloned()
+                    .ok_or_else(|| ResolveDiagnostic::NotFound {
+                        import_path: module_path,
+                        searched: vec![target],
+                    })
+            }
+        }
+    }
+
+    fn resolve_script(
+        &mut self,
+        prefix: &ImportPrefix,
+        path: &[&str],
+        from: &Path,
+    ) -> Result<ModuleInfo, ResolveDiagnostic> {
+        match prefix {
+            ImportPrefix::Package => Err(ResolveDiagnostic::InvalidPrefix {
+                prefix: "package".to_string(),
+                mode: "script".to_string(),
+            }),
+            ImportPrefix::Self_ | ImportPrefix::Parent(_) => {
+                let target = compute_target_path(prefix, path, from);
+                let import_path: Vec<String> = path.iter().map(|s| s.to_string()).collect();
+
+                if !self.fs.file_exists(&target) {
+                    return Err(ResolveDiagnostic::NotFound {
+                        import_path,
+                        searched: vec![target],
+                    });
+                }
+
+                let relative = target
+                    .strip_prefix(&self.root)
+                    .unwrap_or(&target)
+                    .to_path_buf();
+                let module_path = path_from_relative(&relative);
+                let import_name = path.last().unwrap_or(&"").to_string();
+
+                let info = ModuleInfo {
+                    path: module_path.clone(),
+                    file_path: normalize_path(&target),
+                    import_name,
+                };
+
+                Ok(self.modules.entry(module_path).or_insert(info).clone())
+            }
+        }
+    }
+
+    fn module_absolute_path(&self, module_path: &[String]) -> PathBuf {
+        let mut path = self.root.join("src");
+        for segment in module_path {
+            path.push(segment);
+        }
+        path.set_extension("vn");
+        path
     }
 }
 
-fn add_module_path(
-    path: &Path,
-    source_root: &Path,
-    modules: &mut HashMap<Vec<String>, ModuleInfo>,
-) -> std::io::Result<()> {
-    if path.extension().is_none_or(|e| e != "vn") {
-        return Ok(());
+fn find_manifest_dir(start: &Path) -> Option<PathBuf> {
+    let mut dir = Some(start.to_path_buf());
+    while let Some(ref current) = dir {
+        if current.join("vinyl.toml").is_file() {
+            return Some(current.clone());
+        }
+        dir = current.parent().map(|p| p.to_path_buf());
+    }
+    None
+}
+
+fn compute_target_path(prefix: &ImportPrefix, path: &[&str], from: &Path) -> PathBuf {
+    let mut base = from.parent().unwrap_or(Path::new("")).to_path_buf();
+
+    if let ImportPrefix::Parent(n) = prefix {
+        for _ in 0..*n {
+            base.push("..");
+        }
     }
 
-    let file_stem = path.file_stem().unwrap().to_string_lossy().to_string();
-    let relative = path.strip_prefix(source_root).unwrap_or(path);
-    let mut parts: Vec<String> = relative
+    for segment in path {
+        base.push(segment);
+    }
+    base.set_extension("vn");
+    base
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                result.pop();
+            }
+            other => {
+                result.push(other.as_os_str());
+            }
+        }
+    }
+    result
+}
+
+fn path_from_relative(relative: &Path) -> Vec<String> {
+    relative
         .iter()
         .map(|s| {
             let s = s.to_string_lossy().to_string();
@@ -159,13 +387,27 @@ fn add_module_path(
                 s
             }
         })
-        .collect();
+        .collect()
+}
+
+fn add_module_path(
+    file_path: &Path,
+    source_root: &Path,
+    modules: &mut HashMap<Vec<String>, ModuleInfo>,
+) {
+    if file_path.extension().is_none_or(|e| e != "vn") {
+        return;
+    }
+
+    let file_stem = file_path.file_stem().unwrap().to_string_lossy().to_string();
+    let relative = file_path.strip_prefix(source_root).unwrap_or(file_path);
+    let mut parts = path_from_relative(relative);
 
     if parts.len() >= 2 && parts.last() == parts.get(parts.len() - 2) {
         parts.pop();
     }
 
-    let parent_dir_name = path
+    let parent_dir_name = file_path
         .parent()
         .and_then(|p| p.file_name())
         .map(|n| n.to_string_lossy().to_string())
@@ -175,7 +417,7 @@ fn add_module_path(
 
     let info = ModuleInfo {
         path: parts.clone(),
-        file_path: path.to_path_buf(),
+        file_path: file_path.to_path_buf(),
         import_name,
     };
 
@@ -183,214 +425,5 @@ fn add_module_path(
         modules.entry(parts).or_insert(info);
     } else {
         modules.insert(parts, info);
-    }
-
-    Ok(())
-}
-
-fn collect_modules(
-    dir: &Path,
-    source_root: &Path,
-    modules: &mut HashMap<Vec<String>, ModuleInfo>,
-) -> std::io::Result<()> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            collect_modules(&path, source_root, modules)?;
-        } else {
-            add_module_path(&path, source_root, modules)?;
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    fn setup_test_dir(name: &str, files: &[&str]) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("vinyl_resolver_test_{name}"));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        for file in files {
-            let path = dir.join(file);
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent).unwrap();
-            }
-            fs::write(&path, "").unwrap();
-        }
-        dir
-    }
-
-    #[test]
-    fn finds_root_file() {
-        let dir = setup_test_dir("root_file", &["test.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver.resolve(&["test".to_string()]).unwrap();
-        assert_eq!(info.import_name, "test");
-        assert_eq!(info.path, vec!["test"]);
-    }
-
-    #[test]
-    fn finds_directory_module() {
-        let dir = setup_test_dir("dir_module", &["test/test.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver.resolve(&["test".to_string()]).unwrap();
-        assert_eq!(info.import_name, "test");
-        assert_eq!(info.path, vec!["test"]);
-    }
-
-    #[test]
-    fn finds_nested_file() {
-        let dir = setup_test_dir("nested", &["test/stats.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver
-            .resolve(&["test".to_string(), "stats".to_string()])
-            .unwrap();
-        assert_eq!(info.import_name, "stats");
-        assert_eq!(info.path, vec!["test", "stats"]);
-    }
-
-    #[test]
-    fn not_found_error() {
-        let dir = setup_test_dir("not_found", &["foo.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let err = resolver.resolve(&["nonexistent".to_string()]).unwrap_err();
-        assert!(matches!(err, ResolveDiagnostic::NotFound { .. }));
-    }
-
-    #[test]
-    fn module_for_path_lookup() {
-        let dir = setup_test_dir("path_lookup", &["test/stats.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver.module_for_path(&dir.join("test/stats.vn"));
-        assert!(info.is_some());
-        assert_eq!(info.unwrap().import_name, "stats");
-    }
-
-    #[test]
-    fn empty_source_root() {
-        let dir = setup_test_dir("empty", &[]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        assert!(resolver.all_modules().is_empty());
-    }
-
-    #[test]
-    fn prefers_file_over_directory() {
-        let dir = setup_test_dir("prefer_file", &["test.vn", "test/test.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver.resolve(&["test".to_string()]).unwrap();
-        assert_eq!(
-            info.file_path.file_name().unwrap(),
-            "test.vn",
-            "should prefer test.vn over test/test.vn"
-        );
-    }
-
-    #[test]
-    fn multiple_files_in_dir() {
-        let dir = setup_test_dir("multi_file", &["foo.vn", "bar.vn", "baz/qux.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        assert!(resolver.resolve(&["foo".to_string()]).is_ok());
-        assert!(resolver.resolve(&["bar".to_string()]).is_ok());
-        assert!(
-            resolver
-                .resolve(&["baz".to_string(), "qux".to_string()])
-                .is_ok()
-        );
-    }
-
-    #[test]
-    fn ignores_non_vinyl_files() {
-        let dir = setup_test_dir("ignore_other", &["test.vn", "readme.md", "data.json"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        assert_eq!(resolver.all_modules().len(), 1);
-        assert!(resolver.resolve(&["test".to_string()]).is_ok());
-    }
-
-    #[test]
-    fn subdirectory_prefixed_module() {
-        let dir = setup_test_dir("subdir_prefixed", &["app/routes/users.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver
-            .resolve(&["app".to_string(), "routes".to_string(), "users".to_string()])
-            .unwrap();
-        assert_eq!(info.import_name, "users");
-    }
-
-    #[test]
-    fn directory_module_dedup() {
-        let dir = setup_test_dir("dedup", &["foo/bar/bar.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver
-            .resolve(&["foo".to_string(), "bar".to_string()])
-            .unwrap();
-        assert_eq!(info.import_name, "bar");
-        assert_eq!(info.path, vec!["foo", "bar"]);
-    }
-
-    #[test]
-    fn deep_nested_file() {
-        let dir = setup_test_dir("deep_nested", &["a/b/c/d.vn"]);
-        let resolver = ModuleResolver::new(&dir).unwrap();
-        let info = resolver
-            .resolve(&[
-                "a".to_string(),
-                "b".to_string(),
-                "c".to_string(),
-                "d".to_string(),
-            ])
-            .unwrap();
-        assert_eq!(info.import_name, "d");
-    }
-
-    #[test]
-    fn add_module_single_file() {
-        let dir = setup_test_dir("add_single", &["existing.vn"]);
-        let mut resolver = ModuleResolver::new(&dir).unwrap();
-        assert_eq!(resolver.all_modules().len(), 1);
-
-        let new_file = dir.join("new_module.vn");
-        fs::write(&new_file, "").unwrap();
-        resolver.add_module(&new_file).unwrap();
-        assert_eq!(resolver.all_modules().len(), 2);
-        assert!(resolver.resolve(&["new_module".to_string()]).is_ok());
-    }
-
-    #[test]
-    fn add_module_directory() {
-        let dir = setup_test_dir("add_dir", &["existing.vn"]);
-        let mut resolver = ModuleResolver::new(&dir).unwrap();
-        assert_eq!(resolver.all_modules().len(), 1);
-
-        let sub_dir = dir.join("sub");
-        fs::create_dir_all(&sub_dir).unwrap();
-        fs::write(sub_dir.join("a.vn"), "").unwrap();
-        fs::write(sub_dir.join("b.vn"), "").unwrap();
-        resolver.add_module(&sub_dir).unwrap();
-        assert_eq!(resolver.all_modules().len(), 3);
-    }
-
-    #[test]
-    fn remove_module_by_path() {
-        let dir = setup_test_dir("remove_by_path", &["foo.vn", "bar.vn"]);
-        let mut resolver = ModuleResolver::new(&dir).unwrap();
-        assert_eq!(resolver.all_modules().len(), 2);
-
-        let removed = resolver.remove_module(&dir.join("foo.vn"));
-        assert!(removed);
-        assert_eq!(resolver.all_modules().len(), 1);
-        assert!(resolver.resolve(&["bar".to_string()]).is_ok());
-    }
-
-    #[test]
-    fn remove_module_non_existent() {
-        let dir = setup_test_dir("remove_missing", &["foo.vn"]);
-        let mut resolver = ModuleResolver::new(&dir).unwrap();
-        let removed = resolver.remove_module(&dir.join("nonexistent.vn"));
-        assert!(!removed);
-        assert_eq!(resolver.all_modules().len(), 1);
     }
 }

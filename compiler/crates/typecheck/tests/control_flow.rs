@@ -101,6 +101,7 @@ fn while_condition_string() {
     );
 }
 
+// must update to return only 1 warning, or merge the two into one if the spans are similar.
 #[test]
 fn unreachable_after_return() {
     let source = "fn main(): int32 { return 1; let x = 2; x }";

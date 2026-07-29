@@ -1,5 +1,5 @@
-mod utils;
 mod consts;
+mod utils;
 mod vfs;
 
 use std::collections::{HashMap, HashSet};
@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::vfs::LspFileSystem;
 use clap::Parser;
 use eyre::{Result, eyre};
 use line_index::{LineCol, LineIndex, TextSize, WideEncoding, WideLineCol};
@@ -16,7 +17,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{debug, info};
 use vinyl_parser::ast::item::{ImportDef, Item};
-use vinyl_resolver::ModuleResolver;
+use vinyl_resolver::{Resolver, ResolverMode};
 use vinyl_typecheck::hir::{HirFunction, HirItemKind};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 use vinyl_typecheck::{Definition, DefinitionKind, TypeckResult};
@@ -44,7 +45,7 @@ type WorkspaceDiagnostics = HashMap<PathBuf, Vec<SourceDiagnostic>>;
 type WorkspaceState = (
     WorkspaceAnalyses,
     WorkspaceDiagnostics,
-    ModuleResolver,
+    Resolver,
     ModuleTable,
 );
 
@@ -54,7 +55,7 @@ struct State {
     cache: HashMap<PathBuf, Arc<Analysis>>,
     workspace_root: Option<PathBuf>,
     update_version: u64,
-    resolver: Option<ModuleResolver>,
+    resolver: Option<Resolver>,
     module_table: ModuleTable,
 }
 
@@ -97,9 +98,7 @@ impl Backend {
                 .send_notification::<Progress>(ProgressParams {
                     token,
                     value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(
-                        WorkDoneProgressEnd {
-                            message: None,
-                        },
+                        WorkDoneProgressEnd { message: None },
                     )),
                 })
                 .await;
@@ -262,11 +261,9 @@ impl LanguageServer for Backend {
         self.client
             .send_notification::<Progress>(ProgressParams {
                 token,
-                value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(
-                    WorkDoneProgressEnd {
-                        message: None,
-                    },
-                )),
+                value: ProgressParamsValue::WorkDone(WorkDoneProgress::End(WorkDoneProgressEnd {
+                    message: None,
+                })),
             })
             .await;
     }
@@ -458,14 +455,7 @@ impl LanguageServer for Backend {
         if let Some(resolver) = &state.resolver {
             let current_path = uri.to_file_path().ok();
             let existing_imports = current_imports(&analysis.source);
-            let workspace_root = state
-                .workspace_root
-                .as_deref()
-                .unwrap_or(resolver.source_root());
-            let current_dir_canonical = current_path
-                .as_ref()
-                .and_then(|p| p.parent())
-                .and_then(|d| std::fs::canonicalize(d).ok());
+            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
 
             for info in resolver.all_modules().values() {
                 let import_name = &info.import_name;
@@ -478,19 +468,13 @@ impl LanguageServer for Backend {
                 {
                     continue;
                 }
-                if let Some(ref current_dir) = current_dir_canonical
-                    && !info.file_path.starts_with(current_dir)
-                {
-                    continue;
-                }
-                let cache_key =
-                    non_canonical_key(&info.file_path, resolver.source_root(), workspace_root);
+                let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
                 let Some(module_analysis) = state.cache.get(&cache_key) else {
                     continue;
                 };
                 let import_path = current_path
                     .as_ref()
-                    .map(|p| relative_import_path(p, &info.file_path, resolver.source_root()))
+                    .map(|p| relative_import_path(p, &info.file_path, resolver))
                     .unwrap_or_else(|| import_name.clone());
                 if existing_imports.contains(&import_path) {
                     continue;
@@ -524,15 +508,16 @@ impl LanguageServer for Backend {
                         position_at(&analysis.line_index, offset.saturating_sub(prefix.len())),
                         params.text_document_position.position,
                     );
-                    let import_edit =
-                        TextEdit::new(import_edit_range(&analysis.line_index, &analysis.source), format!("import {import_path};\n"));
+                    let import_edit = TextEdit::new(
+                        import_edit_range(&analysis.line_index, &analysis.source),
+                        format!("import {import_path};\n"),
+                    );
                     items.push(CompletionItem {
                         label: qualified.clone(),
                         kind: Some(kind),
                         detail,
                         text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
-                            edit_range,
-                            qualified,
+                            edit_range, qualified,
                         ))),
                         additional_text_edits: Some(vec![import_edit]),
                         ..CompletionItem::default()
@@ -621,7 +606,11 @@ impl LanguageServer for Backend {
                         kind,
                         tags: None,
                         deprecated: None,
-                        range: span_range(&analysis.line_index, item.span.offset(), item.span.len()),
+                        range: span_range(
+                            &analysis.line_index,
+                            item.span.offset(),
+                            item.span.len(),
+                        ),
                         selection_range: span_range(
                             &analysis.line_index,
                             item.span.offset(),
@@ -733,14 +722,7 @@ impl LanguageServer for Backend {
                 let existing_imports = current_imports(&source);
                 if let Some(resolver) = &state.resolver {
                     let current_path = uri.to_file_path().ok();
-                    let workspace_root = state
-                        .workspace_root
-                        .as_deref()
-                        .unwrap_or(resolver.source_root());
-                    let current_dir_canonical = current_path
-                        .as_ref()
-                        .and_then(|p| p.parent())
-                        .and_then(|d| std::fs::canonicalize(d).ok());
+                    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
                     for info in resolver.all_modules().values() {
                         if current_path
                             .as_ref()
@@ -748,24 +730,14 @@ impl LanguageServer for Backend {
                         {
                             continue;
                         }
-                        if let Some(ref current_dir) = current_dir_canonical
-                            && !info.file_path.starts_with(current_dir)
-                        {
-                            continue;
-                        }
-                        let cache_key = non_canonical_key(
-                            &info.file_path,
-                            resolver.source_root(),
-                            workspace_root,
-                        );
+                        let cache_key =
+                            non_canonical_key(&info.file_path, resolver, workspace_root);
                         let Some(module_analysis) = state.cache.get(&cache_key) else {
                             continue;
                         };
                         let import_path = current_path
                             .as_ref()
-                            .map(|p| {
-                                relative_import_path(p, &info.file_path, resolver.source_root())
-                            })
+                            .map(|p| relative_import_path(p, &info.file_path, resolver))
                             .unwrap_or_else(|| info.import_name.clone());
                         if existing_imports.contains(&import_path)
                             || existing_imports.contains(&info.import_name)
@@ -820,7 +792,10 @@ impl Backend {
             Err(_) => return Ok(None),
         };
         let line_index = LineIndex::new(&source);
-        Ok(Some(vec![TextEdit::new(full_range(&line_index), formatted)]))
+        Ok(Some(vec![TextEdit::new(
+            full_range(&line_index),
+            formatted,
+        )]))
     }
 }
 
@@ -830,7 +805,7 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
         return;
     };
 
-    let (vfs, root, entry_path, existing_resolver) = {
+    let (vfs, root, entry_path) = {
         let guard = state.read().await;
         if guard.vfs.source(&path).is_none() {
             return;
@@ -846,21 +821,10 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
             .into_iter()
             .find(|candidate| candidate.exists())
             .unwrap_or(path.clone());
-        let reuse = guard.resolver.as_ref().is_some_and(|resolver| {
-            resolver
-                .all_modules()
-                .values()
-                .any(|info| same_file(&info.file_path, &path))
-        });
-        (
-            guard.vfs.clone(),
-            root,
-            entry_path,
-            if reuse { guard.resolver.clone() } else { None },
-        )
+        (guard.vfs.clone(), root, entry_path)
     };
 
-    match analyze_workspace(&vfs, &root, &entry_path, existing_resolver.as_ref()) {
+    match analyze_workspace(&vfs, &root, &entry_path) {
         Ok((analyses, diagnostics, resolver, module_table)) => {
             info!(files = analyses.len(), "workspace analysis complete");
             let entry_source = vfs.source(&entry_path).unwrap_or_default();
@@ -952,7 +916,10 @@ fn span_range(line_index: &LineIndex, offset: usize, length: usize) -> Range {
 }
 
 fn full_range(line_index: &LineIndex) -> Range {
-    Range::new(Position::new(0, 0), position_at(line_index, line_index.len().into()))
+    Range::new(
+        Position::new(0, 0),
+        position_at(line_index, line_index.len().into()),
+    )
 }
 
 fn position_at(line_index: &LineIndex, offset: usize) -> Position {
@@ -1216,13 +1183,17 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn non_canonical_key(path: &Path, canonical_root: &Path, non_canonical_root: &Path) -> PathBuf {
-    path.strip_prefix(canonical_root)
-        .map(|relative| non_canonical_root.join(relative))
+fn non_canonical_key(path: &Path, resolver: &Resolver, workspace_root: &Path) -> PathBuf {
+    let source_root = match resolver.mode() {
+        ResolverMode::Manifest => resolver.root().join("src"),
+        ResolverMode::Script => resolver.root().to_path_buf(),
+    };
+    path.strip_prefix(&source_root)
+        .map(|relative| workspace_root.join(relative))
         .unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn relative_import_path(from_file: &Path, to_module: &Path, source_root: &Path) -> String {
+fn relative_import_path(from_file: &Path, to_module: &Path, resolver: &Resolver) -> String {
     let to_stem = to_module
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -1234,7 +1205,11 @@ fn relative_import_path(from_file: &Path, to_module: &Path, source_root: &Path) 
     {
         return to_stem;
     }
-    if let Ok(relative) = to_module.strip_prefix(source_root) {
+    let source_root = match resolver.mode() {
+        ResolverMode::Manifest => resolver.root().join("src"),
+        ResolverMode::Script => resolver.root().to_path_buf(),
+    };
+    if let Ok(relative) = to_module.strip_prefix(&source_root) {
         let relative = relative.with_extension("");
         relative.to_string_lossy().replace('\\', "/")
     } else {
@@ -1242,16 +1217,19 @@ fn relative_import_path(from_file: &Path, to_module: &Path, source_root: &Path) 
     }
 }
 
-fn analyze_workspace(
-    vfs: &Vfs,
-    root: &Path,
-    entry_path: &Path,
-    existing_resolver: Option<&ModuleResolver>,
-) -> Result<WorkspaceState> {
-    let resolver = match existing_resolver {
-        Some(r) => r.clone(),
-        None => ModuleResolver::new(root)?,
-    };
+fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<WorkspaceState> {
+    let vfs_map: HashMap<PathBuf, String> = vfs.files().clone();
+    let fs = Box::new(LspFileSystem::new(vfs_map));
+    let mut resolver = Resolver::detect_with(root, fs).map_err(|e| eyre!("resolver error: {e}"))?;
+
+    if let ResolverMode::Script = resolver.mode() {
+        for file_path in vfs.files().keys() {
+            if file_path.extension().is_some_and(|ext| ext == "vn") {
+                resolver.register_module(file_path);
+            }
+        }
+    }
+
     let mut module_table = ModuleTable::new();
     let mut visited = HashSet::new();
     let mut analyses = HashMap::new();
@@ -1262,8 +1240,7 @@ fn analyze_workspace(
             let mut all_items = entry_items.clone();
             let _ = collect_modules(
                 vfs,
-                &resolver,
-                entry_path,
+                &mut resolver,
                 &entry_items,
                 &mut all_items,
                 &mut module_table,
@@ -1281,21 +1258,18 @@ fn analyze_workspace(
                 let (source, items) = match parse_file_with_diagnostics(vfs, path) {
                     Ok(result) => result,
                     Err(file_diagnostics) => {
-                        diagnostics.insert(
-                            non_canonical_key(path, resolver.source_root(), root),
-                            file_diagnostics,
-                        );
+                        diagnostics
+                            .insert(non_canonical_key(path, &resolver, root), file_diagnostics);
                         continue;
                     }
                 };
                 match analyze_with_diagnostics(path, &source, &items, &ModuleTable::new()) {
                     Ok(analysis) => {
-                        let key = non_canonical_key(path, resolver.source_root(), root);
+                        let key = non_canonical_key(path, &resolver, root);
                         analyses.insert(key, analysis);
                     }
                     Err(error) => {
-                        diagnostics
-                            .insert(non_canonical_key(path, resolver.source_root(), root), error);
+                        diagnostics.insert(non_canonical_key(path, &resolver, root), error);
                     }
                 }
             }
@@ -1322,8 +1296,7 @@ fn analyze_workspace(
         if let Ok(analysis) =
             analyze_with_diagnostics(canonical_path, &source, &items, &ModuleTable::new())
         {
-            // store with non-canonical path key so URI lookups match
-            let key = non_canonical_key(canonical_path, resolver.source_root(), root);
+            let key = non_canonical_key(canonical_path, &resolver, root);
             analyses.insert(key, analysis);
         }
     }
@@ -1332,8 +1305,7 @@ fn analyze_workspace(
 
 fn collect_modules(
     vfs: &Vfs,
-    resolver: &vinyl_resolver::ModuleResolver,
-    file_path: &Path,
+    resolver: &mut Resolver,
     items: &[Item],
     all_items: &mut Vec<Item>,
     module_table: &mut ModuleTable,
@@ -1343,7 +1315,7 @@ fn collect_modules(
         Item::Import(ImportDef { path, .. }) => Some(path),
         _ => None,
     }) {
-        let info = resolver.resolve_from_file(import, file_path)?;
+        let info = resolver.resolve_module_path(import)?;
         let path = info
             .file_path
             .canonicalize()
@@ -1388,7 +1360,6 @@ fn collect_modules(
         collect_modules(
             vfs,
             resolver,
-            &path,
             &module_items,
             all_items,
             module_table,

@@ -11,8 +11,17 @@ members = [
     "crates/resolver",
     "crates/formatter",
     "crates/diagnostics",
+    "crates/lsp",
 ]
 
 [workspace.dependencies]
 thiserror = "2"
 miette = { version = "7", default-features = false, features = ["derive"] }
+eyre = "0.6"
+tokio = { version = "1", features = ["full"] }
+tower-lsp = "0.20"
+line-index = "0.1.2"
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }

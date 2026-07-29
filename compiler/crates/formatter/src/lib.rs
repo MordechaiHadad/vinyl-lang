@@ -3,7 +3,7 @@ mod tree;
 
 pub use error::FormatError;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub struct FormatterConfig {
     pub indent_width: usize,
@@ -43,15 +43,38 @@ pub fn format_path(path: &Path) -> Result<(), Vec<FormatError>> {
     Ok(())
 }
 
+fn collect_vn_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(collect_vn_files(&path));
+            } else if path.extension().is_some_and(|e| e == "vn") {
+                files.push(path);
+            }
+        }
+    }
+    files
+}
+
 pub fn format_project(source_root: &Path) -> Result<(), Vec<FormatError>> {
     let source_root = source_root
         .canonicalize()
         .map_err(|e| vec![FormatError::Io(e)])?;
-    let resolver = vinyl_resolver::ModuleResolver::new(&source_root)
+    let resolver = vinyl_resolver::Resolver::detect(&source_root)
         .map_err(|e| vec![FormatError::Resolve(e)])?;
+    let files: Vec<PathBuf> = match resolver.mode() {
+        vinyl_resolver::ResolverMode::Manifest => resolver
+            .all_modules()
+            .values()
+            .map(|info| info.file_path.clone())
+            .collect(),
+        vinyl_resolver::ResolverMode::Script => collect_vn_files(resolver.root()),
+    };
     let mut errors = Vec::new();
-    for info in resolver.all_modules().values() {
-        if let Err(e) = format_path(&info.file_path) {
+    for path in &files {
+        if let Err(e) = format_path(path) {
             errors.extend(e);
         }
     }
@@ -65,6 +88,32 @@ pub fn format_project(source_root: &Path) -> Result<(), Vec<FormatError>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    fn script_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("vinyl_formatter_script_{name}"));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        for (file, source) in files {
+            let path = root.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, source).unwrap();
+        }
+        root
+    }
+
+    fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("vinyl_formatter_test_{name}"));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        for (file, source) in files {
+            let path = root.join(file);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, source).unwrap();
+        }
+        fs::write(root.join("vinyl.toml"), "").unwrap();
+        root
+    }
 
     #[test]
     fn formats_function_def() {
@@ -145,5 +194,45 @@ mod tests {
             format_range(input, &FormatterConfig::default(), range).unwrap(),
             expected
         );
+    }
+
+    #[test]
+    fn format_project_empty_src() {
+        let root = project("empty", &[]);
+        fs::create_dir_all(root.join("src")).unwrap();
+        let result = format_project(&root);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn format_project_formats_all_files() {
+        let root = project(
+            "all_files",
+            &[
+                ("src/a.vn", "fn   a(): int { 1 }"),
+                ("src/b.vn", "fn   b(): int { 2 }"),
+            ],
+        );
+        format_project(&root).unwrap();
+        let a = fs::read_to_string(root.join("src/a.vn")).unwrap();
+        let b = fs::read_to_string(root.join("src/b.vn")).unwrap();
+        assert_eq!(a, "fn a(): int {\n    1\n}");
+        assert_eq!(b, "fn b(): int {\n    2\n}");
+    }
+
+    #[test]
+    fn format_script_project() {
+        let root = script_project(
+            "script",
+            &[
+                ("main.vn", "fn   main(): int { 1 }"),
+                ("utils.vn", "public fn   helper(): int { 2 }"),
+            ],
+        );
+        format_project(&root).unwrap();
+        let main = fs::read_to_string(root.join("main.vn")).unwrap();
+        let utils = fs::read_to_string(root.join("utils.vn")).unwrap();
+        assert_eq!(main, "fn main(): int {\n    1\n}");
+        assert_eq!(utils, "public fn helper(): int {\n    2\n}");
     }
 }

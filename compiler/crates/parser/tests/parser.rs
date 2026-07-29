@@ -18,8 +18,6 @@ mod literals;
 mod match_tests;
 #[path = "parser/misc.rs"]
 mod misc;
-#[path = "parser/mutability.rs"]
-mod mutability;
 #[path = "parser/statements.rs"]
 mod statements;
 #[path = "parser/structs.rs"]

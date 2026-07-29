@@ -541,6 +541,48 @@ instance.method();
 - [ ] Support compound assignment through reference parameters, such as `p += 1` for `p: &int32`.
 - [ ] Enforce mutability and type rules for array-element assignment during typechecking.
 
+## Resolver
+
+The resolver has two modes determined by whether a `vinyl.toml` manifest file is found.
+
+### Mode Detection
+
+Walk up parent directories from the entry point looking for `vinyl.toml`. If found, enter **manifest mode** with the project root set to that directory. If parent is `None` (filesystem root reached) without finding `vinyl.toml`, enter **script mode** with the project root anchored to the entry file's directory.
+
+### Import Prefix Mapping
+
+| Prefix | Maps to | Manifest | Script |
+|--------|---------|----------|--------|
+| `self::` | `./` (relative to current file) | Yes | Yes |
+| `parent::` | `../` (relative to current file) | Yes | Yes |
+| `package::` | Project root-relative | Yes | No |
+
+`parent::` is stackable: `parent::parent::parent::foo` resolves to `../../../foo`.
+
+### Manifest Mode
+
+- Requires a `src/` directory under the project root -- all source files live under `src/`.
+- **Eager resolution**: Walks all `*.vn` files under `src/` at startup and registers them as modules.
+- Respects `.gitignore` rules — ignored paths are excluded from module discovery.
+- Additional ignore rules may be defined in the future (none specified yet).
+- Imports use `self::`, `parent::`, or `package::` prefixes.
+
+### Script Mode
+
+- No `vinyl.toml` found; the file's directory becomes the project root.
+- Entry can be implicit (`main.vn` in the project root) or an explicit file path passed by the user.
+- **Lazy resolution**: Only imports referenced by the entry file (transitively) are resolved — other files are ignored.
+- `package::` is not available. Only `self::` and `parent::` are valid.
+- Respects `.gitignore` rules.
+
+### LSP Integration
+
+The LSP operates in script mode semantics. It anchors to the currently opened file and lazy-resolves its imports. Files registered via the LSP's virtual file system (VFS) are eligible for auto-import resolution.
+
+### Workspaces
+
+Placeholder — workspace/ multi-root support is not yet designed.
+
 ## Editions
 
 Vinyl uses an edition system (like Rust's) to allow syntax and semantics to evolve without breaking existing code.

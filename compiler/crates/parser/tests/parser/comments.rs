@@ -1,3 +1,4 @@
+// need to disable block comment
 #[test]
 fn comments() {
     let source = r#"
