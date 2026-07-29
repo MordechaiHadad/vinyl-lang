@@ -1,9 +1,13 @@
+mod utils;
+mod consts;
+mod vfs;
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::{ArgAction, Parser};
+use clap::Parser;
 use eyre::{Result, eyre};
 use line_index::{LineCol, LineIndex, TextSize, WideEncoding, WideLineCol};
 use tokio::sync::RwLock;
@@ -11,61 +15,15 @@ use tower_lsp::lsp_types::notification::Progress;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{debug, info};
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::prelude::*;
 use vinyl_parser::ast::item::{ImportDef, Item};
 use vinyl_resolver::ModuleResolver;
 use vinyl_typecheck::hir::{HirFunction, HirItemKind};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 use vinyl_typecheck::{Definition, DefinitionKind, TypeckResult};
 
-#[derive(Parser)]
-#[command(name = "vinyl-lsp", version, about = "Vinyl language server")]
-struct Cli {
-    /// Increase verbosity (-v for DEBUG, -vv for TRACE, -vvv for global TRACE)
-    #[arg(short = 'v', long = "verbose", action = ArgAction::Count)]
-    verbose: u8,
-}
-
-fn init_tracing(verbose: u8) -> Result<()> {
-    let filter = if verbose > 0 {
-        let crate_name = env!("CARGO_CRATE_NAME");
-        match verbose {
-            1 => EnvFilter::new(format!("{crate_name}=debug")),
-            2 => EnvFilter::new(format!("{crate_name}=trace")),
-            _ => EnvFilter::new("trace"),
-        }
-    } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
-    };
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_target(false))
-        .try_init()?;
-    Ok(())
-}
-
-#[derive(Default, Clone)]
-struct Vfs {
-    files: HashMap<PathBuf, String>,
-}
-
-impl Vfs {
-    fn set(&mut self, path: PathBuf, source: String) {
-        self.files.insert(path, source);
-    }
-
-    fn remove(&mut self, path: &Path) {
-        self.files.remove(path);
-    }
-
-    fn source(&self, path: &Path) -> Option<String> {
-        self.files
-            .get(path)
-            .cloned()
-            .or_else(|| std::fs::read_to_string(path).ok())
-    }
-}
+use crate::consts::KEYWORDS;
+use crate::utils::{Cli, init_tracing};
+use crate::vfs::Vfs;
 
 struct Analysis {
     path: PathBuf,
@@ -104,50 +62,6 @@ struct Backend {
     client: Client,
     state: Arc<RwLock<State>>,
 }
-
-const KEYWORDS: &[(&str, CompletionItemKind)] = &[
-    ("fn", CompletionItemKind::KEYWORD),
-    ("let", CompletionItemKind::KEYWORD),
-    ("mut", CompletionItemKind::KEYWORD),
-    ("return", CompletionItemKind::KEYWORD),
-    ("if", CompletionItemKind::KEYWORD),
-    ("else", CompletionItemKind::KEYWORD),
-    ("match", CompletionItemKind::KEYWORD),
-    ("while", CompletionItemKind::KEYWORD),
-    ("loop", CompletionItemKind::KEYWORD),
-    ("break", CompletionItemKind::KEYWORD),
-    ("continue", CompletionItemKind::KEYWORD),
-    ("import", CompletionItemKind::KEYWORD),
-    ("public", CompletionItemKind::KEYWORD),
-    ("true", CompletionItemKind::KEYWORD),
-    ("false", CompletionItemKind::KEYWORD),
-    ("unit", CompletionItemKind::KEYWORD),
-    ("not", CompletionItemKind::KEYWORD),
-    ("and", CompletionItemKind::KEYWORD),
-    ("or", CompletionItemKind::KEYWORD),
-    ("struct", CompletionItemKind::KEYWORD),
-    ("enum", CompletionItemKind::KEYWORD),
-    ("tuple", CompletionItemKind::KEYWORD),
-    ("int", CompletionItemKind::KEYWORD),
-    ("float", CompletionItemKind::KEYWORD),
-    ("bool", CompletionItemKind::KEYWORD),
-    ("char", CompletionItemKind::KEYWORD),
-    ("string", CompletionItemKind::KEYWORD),
-    ("int8", CompletionItemKind::KEYWORD),
-    ("int16", CompletionItemKind::KEYWORD),
-    ("int32", CompletionItemKind::KEYWORD),
-    ("int64", CompletionItemKind::KEYWORD),
-    ("int128", CompletionItemKind::KEYWORD),
-    ("isize", CompletionItemKind::KEYWORD),
-    ("uint8", CompletionItemKind::KEYWORD),
-    ("uint16", CompletionItemKind::KEYWORD),
-    ("uint32", CompletionItemKind::KEYWORD),
-    ("uint64", CompletionItemKind::KEYWORD),
-    ("uint128", CompletionItemKind::KEYWORD),
-    ("usize", CompletionItemKind::KEYWORD),
-    ("float32", CompletionItemKind::KEYWORD),
-    ("float64", CompletionItemKind::KEYWORD),
-];
 
 impl Backend {
     async fn schedule_update(&self, uri: &Url) {
