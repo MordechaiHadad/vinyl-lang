@@ -1,0 +1,97 @@
+{
+  "name": "vinyl-language",
+  "displayName": "Vinyl Language",
+  "description": "A modern experimental language",
+  "version": "0.0.1",
+  "publisher": "vinyl-lang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/vinyl"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:vinyl"
+  ],
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "vinyl",
+        "aliases": [
+          "Vinyl",
+          "vinyl"
+        ],
+        "extensions": [
+          ".vn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vinyl",
+        "scopeName": "source.vn",
+        "path": "./syntaxes/vinyl.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "vinyl",
+        "path": "./snippets/vinyl.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "vinyl.restartServer",
+        "title": "Vinyl: Restart Language Server"
+      },
+      {
+        "command": "vinyl.showOutputChannel",
+        "title": "Vinyl: Show Output Channel"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Vinyl",
+      "properties": {
+        "vinyl.lsp.path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null,
+          "description": "Custom path to the vinyl-lsp executable."
+        },
+        "vinyl.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces JSON-RPC communication between VS Code and the Vinyl Language Server."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.30.0",
+    "typescript": "^5.4.0"
+  }
+}

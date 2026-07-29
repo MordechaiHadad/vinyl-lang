@@ -1,0 +1,145 @@
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-versions:
+    name: Verify Version Alignment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate component versions match tag
+        run: |
+          python3 -c "
+          import json, os, re, sys
+
+          tag = os.environ.get('GITHUB_REF_NAME', '')
+          expected = tag.lstrip('v')
+
+          print(f'==> Target release tag: {tag} (expected version: {expected})\n')
+
+          mismatches = []
+
+          # 1. Check VS Code Extension
+          vscode_path = 'editor/vscode/package.json'
+          if os.path.exists(vscode_path):
+              with open(vscode_path) as f:
+                  data = json.load(f)
+                  ver = data.get('version')
+                  if ver != expected:
+                      mismatches.append(('VS Code Extension', vscode_path, ver))
+          else:
+              mismatches.append(('VS Code Extension', vscode_path, 'FILE NOT FOUND'))
+
+          def get_toml_version(filepath):
+              if not os.path.exists(filepath):
+                  return 'FILE NOT FOUND'
+              with open(filepath) as f:
+                  content = f.read()
+              if re.search(r'version\.workspace\s*=\s*true', content):
+                  return 'workspace'
+              m = re.search(r'(?:\[workspace\.package\]|\[package\])[\s\S]*?version\s*=\s*\"([^\"]+)\"', content)
+              return m.group(1) if m else 'UNKNOWN'
+
+          # 2. Check Compiler Workspace Root
+          compiler_toml = 'compiler/Cargo.toml'
+          comp_ver = get_toml_version(compiler_toml)
+          if comp_ver != expected:
+              mismatches.append(('Compiler Workspace Root', compiler_toml, comp_ver))
+
+          # 3. Check LSP Crate
+          lsp_toml = 'compiler/crates/lsp/Cargo.toml'
+          lsp_ver = get_toml_version(lsp_toml)
+          if lsp_ver != 'workspace' and lsp_ver != expected:
+              mismatches.append(('LSP Crate', lsp_toml, lsp_ver))
+
+          # 4. Check CLI Crate
+          cli_toml = 'compiler/crates/cli/Cargo.toml'
+          cli_ver = get_toml_version(cli_toml)
+          if cli_ver != 'workspace' and cli_ver != expected:
+              mismatches.append(('CLI Crate', cli_toml, cli_ver))
+
+          if mismatches:
+              print('ERROR: VERSION MISMATCH DETECTED!\n')
+              print('The following files need to be internally bumped before releasing:\n')
+              for name, path, found in mismatches:
+                  print(f'  - {name} ({path}):')
+                  print(f'      Found:    {found}')
+                  print(f'      Expected: {expected}\n')
+              sys.exit(1)
+          else:
+              print('SUCCESS: All component versions match the release tag!')
+          "
+
+  build-release:
+    name: Build & Package (${{ matrix.target }})
+    needs: verify-versions
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive_ext: zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build Binaries (CLI & LSP)
+        run: |
+          cargo build --release --manifest-path compiler/Cargo.toml --target ${{ matrix.target }} -p cli -p lsp
+
+      - name: Package Unix Assets
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd compiler/target/${{ matrix.target }}/release
+          CLI_BIN=$(test -f vinyl && echo "vinyl" || echo "cli")
+          LSP_BIN=$(test -f vinyl-lsp && echo "vinyl-lsp" || echo "lsp")
+          tar -czf ../../../../vinyl-${{ matrix.target }}.tar.gz "$CLI_BIN"
+          tar -czf ../../../../vinyl-lsp-${{ matrix.target }}.tar.gz "$LSP_BIN"
+
+      - name: Package Windows Assets
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cd compiler/target/${{ matrix.target }}/release
+          $CliBin = Test-Path "vinyl.exe" ? "vinyl.exe" : "cli.exe"
+          $LspBin = Test-Path "vinyl-lsp.exe" ? "vinyl-lsp.exe" : "lsp.exe"
+          Compress-Archive -Path $CliBin -DestinationPath ../../../../vinyl-${{ matrix.target }}.zip
+          Compress-Archive -Path $LspBin -DestinationPath ../../../../vinyl-lsp-${{ matrix.target }}.zip
+
+      - name: Package VS Code Extension (.vsix)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd editor/vscode
+          npm ci
+          npx @vscode/vsce package --out ../../vinyl-vscode-${{ github.ref_name }}.vsix
+
+      - name: Upload Release Artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            vinyl-${{ matrix.target }}.${{ matrix.archive_ext }}
+            vinyl-lsp-${{ matrix.target }}.${{ matrix.archive_ext }}
+            vinyl-vscode-*.vsix
