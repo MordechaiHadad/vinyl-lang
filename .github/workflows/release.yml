@@ -46,26 +46,30 @@ jobs:
                   content = f.read()
               if re.search(r'version\.workspace\s*=\s*true', content):
                   return 'workspace'
-              m = re.search(r'(?:\[workspace\.package\]|\[package\])[\s\S]*?version\s*=\s*\"([^\"]+)\"', content)
-              return m.group(1) if m else 'UNKNOWN'
+              m = re.search(r'^\s*version\s*=\s*\"([^\"]+)\"', content, re.MULTILINE)
+              return m.group(1) if m else None
 
-          # 2. Check Compiler Workspace Root
-          compiler_toml = 'compiler/Cargo.toml'
-          comp_ver = get_toml_version(compiler_toml)
-          if comp_ver != expected:
-              mismatches.append(('Compiler Workspace Root', compiler_toml, comp_ver))
+          # Check root Cargo.toml if it defines a workspace version
+          root_toml = 'compiler/Cargo.toml'
+          root_ver = get_toml_version(root_toml)
+          if root_ver is not None and root_ver != 'FILE NOT FOUND' and root_ver != expected:
+              mismatches.append(('Compiler Workspace Root', root_toml, root_ver))
 
-          # 3. Check LSP Crate
-          lsp_toml = 'compiler/crates/lsp/Cargo.toml'
-          lsp_ver = get_toml_version(lsp_toml)
-          if lsp_ver != 'workspace' and lsp_ver != expected:
-              mismatches.append(('LSP Crate', lsp_toml, lsp_ver))
+          # 2. Check CLI and LSP crates explicitly
+          crates_to_check = [
+              ('CLI Crate', 'compiler/crates/cli/Cargo.toml'),
+              ('LSP Crate', 'compiler/crates/lsp/Cargo.toml'),
+          ]
 
-          # 4. Check CLI Crate
-          cli_toml = 'compiler/crates/cli/Cargo.toml'
-          cli_ver = get_toml_version(cli_toml)
-          if cli_ver != 'workspace' and cli_ver != expected:
-              mismatches.append(('CLI Crate', cli_toml, cli_ver))
+          for name, path in crates_to_check:
+              ver = get_toml_version(path)
+              if ver == 'workspace':
+                  if root_ver != expected:
+                      mismatches.append((f'{name} (inherits workspace version)', path, f'workspace root version is {root_ver}'))
+              elif ver is None:
+                  mismatches.append((name, path, 'NO VERSION FOUND'))
+              elif ver != expected:
+                  mismatches.append((name, path, ver))
 
           if mismatches:
               print('ERROR: VERSION MISMATCH DETECTED!\n')
@@ -139,6 +143,7 @@ jobs:
       - name: Upload Release Artifacts
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: true
           files: |
             vinyl-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-lsp-${{ matrix.target }}.${{ matrix.archive_ext }}
