@@ -42,4 +42,7 @@ pub const KEYWORDS: &[(&str, CompletionItemKind)] = &[
     ("usize", CompletionItemKind::KEYWORD),
     ("float32", CompletionItemKind::KEYWORD),
     ("float64", CompletionItemKind::KEYWORD),
+    ("self", CompletionItemKind::KEYWORD),
+    ("parent", CompletionItemKind::KEYWORD),
+    ("package", CompletionItemKind::KEYWORD)
 ];
