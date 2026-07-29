@@ -2,7 +2,7 @@
   "name": "vinyl-language",
   "displayName": "Vinyl Language",
   "description": "A modern experimental language",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "vinyl-lang",
   "repository": {
     "type": "git",
