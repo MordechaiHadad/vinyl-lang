@@ -1,0 +1,98 @@
+# Struct, tuple, and enum examples
+# Run: vinyl run examples/data_types.vn
+
+struct Point {
+    x: int,
+    y: int,
+}
+
+struct Triple {
+    a: int,
+    b: int,
+    c: int,
+}
+
+struct Inner {
+    value: int,
+}
+
+struct Outer {
+    inner: Inner,
+    extra: int,
+}
+
+enum Shape {
+    Empty,
+    Circle(int32),
+    Square(int32),
+}
+
+fn struct_fields(): int {
+    let p = Point { x: 10, y: 20 };
+    p.x + p.y
+}
+
+fn struct_field_assign(): int {
+    let mut p = Point { x: 10, y: 20 };
+    p.x = 30;
+    p.x
+}
+
+fn struct_param(p: Point): int {
+    p.x + p.y
+}
+
+fn large_struct_fields(): int {
+    let t = Triple { a: 1, b: 2, c: 3 };
+    t.a + t.b + t.c
+}
+
+fn nested_struct(): int {
+    let o = Outer { inner: Inner { value: 42 }, extra: 10 };
+    o.inner.value + o.extra
+}
+
+fn large_tuple(): int {
+    let t = (1, 2, 3);
+    t.0 + t.1 + t.2
+}
+
+fn tuple_total(): int {
+    let coordinates = (10, 20, 30);
+    coordinates.0 + coordinates.1 + coordinates.2
+}
+
+fn tuple_expression(): int {
+    (100, 200).0 + (300, 400).1
+}
+
+fn enum_units(): int {
+    if Shape::Empty() == Shape::Empty() { 1 } else { 0 }
+}
+
+fn enum_payloads(): int {
+    let circle = Shape::Circle(7);
+    let same_circle = Shape::Circle(7);
+    let different_circle = Shape::Circle(9);
+
+    let same = if circle == same_circle { 1 } else { 0 };
+    let different = if circle == different_circle { 1 } else { 0 };
+    let different_variant = if circle == Shape::Square(7) { 1 } else { 0 };
+
+    same + different + different_variant
+}
+
+fn main(): int {
+    let a = struct_fields();
+    let b = struct_field_assign();
+    let c = struct_param(Point { x: 3, y: 4 });
+    let d = large_struct_fields();
+    let e = nested_struct();
+    let g = large_tuple();
+    let h = tuple_total();
+    let i = tuple_expression();
+    let j = enum_units();
+    let k = enum_payloads();
+
+    a + b + c + d + e + g + h + i + j + k
+}

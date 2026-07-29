@@ -1,0 +1,24 @@
+[package]
+name = "vinyl-lsp"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vinyl-lsp"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+eyre = { workspace = true }
+line-index = { workspace = true }
+tokio = { workspace = true }
+tower-lsp = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+vinyl-formatter = { path = "../formatter" }
+vinyl-parser = { path = "../parser" }
+vinyl-resolver = { path = "../resolver" }
+vinyl-typecheck = { path = "../typecheck" }
+
+[dev-dependencies]
+serde_json = { workspace = true }

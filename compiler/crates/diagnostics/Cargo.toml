@@ -1,0 +1,11 @@
+[package]
+name = "vinyl-diagnostics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+miette = { workspace = true }
+thiserror = { workspace = true }
+vinyl-parser = { path = "../parser" }
+vinyl-typecheck = { path = "../typecheck" }
+vinyl-resolver = { path = "../resolver" }

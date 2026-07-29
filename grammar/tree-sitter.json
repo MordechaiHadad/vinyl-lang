@@ -7,7 +7,7 @@
       "title": "Vinyl",
       "scope": "source.vinyl",
       "file-types": [
-        ".vnl"
+        ".vn"
       ],
       "injection-regex": "^vinyl$",
       "class-name": "TreeSitterVinyl"

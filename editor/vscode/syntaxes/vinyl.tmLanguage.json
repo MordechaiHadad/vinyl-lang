@@ -1,0 +1,120 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Vinyl",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#attributes" },
+    { "include": "#keywords" },
+    { "include": "#primitive-types" },
+    { "include": "#constants" },
+    { "include": "#strings" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.vinyl",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.number-sign.vinyl",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "entity.other.attribute-name.vinyl",
+          "match": "@[a-z_][a-zA-Z0-9_]*"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.vinyl",
+          "match": "\\b(fn|struct|tuple|enum|import|let|mut|if|else|while|loop|break|continue|return|match|in|self|package|parent|not|and|or)\\b"
+        }
+      ]
+    },
+    "primitive-types": {
+      "patterns": [
+        {
+          "name": "storage.type.vinyl",
+          "match": "\\b(int8|int16|int32|int64|int128|isize|uint8|uint16|uint32|uint64|uint128|usize|float32|float64|bool|char|string|unit|int|float)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.vinyl",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.unit.vinyl",
+          "match": "\\bunit\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.raw.vinyl",
+          "begin": "r\"",
+          "end": "\""
+        },
+        {
+          "name": "string.quoted.double.vinyl",
+          "begin": "f?\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.vinyl",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.vinyl",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.vinyl",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.binary.vinyl",
+          "match": "\\b0b[01]+\\b"
+        },
+        {
+          "name": "constant.numeric.octal.vinyl",
+          "match": "\\b0o[0-7]+\\b"
+        },
+        {
+          "name": "constant.numeric.hex.vinyl",
+          "match": "\\b0x[0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.vinyl",
+          "match": "\\b[0-9]+\\.[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.vinyl",
+          "match": "\\b[0-9]+\\b"
+        }
+      ]
+    }
+  },
+  "scopeName": "source.vinyl"
+}

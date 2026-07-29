@@ -1,0 +1,157 @@
+# Control flow examples
+# Run: vinyl run examples/control_flow.vn
+
+# --- If / else as expression ---
+
+fn clamp(value: int, low: int, high: int): int {
+    if value < low { low }
+    else if value > high { high }
+    else { value }
+}
+
+fn rating(score: int): int {
+    if score >= 90 { 3 }
+    else if score >= 60 { 2 }
+    else if score >= 30 { 1 }
+    else { 0 }
+}
+
+fn absolute(n: int): int {
+    if n < 0 { -n } else { n }
+}
+
+fn min(a: int, b: int): int {
+    let result = if a < b { a } else { b };
+    result
+}
+
+# --- Nested if ---
+
+fn quadrant(x: int, y: int): int {
+    if x > 0 {
+        if y > 0 { 1 } else { 4 }
+    } else {
+        if y > 0 { 2 } else { 3 }
+    }
+}
+
+# --- If inside arithmetic ---
+
+fn sum_abs(a: int, b: int): int {
+    (if a < 0 { -a } else { a }) + (if b < 0 { -b } else { b })
+}
+
+# --- Recursion (functional iteration without mutation) ---
+
+fn factorial(n: int): int {
+    if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+
+fn fibonacci(n: int): int {
+    if n <= 1 { n } else { fibonacci(n - 1) + fibonacci(n - 2) }
+}
+
+fn gcd(a: int, b: int): int {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
+fn sum_range(n: int): int {
+    if n <= 0 { 0 } else { n + sum_range(n - 1) }
+}
+
+fn count_digits(n: int): int {
+    if n < 10 { 1 } else { 1 + count_digits(n / 10) }
+}
+
+fn collatz_steps(n: int): int {
+    if n == 1 { 0 }
+    else if n % 2 == 0 { 1 + collatz_steps(n / 2) }
+    else { 1 + collatz_steps(3 * n + 1) }
+}
+
+# --- While (condition checked each iteration) ---
+
+fn while_never_enters(): int {
+    let result = 42;
+    while false { }
+    result
+}
+
+fn while_immediate_break(): int {
+    while true { break; }
+    7
+}
+
+# --- Loop with break ---
+
+fn loop_immediate_break(): int {
+    let result = 7;
+    loop { break; }
+    result
+}
+
+fn loop_cond_break(n: int): int {
+    loop {
+        if n == 0 { break; }
+        break;
+    }
+    n
+}
+
+# --- Working while loop (sum 1 to n) ---
+
+fn sum_while(n: int): int {
+    let mut sum = 0;
+    let mut i = 1;
+    while i <= n {
+        sum += i;
+        i += 1;
+    }
+    sum
+}
+
+# --- Working loop with break (countdown) ---
+
+fn countdown_loop(n: int): int {
+    let mut result = 0;
+    let mut i = n;
+    loop {
+        if i <= 0 { break; }
+        result += i;
+        i -= 1;
+    }
+    result
+}
+
+# --- Loop with continue (syntactic demonstration) ---
+
+fn loop_with_continue(): int {
+    loop { break; continue; }
+    1
+}
+
+# --- Main ---
+
+fn main(): int {
+    let c = clamp(150, 0, 100);
+    let r = rating(75) + rating(45) + rating(15);
+    let a = absolute(-5);
+    let m = min(10, 20);
+    let q = quadrant(1, -1);
+    let sa = sum_abs(-3, 7);
+    let fact = factorial(6);
+    let fib = fibonacci(10);
+    let g = gcd(48, 18);
+    let sr = sum_range(10);
+    let cd = count_digits(12345);
+    let cs = collatz_steps(27);
+    let wne = while_never_enters();
+    let wib = while_immediate_break();
+    let lib = loop_immediate_break();
+    let lcb = loop_cond_break(0);
+    let sw = sum_while(10);
+    let cdl = countdown_loop(5);
+    let lwc = loop_with_continue();
+
+    c + r + a + m + q + sa + fact + fib + g + sr + cd + cs + wne + wib + lib + lcb + sw + cdl + lwc
+}

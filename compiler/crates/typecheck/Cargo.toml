@@ -1,0 +1,9 @@
+[package]
+name = "vinyl-typecheck"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vinyl-parser = { path = "../parser" }
+miette = { version = "7", features = ["derive"] }
+thiserror = "2.0.19"

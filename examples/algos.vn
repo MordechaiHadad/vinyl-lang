@@ -1,0 +1,138 @@
+# Comprehensive Mixed Algorithms Suite
+# Run: vinyl run examples/mixed_algorithms.vn
+
+# --- 1. Binary Search on Fixed Array ---
+# Finds target index in a 6-element sorted integer array using nested logic.
+
+fn binary_search(arr: [int; 6], target: int): int {
+    let mut low = 0;
+    let mut high = 5;
+    let mut result = 0 - 1;
+
+    while low <= high {
+        let mid = low + (high - low) / 2;
+        if arr[mid] == target {
+            result = mid;
+            break;
+        } else if arr[mid] < target {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    result
+}
+
+# --- 2. Vector Dot Product ---
+# Direct index access combined inside arithmetic expressions.
+
+fn dot_product(a: [int; 3], b: [int; 3]): int {
+    (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2])
+}
+
+# --- 3. Array Analysis with Reference Mutation ---
+# Finds min/max in an array, writes values out through pointers, and returns sum.
+
+fn analyze_bounds(arr: [int; 4], min_out: &int, max_out: &int): int {
+    let mut min_val = arr[0];
+    let mut max_val = arr[0];
+    let mut i = 1;
+
+    while i < 4 {
+        if arr[i] < min_val {
+            min_val = arr[i];
+        } else if arr[i] > max_val {
+            max_val = arr[i];
+        }
+        i += 1;
+    }
+
+    min_out = min_val;
+    max_out = max_val;
+    
+    min_val + max_val
+}
+
+# --- 4. Character Array Frequency Counter ---
+# Scans a fixed char array and counts matches for a target character.
+
+fn count_char(arr: [char; 5], target: char): int {
+    let mut count = 0;
+    let mut i = 0;
+    while i < 5 {
+        if arr[i] == target {
+            count += 1;
+        }
+        i += 1;
+    }
+    count
+}
+
+# --- 5. In-Place Array Reversal ---
+# Copies an array locally, swaps elements, and returns the middle element.
+
+fn reverse_and_get_middle(arr: [int; 5]): int {
+    let mut data = arr;
+    let mut left = 0;
+    let mut right = 4;
+
+    while left < right {
+        let temp = data[left];
+        data[left] = data[right];
+        data[right] = temp;
+        left += 1;
+        right -= 1;
+    }
+
+    data[2]
+}
+
+# --- 6. Boolean Array Parity Validation ---
+# Combines loop condition checks and boolean logic to verify even numbers.
+
+fn all_even(arr: [int; 4]): int {
+    let mut result = 1;
+    let mut i = 0;
+    while i < 4 {
+        if arr[i] % 2 != 0 {
+            result = 0;
+            break;
+        }
+        i += 1;
+    }
+    result
+}
+
+# --- Main Driver ---
+
+fn main(): int {
+    # 1. Binary Search
+    let sorted_nums = [10, 20, 30, 40, 50, 60];
+    let idx = binary_search(sorted_nums, 40);             # 3
+
+    # 2. Dot Product
+    let vec_a = [1, 2, 3];
+    let vec_b = [4, 5, 6];
+    let dot = dot_product(vec_a, vec_b);                   # 32
+
+    # 3. Reference Mutation + Array Min/Max
+    let sample = [15, 3, 99, 42];
+    let mut min_res = 0;
+    let mut max_res = 0;
+    let bound_sum = analyze_bounds(sample, &min_res, &max_res); # min=3, max=99, sum=102
+
+    # 4. Character Array Processing
+    let vowels = ['a', 'e', 'i', 'o', 'e'];
+    let e_count = count_char(vowels, 'e');                 # 2
+
+    # 5. In-place Local Swap
+    let items = [10, 20, 30, 40, 50];
+    let mid = reverse_and_get_middle(items);               # 30
+
+    # 6. Boolean Check
+    let evens = [2, 4, 6, 8];
+    let is_even = all_even(evens);                         # 1
+
+    # Aggregated return statement test
+    idx + dot + min_res + max_res + bound_sum + e_count + mid + is_even
+}

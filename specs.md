@@ -8,7 +8,7 @@
 
 ## Architecture
 
-File extension: `.vnl`
+File extension: `.vn`
 
 ### Memory
 - Automatic GC heap, no borrow checker, no manual memory management
@@ -130,6 +130,7 @@ Bitwise:    &  |  ^  ~  <<  >>
 Assignment: =  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 Range:      ..  ..=  (exclusive/inclusive)
 Access:     .  ?.  (optional chaining on Option)
+Pipe:       |>  |>>  (forward pipe: first / last argument)
 Error prop: ?  (unwraps Result/Option, propagates error/None)
 Unwrap:     ??  (unwrap `Option`/`Result` with a fallback or early return)
 ```
@@ -137,6 +138,33 @@ Unwrap:     ??  (unwrap `Option`/`Result` with a fallback or early return)
 Unary `-` negates a numeric value. Unary `!` / `not` perform logical NOT on a `bool` -- no truthiness coercion.
 
 No `++` or `--`. Use `+= 1` / `-= 1`.
+
+### Pipe Operators
+
+The pipe operators `|>` and `|>>` provide a forward-pipeline syntax for chaining function calls. They are syntactic sugar — the compiler desugars them into nested function calls at parse time. No new AST node, HIR node, or runtime representation is introduced.
+
+- `|>` pipes the left operand as the **first** argument to the function on the right.
+- `|>>` pipes the left operand as the **last** argument to the function on the right.
+
+```
+x |> f()          // → f(x)
+x |> f(a, b)      // → f(x, a, b)
+x |> f            // → f(x)          (bare identifier treated as function call)
+x |>> f(a, b)     // → f(a, b, x)
+x |>> f()         // → f(x)
+5 |> int_func()   // → int_func(5)    (works with literals too)
+```
+
+**Chaining** — multiple pipes associate left-to-right:
+
+```
+x |> f |> g       // → g(f(x))
+x |> f(a) |> g(b) // → g(f(x, a), b)
+```
+
+**Type inference** — the first function in a pipe chain infers its type normally. The piped result is then unified with the parameter of the next function, propagating the type through the chain. Type errors are reported at the point of mismatch in the chain.
+
+The right side of a pipe must be a function call (with or without arguments) or a bare identifier referencing a function. Piping into non-callable expressions produces a compile error.
 
 ### Variable Declaration
 
@@ -512,6 +540,52 @@ instance.method();
 - [ ] Reject references to parenthesized array elements, such as `&(x[0])`, with the same diagnostic as `&x[0]`.
 - [ ] Support compound assignment through reference parameters, such as `p += 1` for `p: &int32`.
 - [ ] Enforce mutability and type rules for array-element assignment during typechecking.
+
+## Resolver
+
+The resolver has two modes determined by whether a `vinyl.toml` manifest file is found.
+
+### Mode Detection
+
+Walk up parent directories from the entry point looking for `vinyl.toml`. If found, enter **manifest mode** with the project root set to that directory. If parent is `None` (filesystem root reached) without finding `vinyl.toml`, enter **script mode** with the project root anchored to the entry file's directory.
+
+### Import Prefix Mapping
+
+| Prefix | Maps to | Manifest | Script |
+|--------|---------|----------|--------|
+| `parent::x` | `./x` | Yes | Yes |
+| `parent::parent::x` | `../x` | Yes | Yes |
+| `parent::parent::parent::x` | `../../x` | Yes | Yes |
+| `package::x` | `{root}/x.vn` | Yes | No |
+| `self::x` | error (refers to current file, not an external module) | — | — |
+
+`self` refers to the current file itself — `self::` is not valid in import statements. Use `parent::` for same-directory relative imports.
+
+`parent::` is stackable. Each `parent::` goes up one additional directory level from the current file's parent. The compiler warns when 4 or more `parent::` levels are used, suggesting the user switch to a manifest-based project.
+
+### Manifest Mode
+
+- Requires a `src/` directory under the project root -- all source files live under `src/`.
+- **Eager resolution**: Walks all `*.vn` files under `src/` at startup and registers them as modules.
+- Respects `.gitignore` rules — ignored paths are excluded from module discovery.
+- Additional ignore rules may be defined in the future (none specified yet).
+- Imports use `parent::`, `package::` or no prefix.
+
+### Script Mode
+
+- No `vinyl.toml` found; the file's directory becomes the project root.
+- Entry can be implicit (`main.vn` in the project root) or an explicit file path passed by the user.
+- **Lazy resolution**: Only imports referenced by the entry file (transitively) are resolved — other files are ignored.
+- `package::` is not available. Only `parent::` (with no prefix) is valid.
+- Respects `.gitignore` rules.
+
+### LSP Integration
+
+The LSP operates in script mode semantics. It anchors to the currently opened file and lazy-resolves its imports. Files registered via the LSP's virtual file system (VFS) are eligible for auto-import resolution.
+
+### Workspaces
+
+Placeholder — workspace/ multi-root support is not yet designed.
 
 ## Editions
 

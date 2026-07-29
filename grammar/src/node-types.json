@@ -32,19 +32,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -68,11 +60,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -85,6 +93,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -123,19 +135,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -159,11 +163,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -176,6 +196,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -300,19 +324,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -336,11 +352,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -353,6 +385,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -367,7 +403,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -402,19 +438,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -438,11 +466,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -455,6 +499,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -596,19 +644,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -632,11 +672,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -649,6 +705,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -699,10 +759,6 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "expression_statement",
           "named": true
         },
@@ -715,11 +771,11 @@
           "named": true
         },
         {
-          "type": "identifier",
+          "type": "if_expression",
           "named": true
         },
         {
-          "type": "if_expression",
+          "type": "import_statement",
           "named": true
         },
         {
@@ -747,6 +803,10 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
@@ -755,7 +815,19 @@
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -768,6 +840,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         },
         {
@@ -806,7 +882,11 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -832,7 +912,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -858,7 +938,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -896,42 +976,6 @@
     }
   },
   {
-    "type": "enum_variant_expression",
-    "named": true,
-    "fields": {
-      "arguments": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "arguments",
-            "named": true
-          }
-        ]
-      },
-      "type": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      },
-      "variant": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "enum_variant_pattern",
     "named": true,
     "fields": {},
@@ -940,11 +984,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "pattern",
           "named": true
         },
         {
-          "type": "pattern",
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -983,19 +1027,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1019,11 +1055,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1036,6 +1088,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1050,11 +1106,11 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "integer_literal",
             "named": true
           },
           {
-            "type": "integer_literal",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1089,19 +1145,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1125,11 +1173,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1142,6 +1206,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1156,7 +1224,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1198,7 +1266,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1234,7 +1302,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1278,10 +1346,6 @@
           "named": true
         },
         {
-          "type": "identifier",
-          "named": true
-        },
-        {
           "type": "reference_type",
           "named": true
         },
@@ -1291,6 +1355,10 @@
         },
         {
           "type": "tuple_type",
+          "named": true
+        },
+        {
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -1305,7 +1373,7 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1344,19 +1412,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1380,11 +1440,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1398,8 +1474,78 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "import_name",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "type_identifier",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "import_path",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "import_name",
+            "named": true
+          }
+        ]
+      },
+      "prefix": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "import_prefix",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "import_prefix",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "import_statement",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "import_path",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1435,19 +1581,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1471,11 +1609,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1488,6 +1642,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1512,7 +1670,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1547,19 +1705,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1583,11 +1733,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1604,6 +1770,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1684,19 +1854,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1724,11 +1886,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1741,6 +1919,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1779,19 +1961,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1819,11 +1993,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1836,6 +2026,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -1860,7 +2054,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "value_identifier",
             "named": true
           }
         ]
@@ -1925,19 +2119,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -1961,11 +2147,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -1978,6 +2180,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -2016,6 +2222,222 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "pipe_expression",
+    "named": true,
+    "fields": {
+      "left": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "bool_literal",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "char_literal",
+            "named": true
+          },
+          {
+            "type": "field_access_expression",
+            "named": true
+          },
+          {
+            "type": "float_literal",
+            "named": true
+          },
+          {
+            "type": "if_expression",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "match_expression",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "pipe_expression",
+            "named": true
+          },
+          {
+            "type": "raw_string_literal",
+            "named": true
+          },
+          {
+            "type": "scoped_type_expression",
+            "named": true
+          },
+          {
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "struct_literal_expression",
+            "named": true
+          },
+          {
+            "type": "tuple_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          },
+          {
+            "type": "unit_literal",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "|>",
+            "named": false
+          },
+          {
+            "type": "|>>",
+            "named": false
+          }
+        ]
+      },
+      "right": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "bool_literal",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "char_literal",
+            "named": true
+          },
+          {
+            "type": "field_access_expression",
+            "named": true
+          },
+          {
+            "type": "float_literal",
+            "named": true
+          },
+          {
+            "type": "if_expression",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "match_expression",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "pipe_expression",
+            "named": true
+          },
+          {
+            "type": "raw_string_literal",
+            "named": true
+          },
+          {
+            "type": "scoped_type_expression",
+            "named": true
+          },
+          {
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "struct_literal_expression",
+            "named": true
+          },
+          {
+            "type": "tuple_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          },
+          {
+            "type": "unit_literal",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2087,19 +2509,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2123,11 +2537,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -2141,8 +2571,82 @@
         {
           "type": "unit_literal",
           "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "scoped_type_expression",
+    "named": true,
+    "fields": {
+      "arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "arguments",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      },
+      "variant": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "scoped_value_expression",
+    "named": true,
+    "fields": {
+      "function": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      },
+      "module": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2154,11 +2658,11 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "primitive_type",
           "named": true
         },
         {
-          "type": "primitive_type",
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -2186,6 +2690,10 @@
           "named": true
         },
         {
+          "type": "import_statement",
+          "named": true
+        },
+        {
           "type": "struct_definition",
           "named": true
         },
@@ -2210,7 +2718,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -2228,6 +2736,146 @@
     }
   },
   {
+    "type": "struct_literal_expression",
+    "named": true,
+    "fields": {
+      "fields": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "struct_literal_fields",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "struct_literal_fields",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "block",
+            "named": true
+          },
+          {
+            "type": "bool_literal",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "char_literal",
+            "named": true
+          },
+          {
+            "type": "field_access_expression",
+            "named": true
+          },
+          {
+            "type": "float_literal",
+            "named": true
+          },
+          {
+            "type": "if_expression",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "match_expression",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "pipe_expression",
+            "named": true
+          },
+          {
+            "type": "raw_string_literal",
+            "named": true
+          },
+          {
+            "type": "scoped_type_expression",
+            "named": true
+          },
+          {
+            "type": "scoped_value_expression",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          },
+          {
+            "type": "struct_literal_expression",
+            "named": true
+          },
+          {
+            "type": "tuple_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          },
+          {
+            "type": "unit_literal",
+            "named": true
+          },
+          {
+            "type": "value_identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "struct_pattern",
     "named": true,
     "fields": {},
@@ -2240,7 +2888,7 @@
           "named": true
         },
         {
-          "type": "identifier",
+          "type": "type_identifier",
           "named": true
         }
       ]
@@ -2255,7 +2903,7 @@
         "required": true,
         "types": [
           {
-            "type": "identifier",
+            "type": "type_identifier",
             "named": true
           }
         ]
@@ -2321,19 +2969,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2357,11 +2997,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -2374,6 +3030,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -2512,19 +3172,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2548,11 +3200,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -2565,6 +3233,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -2608,19 +3280,11 @@
           "named": true
         },
         {
-          "type": "enum_variant_expression",
-          "named": true
-        },
-        {
           "type": "field_access_expression",
           "named": true
         },
         {
           "type": "float_literal",
-          "named": true
-        },
-        {
-          "type": "identifier",
           "named": true
         },
         {
@@ -2644,11 +3308,27 @@
           "named": true
         },
         {
+          "type": "pipe_expression",
+          "named": true
+        },
+        {
           "type": "raw_string_literal",
           "named": true
         },
         {
+          "type": "scoped_type_expression",
+          "named": true
+        },
+        {
+          "type": "scoped_value_expression",
+          "named": true
+        },
+        {
           "type": "string_literal",
+          "named": true
+        },
+        {
+          "type": "struct_literal_expression",
           "named": true
         },
         {
@@ -2661,6 +3341,10 @@
         },
         {
           "type": "unit_literal",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
           "named": true
         }
       ]
@@ -2904,11 +3588,11 @@
     "named": false
   },
   {
-    "type": "identifier",
-    "named": true
+    "type": "if",
+    "named": false
   },
   {
-    "type": "if",
+    "type": "import",
     "named": false
   },
   {
@@ -2968,11 +3652,27 @@
     "named": false
   },
   {
+    "type": "package",
+    "named": false
+  },
+  {
+    "type": "parent",
+    "named": false
+  },
+  {
+    "type": "public",
+    "named": false
+  },
+  {
     "type": "raw_string_literal",
     "named": true
   },
   {
     "type": "return",
+    "named": false
+  },
+  {
+    "type": "self",
     "named": false
   },
   {
@@ -2990,6 +3690,10 @@
   {
     "type": "tuple",
     "named": false
+  },
+  {
+    "type": "type_identifier",
+    "named": true
   },
   {
     "type": "uint128",
@@ -3020,6 +3724,10 @@
     "named": false
   },
   {
+    "type": "value_identifier",
+    "named": true
+  },
+  {
     "type": "while",
     "named": false
   },
@@ -3037,6 +3745,14 @@
   },
   {
     "type": "|=",
+    "named": false
+  },
+  {
+    "type": "|>",
+    "named": false
+  },
+  {
+    "type": "|>>",
     "named": false
   },
   {

@@ -1,0 +1,12 @@
+[package]
+name = "vinyl-parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tree-sitter = "0.26.3"
+miette = { workspace = true }
+thiserror = { workspace = true } 
+
+[build-dependencies]
+cc = "1"
