@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use miette::Diagnostic;
 use thiserror::Error;
 use vinyl_parser::ast::item::{ImportDef, Item};
-use vinyl_resolver::ResolveDiagnostic;
+use vinyl_resolver::{ImportPrefix, ResolveDiagnostic};
 use vinyl_typecheck::TypeDiagnostic;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
@@ -61,12 +61,20 @@ fn parse_file(path: &Path) -> Result<(String, String, Vec<Item>), Vec<CompileErr
     Ok((source, name, items))
 }
 
-fn collect_imports(items: &[Item]) -> Vec<Vec<String>> {
+struct CollectedImport {
+    prefix: Vec<String>,
+    path: Vec<String>,
+}
+
+fn collect_imports(items: &[Item]) -> Vec<CollectedImport> {
     items
         .iter()
         .filter_map(|item| {
-            if let Item::Import(ImportDef { path, .. }) = item {
-                Some(path.clone())
+            if let Item::Import(ImportDef { prefix, path, .. }) = item {
+                Some(CollectedImport {
+                    prefix: prefix.clone(),
+                    path: path.clone(),
+                })
             } else {
                 None
             }
@@ -87,6 +95,7 @@ fn find_entry_file(source_root: &Path) -> Option<PathBuf> {
 
 fn resolve_imports(
     items: &[Item],
+    from: &Path,
     resolver: &mut vinyl_resolver::Resolver,
     all_items: &mut Vec<Item>,
     visited: &mut HashSet<PathBuf>,
@@ -94,11 +103,78 @@ fn resolve_imports(
     let mut module_table: ModuleTable = HashMap::new();
 
     for import in collect_imports(items) {
-        let module_info = resolver.resolve_module_path(&import).map_err(|e| {
-            vec![CompileError::Module(ModuleError {
-                message: format!("could not resolve import `{}`: {e}", import.join("::")),
-            })]
-        })?;
+        let import_display = {
+            let mut s = String::new();
+            if !import.prefix.is_empty() {
+                s.push_str(&import.prefix.join("::"));
+                s.push_str("::");
+            }
+            s.push_str(&import.path.join("::"));
+            s
+        };
+
+        let module_info = if import.prefix.is_empty() {
+            resolver.resolve_module_path(&import.path).map_err(|e| {
+                vec![CompileError::Module(ModuleError {
+                    message: format!("could not resolve import `{import_display}`: {e}"),
+                })]
+            })?
+        } else {
+            let self_count = import.prefix.iter().filter(|s| s.as_str() == "self").count();
+            let package_count = import.prefix.iter().filter(|s| s.as_str() == "package").count();
+            let parent_count = import.prefix.iter().filter(|s| s.as_str() == "parent").count();
+            let total_known = self_count + package_count + parent_count;
+            let total = import.prefix.len();
+
+            if total_known != total {
+                return Err(vec![CompileError::Module(ModuleError {
+                    message: format!("unknown import prefix in `{import_display}`"),
+                })]);
+            }
+
+            if self_count > 0 {
+                return Err(vec![CompileError::Module(ModuleError {
+                    message: format!(
+                        "`self::` prefix refers to the current file, not an external module; \
+                         use `parent::` for relative imports"
+                    ),
+                })]);
+            }
+            if package_count > 1 {
+                return Err(vec![CompileError::Module(ModuleError {
+                    message: format!("`package` prefix can only appear once in `{import_display}`"),
+                })]);
+            }
+            if package_count > 0 && parent_count > 0 {
+                return Err(vec![CompileError::Module(ModuleError {
+                    message: format!(
+                        "cannot combine `package` and `parent` prefixes in `{import_display}`"
+                    ),
+                })]);
+            }
+
+            if parent_count >= 4 {
+                eprintln!(
+                    "warning: import `{import_display}` uses {parent_count} levels of `parent::`; \
+                     consider moving to a manifest-based project"
+                );
+            }
+
+            let prefix = if package_count > 0 {
+                ImportPrefix::Package
+            } else if parent_count == 1 {
+                ImportPrefix::Self_
+            } else {
+                ImportPrefix::Parent(parent_count - 1)
+            };
+
+            let path_strs: Vec<&str> = import.path.iter().map(|s| s.as_str()).collect();
+            resolver.resolve(&prefix, &path_strs, from).map_err(|e| {
+                vec![CompileError::Module(ModuleError {
+                    message: format!("could not resolve import `{import_display}`: {e}"),
+                })]
+            })?
+        };
 
         let canonical = module_info.file_path.canonicalize().map_err(|e| {
             vec![CompileError::Module(ModuleError {
@@ -171,7 +247,8 @@ fn resolve_imports(
             },
         );
 
-        let sub_table = resolve_imports(&module_items, resolver, all_items, visited)?;
+        let sub_table =
+            resolve_imports(&module_items, &module_info.file_path, resolver, all_items, visited)?;
         module_table.extend(sub_table);
     }
 
@@ -210,7 +287,8 @@ pub fn compile_entry(
     }
 
     let entry_items = all_items.clone();
-    let module_table = resolve_imports(&entry_items, &mut resolver, &mut all_items, &mut visited)?;
+    let module_table =
+        resolve_imports(&entry_items, file_path, &mut resolver, &mut all_items, &mut visited)?;
 
     let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,
@@ -373,6 +451,106 @@ mod tests {
                     "import math; fn main(): int { math::answer() }",
                 ),
                 ("src/math/math.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn script_self_prefix_errors() {
+        let root = script_project(
+            "script_self_errors",
+            &[
+                ("main.vn", "import self::helper; fn main(): int { 0 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("main.vn"), None);
+        assert!(result.is_err(), "self:: should error in imports");
+    }
+
+    #[test]
+    fn script_parent_prefix_same_dir() {
+        let root = script_project(
+            "script_parent_same_dir",
+            &[
+                ("sub/main.vn", "import parent::helper; fn main(): int { helper::answer() }"),
+                ("sub/helper.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("sub/main.vn"), None);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn script_parent_parent_prefix() {
+        let root = script_project(
+            "script_parent_parent",
+            &[
+                ("sub/main.vn", "import parent::parent::helper; fn main(): int { helper::answer() }"),
+                ("helper.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("sub/main.vn"), None);
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn script_package_prefix_rejected() {
+        let root = script_project(
+            "script_package_rejected",
+            &[
+                ("main.vn", "import package::helper; fn main(): int { 0 }"),
+                ("helper.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("main.vn"), None);
+        assert!(result.is_err(), "package:: should be rejected in script mode");
+    }
+
+    #[test]
+    fn manifest_self_prefix_errors() {
+        let root = project(
+            "manifest_self_errors",
+            &[("src/main.vn", "import self::helper; fn main(): int { 0 }")],
+        );
+        let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+        assert!(result.is_err(), "self:: should error in imports");
+    }
+
+    #[test]
+    fn manifest_parent_prefix_same_dir() {
+        let root = project(
+            "manifest_parent_same_dir",
+            &[
+                ("src/sub/main.vn", "import parent::helper; fn main(): int { helper::answer() }"),
+                ("src/sub/helper.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("src/sub/main.vn"), Some(&root));
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn manifest_parent_parent_prefix() {
+        let root = project(
+            "manifest_parent_parent",
+            &[
+                ("src/sub/main.vn", "import parent::parent::helper; fn main(): int { helper::answer() }"),
+                ("src/helper.vn", "public fn answer(): int { 42 }"),
+            ],
+        );
+        let result = compile_entry(&root.join("src/sub/main.vn"), Some(&root));
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn manifest_package_prefix() {
+        let root = project(
+            "manifest_package_prefix",
+            &[
+                ("src/main.vn", "import package::helper; fn main(): int { helper::answer() }"),
+                ("src/helper.vn", "public fn answer(): int { 42 }"),
             ],
         );
         let result = compile_entry(&root.join("src/main.vn"), Some(&root));

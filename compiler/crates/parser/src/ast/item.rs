@@ -92,6 +92,7 @@ pub enum EnumVariantData {
 #[derive(Debug, Clone)]
 pub struct ImportDef {
     pub span: SourceSpan,
+    pub prefix: Vec<String>,
     pub path: Vec<String>,
 }
 

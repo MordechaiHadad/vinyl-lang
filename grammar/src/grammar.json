@@ -1292,7 +1292,24 @@
         }
       ]
     },
-    "import_path": {
+    "import_prefix": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "self"
+        },
+        {
+          "type": "STRING",
+          "value": "package"
+        },
+        {
+          "type": "STRING",
+          "value": "parent"
+        }
+      ]
+    },
+    "import_name": {
       "type": "SEQ",
       "members": [
         {
@@ -1331,6 +1348,39 @@
                 ]
               }
             ]
+          }
+        }
+      ]
+    },
+    "import_path": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "prefix",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "import_prefix"
+                }
+              },
+              {
+                "type": "STRING",
+                "value": "::"
+              }
+            ]
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "SYMBOL",
+            "name": "import_name"
           }
         }
       ]

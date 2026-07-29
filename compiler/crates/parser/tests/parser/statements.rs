@@ -53,3 +53,51 @@ fn let_without_equals() {
     let result = vinyl_parser::parse(source);
     assert!(result.is_err(), "parse should fail: let without =");
 }
+
+#[test]
+fn import_self_prefix() {
+    let result = vinyl_parser::parse("import self::foo;");
+    assert!(result.is_ok(), "self:: prefix should parse: {:?}", result.err());
+}
+
+#[test]
+fn import_parent_prefix() {
+    let result = vinyl_parser::parse("import parent::bar;");
+    assert!(result.is_ok(), "parent:: prefix should parse: {:?}", result.err());
+}
+
+#[test]
+fn import_stacked_parent_prefix() {
+    let result = vinyl_parser::parse("import parent::parent::baz;");
+    assert!(result.is_ok(), "stacked parent:: prefix should parse: {:?}", result.err());
+}
+
+#[test]
+fn import_package_prefix() {
+    let result = vinyl_parser::parse("import package::qux;");
+    assert!(result.is_ok(), "package:: prefix should parse: {:?}", result.err());
+}
+
+#[test]
+fn import_self_nested_path() {
+    let result = vinyl_parser::parse("import self::module::math;");
+    assert!(result.is_ok(), "self:: with nested path should parse: {:?}", result.err());
+}
+
+#[test]
+fn import_bare_parent_errors() {
+    let result = vinyl_parser::parse("import parent;");
+    assert!(result.is_err(), "bare `parent` keyword should error");
+}
+
+#[test]
+fn import_bare_self_errors() {
+    let result = vinyl_parser::parse("import self;");
+    assert!(result.is_err(), "bare `self` keyword should error");
+}
+
+#[test]
+fn import_bare_package_errors() {
+    let result = vinyl_parser::parse("import package;");
+    assert!(result.is_err(), "bare `package` keyword should error");
+}

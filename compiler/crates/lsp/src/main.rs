@@ -17,7 +17,7 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{debug, info};
 use vinyl_parser::ast::item::{ImportDef, Item};
-use vinyl_resolver::{Resolver, ResolverMode};
+use vinyl_resolver::{ImportPrefix, Resolver, ResolverMode};
 use vinyl_typecheck::hir::{HirFunction, HirItemKind};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 use vinyl_typecheck::{Definition, DefinitionKind, TypeckResult};
@@ -1241,6 +1241,7 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
             let _ = collect_modules(
                 vfs,
                 &mut resolver,
+                entry_path,
                 &entry_items,
                 &mut all_items,
                 &mut module_table,
@@ -1306,16 +1307,39 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
 fn collect_modules(
     vfs: &Vfs,
     resolver: &mut Resolver,
+    from: &Path,
     items: &[Item],
     all_items: &mut Vec<Item>,
     module_table: &mut ModuleTable,
     visited: &mut HashSet<PathBuf>,
 ) -> Result<()> {
     for import in items.iter().filter_map(|item| match item {
-        Item::Import(ImportDef { path, .. }) => Some(path),
+        Item::Import(ImportDef { prefix, path, .. }) => Some((prefix, path)),
         _ => None,
     }) {
-        let info = resolver.resolve_module_path(import)?;
+        let (prefix, path) = import;
+        let info = if prefix.is_empty() {
+            resolver.resolve_module_path(path)?
+        } else {
+            let package_count = prefix.iter().filter(|s| s.as_str() == "package").count();
+            let parent_count = prefix.iter().filter(|s| s.as_str() == "parent").count();
+            let total = prefix.len();
+            if total != package_count + parent_count {
+                return Err(eyre::eyre!(
+                    "`self::` prefix refers to the current file, not an external module; \
+                     use `parent::` for relative imports"
+                ));
+            }
+            let p = if package_count > 0 {
+                ImportPrefix::Package
+            } else if parent_count == 1 {
+                ImportPrefix::Self_
+            } else {
+                ImportPrefix::Parent(parent_count - 1)
+            };
+            let path_strs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
+            resolver.resolve(&p, &path_strs, from)?
+        };
         let path = info
             .file_path
             .canonicalize()
@@ -1360,6 +1384,7 @@ fn collect_modules(
         collect_modules(
             vfs,
             resolver,
+            &info.file_path,
             &module_items,
             all_items,
             module_table,

@@ -185,14 +185,25 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn lower_import(&self, node: &Node) -> Result<ImportDef, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
-        let path_node = self.child_by_field(node, "path")?;
+        let import_path_node = self.child_by_field(node, "path")?;
+
+        let mut prefix = Vec::new();
+        for i in 0..import_path_node.named_child_count() {
+            if let Some(child) = import_path_node.named_child(i as u32)
+                && child.kind() == "import_prefix"
+            {
+                prefix.push(node_text(&child, self.source));
+            }
+        }
+
+        let path_node = self.child_by_field(&import_path_node, "path")?;
         let mut path = Vec::new();
         for i in 0..path_node.named_child_count() {
             if let Some(child) = path_node.named_child(i as u32) {
                 path.push(node_text(&child, self.source));
             }
         }
-        Ok(ImportDef { span, path })
+        Ok(ImportDef { span, prefix, path })
     }
 
     pub(super) fn lower_params(&self, node: &Node) -> Result<Vec<FunctionParam>, ParserDiagnostic> {

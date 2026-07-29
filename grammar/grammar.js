@@ -255,7 +255,14 @@ export default grammar({
       ";",
     ),
 
-    import_path: $ => sep1(choice($.value_identifier, $.type_identifier), "::"),
+    import_prefix: $ => choice("self", "package", "parent"),
+
+    import_name: $ => sep1(choice($.value_identifier, $.type_identifier), "::"),
+
+    import_path: $ => seq(
+      repeat(seq(field("prefix", $.import_prefix), "::")),
+      field("path", $.import_name),
+    ),
 
     attribute: $ => seq(
       "@",
