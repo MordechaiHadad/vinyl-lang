@@ -44,5 +44,5 @@ pub const KEYWORDS: &[(&str, CompletionItemKind)] = &[
     ("float64", CompletionItemKind::KEYWORD),
     ("self", CompletionItemKind::KEYWORD),
     ("parent", CompletionItemKind::KEYWORD),
-    ("package", CompletionItemKind::KEYWORD)
+    ("package", CompletionItemKind::KEYWORD),
 ];

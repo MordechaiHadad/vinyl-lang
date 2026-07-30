@@ -1,4 +1,6 @@
-use vinyl_parser::ast::{expression::Expression, item::ImportDef, item::Item, statement::Statement};
+use vinyl_parser::ast::{
+    expression::Expression, item::ImportDef, item::Item, statement::Statement,
+};
 
 use super::common;
 

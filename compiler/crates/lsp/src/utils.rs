@@ -23,7 +23,11 @@ pub fn init_tracing(verbose: u8) -> Result<()> {
     };
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_target(false))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_writer(std::io::stderr),
+        )
         .try_init()?;
     Ok(())
 }

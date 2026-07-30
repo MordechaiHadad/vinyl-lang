@@ -120,9 +120,21 @@ fn resolve_imports(
                 })]
             })?
         } else {
-            let self_count = import.prefix.iter().filter(|s| s.as_str() == "self").count();
-            let package_count = import.prefix.iter().filter(|s| s.as_str() == "package").count();
-            let parent_count = import.prefix.iter().filter(|s| s.as_str() == "parent").count();
+            let self_count = import
+                .prefix
+                .iter()
+                .filter(|s| s.as_str() == "self")
+                .count();
+            let package_count = import
+                .prefix
+                .iter()
+                .filter(|s| s.as_str() == "package")
+                .count();
+            let parent_count = import
+                .prefix
+                .iter()
+                .filter(|s| s.as_str() == "parent")
+                .count();
             let total_known = self_count + package_count + parent_count;
             let total = import.prefix.len();
 
@@ -247,8 +259,13 @@ fn resolve_imports(
             },
         );
 
-        let sub_table =
-            resolve_imports(&module_items, &module_info.file_path, resolver, all_items, visited)?;
+        let sub_table = resolve_imports(
+            &module_items,
+            &module_info.file_path,
+            resolver,
+            all_items,
+            visited,
+        )?;
         module_table.extend(sub_table);
     }
 
@@ -287,8 +304,13 @@ pub fn compile_entry(
     }
 
     let entry_items = all_items.clone();
-    let module_table =
-        resolve_imports(&entry_items, file_path, &mut resolver, &mut all_items, &mut visited)?;
+    let module_table = resolve_imports(
+        &entry_items,
+        file_path,
+        &mut resolver,
+        &mut all_items,
+        &mut visited,
+    )?;
 
     let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,
@@ -461,9 +483,7 @@ mod tests {
     fn script_self_prefix_errors() {
         let root = script_project(
             "script_self_errors",
-            &[
-                ("main.vn", "import self::helper; fn main(): int { 0 }"),
-            ],
+            &[("main.vn", "import self::helper; fn main(): int { 0 }")],
         );
         let result = compile_entry(&root.join("main.vn"), None);
         assert!(result.is_err(), "self:: should error in imports");
@@ -474,7 +494,10 @@ mod tests {
         let root = script_project(
             "script_parent_same_dir",
             &[
-                ("sub/main.vn", "import parent::helper; fn main(): int { helper::answer() }"),
+                (
+                    "sub/main.vn",
+                    "import parent::helper; fn main(): int { helper::answer() }",
+                ),
                 ("sub/helper.vn", "public fn answer(): int { 42 }"),
             ],
         );
@@ -487,7 +510,10 @@ mod tests {
         let root = script_project(
             "script_parent_parent",
             &[
-                ("sub/main.vn", "import parent::parent::helper; fn main(): int { helper::answer() }"),
+                (
+                    "sub/main.vn",
+                    "import parent::parent::helper; fn main(): int { helper::answer() }",
+                ),
                 ("helper.vn", "public fn answer(): int { 42 }"),
             ],
         );
@@ -505,7 +531,10 @@ mod tests {
             ],
         );
         let result = compile_entry(&root.join("main.vn"), None);
-        assert!(result.is_err(), "package:: should be rejected in script mode");
+        assert!(
+            result.is_err(),
+            "package:: should be rejected in script mode"
+        );
     }
 
     #[test]
@@ -523,7 +552,10 @@ mod tests {
         let root = project(
             "manifest_parent_same_dir",
             &[
-                ("src/sub/main.vn", "import parent::helper; fn main(): int { helper::answer() }"),
+                (
+                    "src/sub/main.vn",
+                    "import parent::helper; fn main(): int { helper::answer() }",
+                ),
                 ("src/sub/helper.vn", "public fn answer(): int { 42 }"),
             ],
         );
@@ -536,7 +568,10 @@ mod tests {
         let root = project(
             "manifest_parent_parent",
             &[
-                ("src/sub/main.vn", "import parent::parent::helper; fn main(): int { helper::answer() }"),
+                (
+                    "src/sub/main.vn",
+                    "import parent::parent::helper; fn main(): int { helper::answer() }",
+                ),
                 ("src/helper.vn", "public fn answer(): int { 42 }"),
             ],
         );
@@ -549,7 +584,10 @@ mod tests {
         let root = project(
             "manifest_package_prefix",
             &[
-                ("src/main.vn", "import package::helper; fn main(): int { helper::answer() }"),
+                (
+                    "src/main.vn",
+                    "import package::helper; fn main(): int { helper::answer() }",
+                ),
                 ("src/helper.vn", "public fn answer(): int { 42 }"),
             ],
         );
