@@ -28,7 +28,6 @@ jobs:
 
           mismatches = []
 
-          # 1. Check VS Code Extension
           vscode_path = 'editor/vscode/package.json'
           if os.path.exists(vscode_path):
               with open(vscode_path) as f:
@@ -49,13 +48,11 @@ jobs:
               m = re.search(r'^\s*version\s*=\s*\"([^\"]+)\"', content, re.MULTILINE)
               return m.group(1) if m else None
 
-          # Check root Cargo.toml if it defines a workspace version
           root_toml = 'compiler/Cargo.toml'
           root_ver = get_toml_version(root_toml)
           if root_ver is not None and root_ver != 'FILE NOT FOUND' and root_ver != expected:
               mismatches.append(('Compiler Workspace Root', root_toml, root_ver))
 
-          # 2. Check CLI and LSP crates explicitly
           crates_to_check = [
               ('CLI Crate', 'compiler/crates/cli/Cargo.toml'),
               ('LSP Crate', 'compiler/crates/lsp/Cargo.toml'),
@@ -135,18 +132,42 @@ jobs:
 
       - name: Package VS Code Extension (.vsix)
         if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
           cd editor/vscode
-          npm ci
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
           npx @vscode/vsce package --out ../../vinyl-vscode-${{ github.ref_name }}.vsix
 
-      - name: Upload Release Artifacts
-        uses: softprops/action-gh-release@v2
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          prerelease: true
-          files: |
+          name: release-assets-${{ matrix.target }}
+          path: |
             vinyl-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-lsp-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-vscode-*.vsix
+          if-no-files-found: ignore
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all matrix build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
