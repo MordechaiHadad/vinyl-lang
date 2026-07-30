@@ -164,6 +164,10 @@ impl Resolver {
         &self.modules
     }
 
+    pub fn list_vn_files(&self, dir: &Path) -> Result<Vec<PathBuf>, ResolveDiagnostic> {
+        self.fs.collect_vn_files(dir)
+    }
+
     pub fn register_module(&mut self, file_path: &Path) {
         let source_root = match self.mode {
             ResolverMode::Manifest => self.root.join("src"),

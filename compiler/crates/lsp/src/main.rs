@@ -16,7 +16,7 @@ use tower_lsp::lsp_types::notification::Progress;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tracing::{debug, info};
-use vinyl_parser::ast::item::{ImportDef, Item};
+use vinyl_parser::ast::item::Item;
 use vinyl_resolver::{ImportPrefix, Resolver, ResolverMode};
 use vinyl_typecheck::hir::{HirFunction, HirItemKind};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
@@ -184,7 +184,10 @@ impl LanguageServer for Backend {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
-                completion_provider: Some(CompletionOptions::default()),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![":".to_string()]),
+                    ..CompletionOptions::default()
+                }),
                 references_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
@@ -406,122 +409,228 @@ impl LanguageServer for Backend {
         params: CompletionParams,
     ) -> tower_lsp::jsonrpc::Result<Option<CompletionResponse>> {
         let uri = &params.text_document_position.text_document.uri;
+        let Some(path) = uri.to_file_path().ok() else {
+            return Ok(None);
+        };
         let Some(analysis) = self.analysis(uri).await else {
             return Ok(None);
         };
-        let offset = offset_at(&analysis.line_index, params.text_document_position.position);
-        let prefix = word_prefix(&analysis.source, offset);
+
+        let state = self.state.read().await;
+        let current_source = state.vfs.source(&path).unwrap_or_default();
+        let current_line_index = LineIndex::new(&current_source);
+        let offset = offset_at(&current_line_index, params.text_document_position.position);
+        let prefix = word_prefix(&current_source, offset);
+        let import_prefix_info = detect_import_prefix(&current_source, offset);
+        let in_import_context = import_prefix_info.is_some();
+        let module_ref_simple = module_ref_prefix(&current_source, offset);
+        let is_colon_trigger = params.context.and_then(|c| c.trigger_character).as_deref() == Some(":");
 
         let mut items: Vec<CompletionItem> = Vec::new();
 
-        for (name, definitions) in &analysis.result.definitions {
-            if !name.starts_with(&prefix) {
-                continue;
-            }
-            let Some(definition) = definitions.first() else {
-                continue;
-            };
-            if definition.name == "main" && matches!(definition.kind, DefinitionKind::Function) {
-                continue;
-            }
-            let kind = match definition.kind {
-                DefinitionKind::Function => CompletionItemKind::FUNCTION,
-                DefinitionKind::Struct => CompletionItemKind::STRUCT,
-                DefinitionKind::Enum => CompletionItemKind::ENUM,
-                DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
-                DefinitionKind::Variable => CompletionItemKind::VARIABLE,
-                DefinitionKind::Parameter => CompletionItemKind::VARIABLE,
-            };
-            let detail = definition_detail(definition, &analysis.result, &analysis.source);
-            items.push(CompletionItem {
-                label: name.clone(),
-                kind: Some(kind),
-                detail,
-                ..CompletionItem::default()
-            });
-        }
-
-        for (keyword, kind) in KEYWORDS {
-            if keyword.starts_with(&prefix) {
+        if !in_import_context && module_ref_simple.is_none() {
+            for (name, definitions) in &analysis.result.definitions {
+                if !name.starts_with(&prefix) {
+                    continue;
+                }
+                let Some(definition) = definitions.first() else {
+                    continue;
+                };
+                if definition.name == "main" && matches!(definition.kind, DefinitionKind::Function) {
+                    continue;
+                }
+                let kind = match definition.kind {
+                    DefinitionKind::Function => CompletionItemKind::FUNCTION,
+                    DefinitionKind::Struct => CompletionItemKind::STRUCT,
+                    DefinitionKind::Enum => CompletionItemKind::ENUM,
+                    DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                    DefinitionKind::Variable => CompletionItemKind::VARIABLE,
+                    DefinitionKind::Parameter => CompletionItemKind::VARIABLE,
+                };
+                let detail = definition_detail(definition, &analysis.result, &analysis.source);
                 items.push(CompletionItem {
-                    label: keyword.to_string(),
-                    kind: Some(*kind),
+                    label: name.clone(),
+                    kind: Some(kind),
+                    detail,
                     ..CompletionItem::default()
                 });
             }
-        }
 
-        let state = self.state.read().await;
-        if let Some(resolver) = &state.resolver {
-            let current_path = uri.to_file_path().ok();
-            let existing_imports = current_imports(&analysis.source);
-            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
-
-            for info in resolver.all_modules().values() {
-                let import_name = &info.import_name;
-                if existing_imports.contains(import_name) {
-                    continue;
-                }
-                if current_path
-                    .as_ref()
-                    .is_some_and(|p| same_file(p, &info.file_path))
-                {
-                    continue;
-                }
-                let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
-                let Some(module_analysis) = state.cache.get(&cache_key) else {
-                    continue;
-                };
-                let import_path = current_path
-                    .as_ref()
-                    .map(|p| relative_import_path(p, &info.file_path, resolver))
-                    .unwrap_or_else(|| import_name.clone());
-                if existing_imports.contains(&import_path) {
-                    continue;
-                }
-                for (name, definitions) in &module_analysis.result.definitions {
-                    if !name.starts_with(&prefix) || name.contains("::") {
-                        continue;
-                    }
-                    let Some(definition) = definitions.first() else {
-                        continue;
-                    };
-                    let kind = match definition.kind {
-                        DefinitionKind::Function => CompletionItemKind::FUNCTION,
-                        DefinitionKind::Struct => CompletionItemKind::STRUCT,
-                        DefinitionKind::Enum => CompletionItemKind::ENUM,
-                        DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
-                        _ => continue,
-                    };
-                    let detail = definition_detail(
-                        definition,
-                        &module_analysis.result,
-                        &module_analysis.source,
-                    );
-                    let detail = Some(
-                        detail
-                            .map(|d| format!("{d} (from {import_path})"))
-                            .unwrap_or_else(|| format!("(from {import_path})")),
-                    );
-                    let qualified = format!("{import_path}::{name}");
-                    let edit_range = Range::new(
-                        position_at(&analysis.line_index, offset.saturating_sub(prefix.len())),
-                        params.text_document_position.position,
-                    );
-                    let import_edit = TextEdit::new(
-                        import_edit_range(&analysis.line_index, &analysis.source),
-                        format!("import {import_path};\n"),
-                    );
+            for (keyword, kind) in KEYWORDS {
+                if keyword.starts_with(&prefix) {
                     items.push(CompletionItem {
-                        label: qualified.clone(),
-                        kind: Some(kind),
-                        detail,
-                        text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
-                            edit_range, qualified,
-                        ))),
-                        additional_text_edits: Some(vec![import_edit]),
+                        label: keyword.to_string(),
+                        kind: Some(*kind),
                         ..CompletionItem::default()
                     });
+                }
+            }
+        }
+
+        if let Some(resolver) = &state.resolver {
+            let existing_imports = current_imports(&current_source);
+            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
+
+            let has_module_ref = module_ref_simple.as_ref().and_then(|(name, _)| {
+                existing_imports.iter().any(|imp| {
+                    imp == name || imp.ends_with(&format!("::{name}"))
+                }).then_some(name.clone())
+            });
+
+            if is_colon_trigger && !in_import_context && module_ref_simple.is_none() {
+                let has_pending_module = word_before_colon(&current_source, offset)
+                    .is_some_and(|word| {
+                        resolver.all_modules().values().any(|info| info.import_name == word)
+                    });
+                if !has_pending_module {
+                    return Ok(Some(CompletionResponse::Array(Vec::new())));
+                }
+            }
+
+            if let Some(ref module_name) = has_module_ref {
+                let (_, partial) = module_ref_simple.as_ref().unwrap();
+                for info in resolver.all_modules().values() {
+                    if info.import_name != *module_name {
+                        continue;
+                    }
+                    let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
+                    let Some(module_analysis) = state.cache.get(&cache_key) else {
+                        continue;
+                    };
+                    for (name, definitions) in &module_analysis.result.definitions {
+                        if !name.starts_with(partial) || name.contains("::") {
+                            continue;
+                        }
+                        let Some(definition) = definitions.first() else {
+                            continue;
+                        };
+                        let kind = match definition.kind {
+                            DefinitionKind::Function => CompletionItemKind::FUNCTION,
+                            DefinitionKind::Struct => CompletionItemKind::STRUCT,
+                            DefinitionKind::Enum => CompletionItemKind::ENUM,
+                            DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                            _ => continue,
+                        };
+                        let detail = definition_detail(
+                            definition,
+                            &module_analysis.result,
+                            &module_analysis.source,
+                        );
+                        let cursor_pos = position_at(&current_line_index, offset);
+                        let edit_range = Range::new(
+                            position_at(&current_line_index, offset.saturating_sub(partial.len())),
+                            cursor_pos,
+                        );
+                        items.push(CompletionItem {
+                            label: name.clone(),
+                            kind: Some(kind),
+                            detail,
+                            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                                edit_range, name.clone(),
+                            ))),
+                            ..CompletionItem::default()
+                        });
+                    }
+                }
+            }
+
+            if has_module_ref.is_none() {
+                for info in resolver.all_modules().values() {
+                    if same_file(&path, &info.file_path) {
+                        continue;
+                    }
+                    let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
+                    let Some(module_analysis) = state.cache.get(&cache_key) else {
+                        continue;
+                    };
+                    let import_path = relative_import_path(&path, &info.file_path, resolver);
+                    if existing_imports.contains(&import_path) {
+                        continue;
+                    }
+                    for (name, definitions) in &module_analysis.result.definitions {
+                        if !name.starts_with(&prefix) || name.contains("::") {
+                            continue;
+                        }
+                        let Some(definition) = definitions.first() else {
+                            continue;
+                        };
+                        let kind = match definition.kind {
+                            DefinitionKind::Function => CompletionItemKind::FUNCTION,
+                            DefinitionKind::Struct => CompletionItemKind::STRUCT,
+                            DefinitionKind::Enum => CompletionItemKind::ENUM,
+                            DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                            _ => continue,
+                        };
+                        let detail = definition_detail(
+                            definition,
+                            &module_analysis.result,
+                            &module_analysis.source,
+                        );
+                        let detail = Some(
+                            detail
+                                .map(|d| format!("{d} (from {import_path})"))
+                                .unwrap_or_else(|| format!("(from {import_path})")),
+                        );
+                        let import_name = &info.import_name;
+                        let qualified = format!("{import_name}::{name}");
+                        let cursor_pos = position_at(&current_line_index, offset);
+                        let edit_range = Range::new(
+                            position_at(&current_line_index, offset.saturating_sub(prefix.len())),
+                            cursor_pos,
+                        );
+                        let import_edit = TextEdit::new(
+                            import_edit_range(&current_line_index, &current_source),
+                            format!("import {import_path};\n"),
+                        );
+                        items.push(CompletionItem {
+                            label: qualified.clone(),
+                            kind: Some(kind),
+                            detail,
+                            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                                edit_range, qualified,
+                            ))),
+                            additional_text_edits: Some(vec![import_edit]),
+                            ..CompletionItem::default()
+                        });
+                    }
+                }
+
+                if let Some((prefix_count, partial)) = import_prefix_info {
+                    let mut dir =
+                        path.parent().unwrap_or(Path::new("")).to_path_buf();
+                    for _ in 1..prefix_count {
+                        dir.push("..");
+                    }
+                    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+                    let files = resolver.list_vn_files(&dir).unwrap_or_default();
+                    for file_path in &files {
+                        if file_path.parent() != Some(&dir) {
+                            continue;
+                        }
+                        let stem = match file_path.file_stem() {
+                            Some(s) => s.to_string_lossy().to_string(),
+                            None => continue,
+                        };
+                        if !stem.starts_with(&partial) {
+                            continue;
+                        }
+                        items.push(CompletionItem {
+                            label: stem.clone(),
+                            kind: Some(CompletionItemKind::MODULE),
+                            detail: Some("module".to_string()),
+                            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                                Range::new(
+                                    position_at(
+                                        &current_line_index,
+                                        offset.saturating_sub(partial.len()),
+                                    ),
+                                    position_at(&current_line_index, offset),
+                                ),
+                                stem,
+                            ))),
+                            ..CompletionItem::default()
+                        });
+                    }
                 }
             }
         }
@@ -880,6 +989,30 @@ async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) 
                     None,
                 )
                 .await;
+
+            for (file_path, file_diags) in &diagnostics {
+                if file_path == &entry_path || file_diags.is_empty() {
+                    continue;
+                }
+                let source = vfs.source(file_path).unwrap_or_default();
+                let line_index = LineIndex::new(&source);
+                let diags: Vec<Diagnostic> = file_diags
+                    .iter()
+                    .map(|d| {
+                        Diagnostic::new_simple(
+                            span_range(&line_index, d.offset, d.length),
+                            d.message.clone(),
+                        )
+                    })
+                    .collect();
+                client
+                    .publish_diagnostics(
+                        Url::from_file_path(file_path).unwrap_or(uri.clone()),
+                        diags,
+                        None,
+                    )
+                    .await;
+            }
         }
         Err(error) => {
             let diagnostics = vec![Diagnostic::new_simple(Range::default(), error.to_string())];
@@ -941,6 +1074,95 @@ fn word_prefix(source: &str, offset: usize) -> String {
         .next()
         .unwrap_or_default()
         .to_string()
+}
+
+fn detect_import_prefix(source: &str, offset: usize) -> Option<(usize, String)> {
+    let before = &source[..offset.min(source.len())];
+    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+    let line_prefix = &before[line_start..];
+    let after_import = line_prefix.strip_prefix("import ").unwrap_or(line_prefix);
+
+    let segments: Vec<&str> = after_import.split("::").collect();
+
+    let mut prefix_count = 0;
+    for segment in &segments {
+        match *segment {
+            "parent" | "self" => prefix_count += 1,
+            _ => break,
+        }
+    }
+
+    if prefix_count == 0 || segments.len() - prefix_count > 1 {
+        return None;
+    }
+
+    let partial = if prefix_count >= segments.len() {
+        String::new()
+    } else {
+        segments[prefix_count].to_string()
+    };
+
+    Some((prefix_count, partial))
+}
+
+fn word_before_colon(source: &str, offset: usize) -> Option<String> {
+    let offset = offset.min(source.len());
+    if offset == 0 {
+        return None;
+    }
+    let before = &source[..offset];
+    let bytes = before.as_bytes();
+    if bytes[offset - 1] != b':' {
+        return None;
+    }
+    if offset >= 2 && bytes[offset - 2] == b':' {
+        return None;
+    }
+    let word_start = before[..offset - 1]
+        .rfind(|c: char| !c.is_alphanumeric() && c != '_')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let word = &before[word_start..offset - 1];
+    if word.is_empty() { None } else { Some(word.to_string()) }
+}
+
+fn module_ref_prefix(source: &str, offset: usize) -> Option<(String, String)> {
+    let offset = offset.min(source.len());
+    let before = &source[..offset];
+    let bytes = source.as_bytes();
+
+    let colon_at = before.rfind("::")
+        .or_else(|| {
+            if offset >= 1 && offset < source.len() && bytes[offset - 1] == b':' && bytes[offset] == b':' {
+                Some(offset - 1)
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            if offset + 1 < source.len() && &source[offset..offset + 2] == "::" {
+                Some(offset)
+            } else {
+                None
+            }
+        })?;
+
+    let before_colon = &source[..colon_at];
+    let module_name = before_colon
+        .rsplit(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or("")
+        .to_string();
+    if module_name.is_empty() {
+        return None;
+    }
+    let after_colon = &source[colon_at + 2..];
+    let partial = after_colon
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .next()
+        .unwrap_or("")
+        .to_string();
+    Some((module_name, partial))
 }
 
 fn extract_type_from_span(
@@ -1106,32 +1328,6 @@ fn analyze_with_diagnostics(
     }))
 }
 
-fn parse_file(vfs: &Vfs, path: &Path) -> Result<(String, Vec<Item>)> {
-    let source = vfs
-        .source(path)
-        .ok_or_else(|| eyre!("could not read {}", path.display()))?;
-    let name = path.to_string_lossy();
-    let tree = vinyl_parser::parse_with_name(&name, &source).map_err(|errors| {
-        eyre!(
-            errors
-                .into_iter()
-                .map(|error| format!("{error}"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    })?;
-    let items = vinyl_parser::lower::lower(&tree, &source, &name).map_err(|errors| {
-        eyre!(
-            errors
-                .into_iter()
-                .map(|error| format!("{error}"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    })?;
-    Ok((source.to_string(), items))
-}
-
 fn parse_file_with_diagnostics(
     vfs: &Vfs,
     path: &Path,
@@ -1203,7 +1399,7 @@ fn relative_import_path(from_file: &Path, to_module: &Path, resolver: &Resolver)
         to_module.canonicalize(),
     ) && from_canon == to_canon.parent().unwrap_or(Path::new(""))
     {
-        return to_stem;
+        return format!("parent::{to_stem}");
     }
     let source_root = match resolver.mode() {
         ResolverMode::Manifest => resolver.root().join("src"),
@@ -1211,7 +1407,8 @@ fn relative_import_path(from_file: &Path, to_module: &Path, resolver: &Resolver)
     };
     if let Ok(relative) = to_module.strip_prefix(&source_root) {
         let relative = relative.with_extension("");
-        relative.to_string_lossy().replace('\\', "/")
+        let relative = relative.to_string_lossy().replace('\\', "/").replace('/', "::");
+        format!("parent::{relative}")
     } else {
         to_stem
     }
@@ -1238,7 +1435,7 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
     match parse_file_with_diagnostics(vfs, entry_path) {
         Ok((entry_source, entry_items)) => {
             let mut all_items = entry_items.clone();
-            let _ = collect_modules(
+            collect_modules(
                 vfs,
                 &mut resolver,
                 entry_path,
@@ -1246,6 +1443,7 @@ fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<Worksp
                 &mut all_items,
                 &mut module_table,
                 &mut visited,
+                &mut diagnostics,
             );
             match analyze_with_diagnostics(entry_path, &entry_source, &all_items, &module_table) {
                 Ok(analysis) => {
@@ -1312,23 +1510,44 @@ fn collect_modules(
     all_items: &mut Vec<Item>,
     module_table: &mut ModuleTable,
     visited: &mut HashSet<PathBuf>,
-) -> Result<()> {
-    for import in items.iter().filter_map(|item| match item {
-        Item::Import(ImportDef { prefix, path, .. }) => Some((prefix, path)),
+    diagnostics: &mut HashMap<PathBuf, Vec<SourceDiagnostic>>,
+) {
+    for item in items.iter().filter_map(|item| match item {
+        Item::Import(def) => Some(def),
         _ => None,
     }) {
-        let (prefix, path) = import;
-        let info = if prefix.is_empty() {
-            resolver.resolve_module_path(path)?
+        let info = if item.prefix.is_empty() {
+            match resolver.resolve_module_path(&item.path) {
+                Ok(info) => info,
+                Err(err) => {
+                    diagnostics.entry(from.to_path_buf()).or_default().push(
+                        SourceDiagnostic {
+                            message: format!("{err}"),
+                            offset: item.span.offset(),
+                            length: item.span.len(),
+                        },
+                    );
+                    continue;
+                }
+            }
         } else {
-            let package_count = prefix.iter().filter(|s| s.as_str() == "package").count();
-            let parent_count = prefix.iter().filter(|s| s.as_str() == "parent").count();
-            let total = prefix.len();
+            let package_count =
+                item.prefix.iter().filter(|s| s.as_str() == "package").count();
+            let parent_count =
+                item.prefix.iter().filter(|s| s.as_str() == "parent").count();
+            let total = item.prefix.len();
             if total != package_count + parent_count {
-                return Err(eyre::eyre!(
-                    "`self::` prefix refers to the current file, not an external module; \
-                     use `parent::` for relative imports"
-                ));
+                diagnostics.entry(from.to_path_buf()).or_default().push(
+                    SourceDiagnostic {
+                        message:
+                            "`self::` prefix refers to the current file, not an external module; \
+                             use `parent::` for relative imports"
+                                .to_string(),
+                        offset: item.span.offset(),
+                        length: item.span.len(),
+                    },
+                );
+                continue;
             }
             let p = if package_count > 0 {
                 ImportPrefix::Package
@@ -1337,8 +1556,20 @@ fn collect_modules(
             } else {
                 ImportPrefix::Parent(parent_count - 1)
             };
-            let path_strs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
-            resolver.resolve(&p, &path_strs, from)?
+            let path_strs: Vec<&str> = item.path.iter().map(|s| s.as_str()).collect();
+            match resolver.resolve(&p, &path_strs, from) {
+                Ok(info) => info,
+                Err(err) => {
+                    diagnostics.entry(from.to_path_buf()).or_default().push(
+                        SourceDiagnostic {
+                            message: format!("{err}"),
+                            offset: item.span.offset(),
+                            length: item.span.len(),
+                        },
+                    );
+                    continue;
+                }
+            }
         };
         let path = info
             .file_path
@@ -1347,11 +1578,17 @@ fn collect_modules(
         if !visited.insert(path.clone()) {
             continue;
         }
-        let (_, module_items) = parse_file(vfs, &path)?;
+        let (_, module_items) = match parse_file_with_diagnostics(vfs, &path) {
+            Ok(result) => result,
+            Err(file_diagnostics) => {
+                diagnostics.entry(path).or_default().extend(file_diagnostics);
+                continue;
+            }
+        };
         let mut functions = Vec::new();
         let mut types = Vec::new();
-        for item in &module_items {
-            match item {
+        for module_item in &module_items {
+            match module_item {
                 Item::Function(function) if function.public => {
                     functions.push(function.clone());
                     let mut imported = function.clone();
@@ -1360,15 +1597,15 @@ fn collect_modules(
                 }
                 Item::Struct(structure) if structure.public => {
                     types.push(structure.name.clone());
-                    all_items.push(item.clone());
+                    all_items.push(module_item.clone());
                 }
                 Item::TupleStruct(tuple) if tuple.public => {
                     types.push(tuple.name.clone());
-                    all_items.push(item.clone());
+                    all_items.push(module_item.clone());
                 }
                 Item::Enum(enumeration) if enumeration.public => {
                     types.push(enumeration.name.clone());
-                    all_items.push(item.clone());
+                    all_items.push(module_item.clone());
                 }
                 _ => {}
             }
@@ -1389,9 +1626,9 @@ fn collect_modules(
             all_items,
             module_table,
             visited,
-        )?;
+            diagnostics,
+        );
     }
-    Ok(())
 }
 
 #[tokio::main]
