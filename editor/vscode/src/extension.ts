@@ -7,7 +7,8 @@ import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-  State
+  State,
+  StateChangeEvent
 } from 'vscode-languageclient/node';
 
 let client: LanguageClient | undefined;
@@ -349,7 +350,7 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
     clientOptions
   );
 
-  client.onDidChangeState((event) => {
+  client.onDidChangeState((event: StateChangeEvent) => {
     updateStatusBar(event.newState);
   });
 
