@@ -40,7 +40,7 @@
     "grammars": [
       {
         "language": "vinyl",
-        "scopeName": "source.vn",
+        "scopeName": "source.vinyl",
         "path": "./syntaxes/vinyl.tmLanguage.json"
       }
     ],
