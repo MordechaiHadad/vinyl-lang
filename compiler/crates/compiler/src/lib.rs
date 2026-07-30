@@ -146,10 +146,8 @@ fn resolve_imports(
 
             if self_count > 0 {
                 return Err(vec![CompileError::Module(ModuleError {
-                    message: format!(
-                        "`self::` prefix refers to the current file, not an external module; \
-                         use `parent::` for relative imports"
-                    ),
+                    message: "`self::` prefix refers to the current file, not an external module; \
+                         use `parent::` for relative imports".to_string(),
                 })]);
             }
             if package_count > 1 {
