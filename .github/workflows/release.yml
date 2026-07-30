@@ -125,8 +125,8 @@ jobs:
         shell: pwsh
         run: |
           cd compiler/target/${{ matrix.target }}/release
-          $CliBin = Test-Path "vinyl.exe" ? "vinyl.exe" : "cli.exe"
-          $LspBin = Test-Path "vinyl-lsp.exe" ? "vinyl-lsp.exe" : "lsp.exe"
+          $CliBin = if (Test-Path "vinyl.exe") { "vinyl.exe" } else { "cli.exe" }
+          $LspBin = if (Test-Path "vinyl-lsp.exe") { "vinyl-lsp.exe" } else { "lsp.exe" }
           Compress-Archive -Path $CliBin -DestinationPath ../../../../vinyl-${{ matrix.target }}.zip
           Compress-Archive -Path $LspBin -DestinationPath ../../../../vinyl-lsp-${{ matrix.target }}.zip
 
