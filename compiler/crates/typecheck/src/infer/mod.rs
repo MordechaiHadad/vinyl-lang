@@ -126,6 +126,7 @@ pub fn typeck_with_modules(
                 kind: HirItemKind::Struct(HirStruct {
                     span: s.span,
                     name: s.name.clone(),
+                    public: s.public,
                     repr_c: s.attrs.iter().any(|a| a.name == "repr_c"),
                     fields: s
                         .fields
@@ -142,6 +143,7 @@ pub fn typeck_with_modules(
                 kind: HirItemKind::TupleStruct(HirTupleStruct {
                     span: t.span,
                     name: t.name.clone(),
+                    public: t.public,
                     types: t.types.clone(),
                 }),
             }),
@@ -150,6 +152,7 @@ pub fn typeck_with_modules(
                 kind: HirItemKind::Enum(HirEnum {
                     span: e.span,
                     name: e.name.clone(),
+                    public: e.public,
                     variants: e
                         .variants
                         .iter()

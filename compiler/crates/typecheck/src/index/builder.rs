@@ -339,6 +339,7 @@ mod tests {
             kind: HirItemKind::Function(HirFunction {
                 span: SourceSpan::from(0..10),
                 name: "main".to_string(),
+                public: true,
                 params: vec![HirParam {
                     span: SourceSpan::from(0..1),
                     name: "value".to_string(),

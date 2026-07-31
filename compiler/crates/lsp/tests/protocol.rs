@@ -642,3 +642,353 @@ fn completion_colon_after_module() {
 
     let _ = lsp;
 }
+
+#[test]
+fn completion_no_duplicate_imported_colon() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 2 },
+            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math:\n}\n" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 9 },
+            "context": { "triggerKind": 2, "triggerCharacter": ":" }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+    let math_answer = items.iter().filter(|i| i["label"] == "math::answer").count();
+    assert_eq!(math_answer, 1,
+        "math: should offer math::answer exactly once, got: {:?}",
+        items.iter().map(|i| i["label"].as_str().unwrap_or("")).collect::<Vec<_>>());
+
+    let _ = lsp;
+}
+
+#[test]
+fn completion_module_ref_reopen() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+    let answer = items.iter().find(|i| i["label"] == "answer")
+        .expect("keybind reopen at math:: should offer answer");
+    assert_eq!(answer["kind"], 3, "answer should be a function (kind=3)");
+    assert!(answer["textEdit"].is_object(), "module-ref should have textEdit");
+
+    let _ = lsp;
+}
+
+#[test]
+fn completion_colon_reopen() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    // simulate deleting last colon: "math:"
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 2 },
+            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math:\n}\n" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    // colon trigger at "math:" — should show auto-import completions
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 9 },
+            "context": { "triggerKind": 2, "triggerCharacter": ":" }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+    let math_answer = items.iter().find(|i| i["label"] == "math::answer");
+    assert!(math_answer.is_some(), "colon reopen should show math::answer, got: {:?}", items.iter().map(|i| i["label"].as_str()).collect::<Vec<_>>());
+
+    // retype to "math::" and trigger ":" again
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 3 },
+            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math::\n}\n" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 },
+            "context": { "triggerKind": 2, "triggerCharacter": ":" }
+        }
+    }));
+    let resp = lsp.response(3);
+    let items = resp["result"].as_array().unwrap();
+    let answer = items.iter().find(|i| i["label"] == "answer");
+    assert!(answer.is_some(), "second colon reopen should show answer, got: {:?}", items.iter().map(|i| i["label"].as_str()).collect::<Vec<_>>());
+
+    let _ = lsp;
+}
+
+#[test]
+fn completion_private_filtered() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "fn hidden(): int { 1 }\npublic fn visible(): int { 2 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+
+    let visible = items.iter().find(|i| i["label"] == "visible");
+    assert!(visible.is_some(), "public function 'visible' should appear in completions");
+
+    let hidden = items.iter().find(|i| i["label"] == "hidden");
+    assert!(hidden.is_none(), "private function 'hidden' should NOT appear in completions");
+
+    let _ = lsp;
+}
+
+#[test]
+fn import_prefix_completion_reopen() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import parent::\nfn main(): int {\n    0\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 0, "character": 15 },
+            "context": { "triggerKind": 2, "triggerCharacter": ":" }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+    let math = items.iter().find(|i| i["label"] == "math");
+    assert!(math.is_some(), "import parent:: should show math module, got: {:?}", items.iter().map(|i| i["label"].as_str()).collect::<Vec<_>>());
+
+    let _ = lsp;
+}
+
+#[test]
+fn private_access_diagnostic() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "fn secret(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::secret()\n}\n" }
+        }
+    }));
+    let diag = lsp.notification("textDocument/publishDiagnostics");
+    let diagnostics = diag["params"]["diagnostics"].as_array().unwrap();
+    assert!(!diagnostics.is_empty(), "calling private function should produce a diagnostic");
+    let msg = diagnostics[0]["message"].as_str().unwrap();
+    assert!(
+        msg.contains("private") || msg.contains("not found"),
+        "diagnostic should mention private or not found, got: {msg}"
+    );
+
+    let _ = lsp;
+}
+

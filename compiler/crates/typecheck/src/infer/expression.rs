@@ -77,10 +77,29 @@ impl InferState {
                     ))),
                 }
             }
-            Expression::ValuePath { segments, span } => Ok(HirExpression {
-                kind: HirExpressionKind::Ident(segments.join("::"), *span),
-                type_: Type::Primitive(Primitive::Unit),
-            }),
+            Expression::ValuePath { segments, span } => {
+                if segments.len() >= 2 {
+                    let module_name = &segments[0];
+                    let item_name = &segments[1];
+                    if let Some(exports) = self.module_table.get(module_name.as_str()) {
+                        let is_public = exports.functions.iter().any(|f| f.name == *item_name)
+                            || exports.types.iter().any(|t| t == item_name);
+                        if !is_public {
+                            self.errors.push(self.source.error(
+                                *span,
+                                TypeDiagnosticKind::PrivateAccess {
+                                    module: module_name.clone(),
+                                    name: item_name.clone(),
+                                },
+                            ));
+                        }
+                    }
+                }
+                Ok(HirExpression {
+                    kind: HirExpressionKind::Ident(segments.join("::"), *span),
+                    type_: Type::Primitive(Primitive::Unit),
+                })
+            }
             Expression::Binary {
                 span,
                 left,

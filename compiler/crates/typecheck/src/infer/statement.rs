@@ -88,6 +88,7 @@ impl InferState {
         Ok(HirFunction {
             span: func.span,
             name: func.name.clone(),
+            public: func.public,
             params,
             return_type,
             body,

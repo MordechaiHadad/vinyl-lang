@@ -24,11 +24,36 @@ impl Vfs {
     }
 
     pub fn source(&self, path: &Path) -> Option<String> {
-        self.files
-            .get(path)
-            .cloned()
-            .or_else(|| std::fs::read_to_string(path).ok())
+        if let Some(s) = self.files.get(path) {
+            return Some(s.clone());
+        }
+        // Try all normalized forms of the path
+        let mut candidates = vec![normalize_vfs_path(path)];
+        if let Ok(canon) = path.canonicalize() {
+            candidates.push(normalize_vfs_path(&canon));
+        }
+        // Also try stripping \\?\ prefix on Windows
+        if let Some(s) = path.to_str() {
+            if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+                candidates.push(PathBuf::from(stripped));
+            }
+        }
+        for candidate in &candidates {
+            if let Some(s) = self.files.get(candidate) {
+                return Some(s.clone());
+            }
+        }
+        std::fs::read_to_string(path).ok()
     }
+}
+
+fn normalize_vfs_path(path: &Path) -> PathBuf {
+    if let Some(s) = path.to_str() {
+        if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    path.to_path_buf()
 }
 
 #[derive(Debug)]

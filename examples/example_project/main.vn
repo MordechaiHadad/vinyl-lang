@@ -1,5 +1,1 @@
-import math;
 
-fn main(): int {
-    69 |> math::double()
-}

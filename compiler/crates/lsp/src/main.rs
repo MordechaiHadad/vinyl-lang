@@ -504,6 +504,18 @@ impl LanguageServer for Backend {
                         let Some(definition) = definitions.first() else {
                             continue;
                         };
+                        let is_public = module_analysis.result.items.iter().any(|item| {
+                            let (item_name, item_public) = match &item.kind {
+                                HirItemKind::Function(f) => (&f.name, f.public),
+                                HirItemKind::Struct(s) => (&s.name, s.public),
+                                HirItemKind::TupleStruct(t) => (&t.name, t.public),
+                                HirItemKind::Enum(e) => (&e.name, e.public),
+                            };
+                            item_name == name && item_public
+                        });
+                        if !is_public {
+                            continue;
+                        }
                         let kind = match definition.kind {
                             DefinitionKind::Function => CompletionItemKind::FUNCTION,
                             DefinitionKind::Struct => CompletionItemKind::STRUCT,
@@ -544,7 +556,11 @@ impl LanguageServer for Backend {
                         continue;
                     };
                     let import_path = relative_import_path(&path, &info.file_path, resolver);
-                    if existing_imports.contains(&import_path) {
+                    let already_imported = existing_imports.iter().any(|imp| {
+                        imp == &info.import_name
+                            || imp.ends_with(&format!("::{}", info.import_name))
+                    });
+                    if already_imported {
                         continue;
                     }
                     for (name, definitions) in &module_analysis.result.definitions {
