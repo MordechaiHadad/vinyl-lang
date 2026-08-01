@@ -1,1 +1,5 @@
+import parent::math;
 
+fn main() {
+    69 |> math::double
+}

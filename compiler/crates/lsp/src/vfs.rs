@@ -33,10 +33,10 @@ impl Vfs {
             candidates.push(normalize_vfs_path(&canon));
         }
         // Also try stripping \\?\ prefix on Windows
-        if let Some(s) = path.to_str() {
-            if let Some(stripped) = s.strip_prefix("\\\\?\\") {
-                candidates.push(PathBuf::from(stripped));
-            }
+        if let Some(s) = path.to_str()
+            && let Some(stripped) = s.strip_prefix("\\\\?\\")
+        {
+            candidates.push(PathBuf::from(stripped));
         }
         for candidate in &candidates {
             if let Some(s) = self.files.get(candidate) {
@@ -48,10 +48,10 @@ impl Vfs {
 }
 
 fn normalize_vfs_path(path: &Path) -> PathBuf {
-    if let Some(s) = path.to_str() {
-        if let Some(stripped) = s.strip_prefix("\\\\?\\") {
-            return PathBuf::from(stripped);
-        }
+    if let Some(s) = path.to_str()
+        && let Some(stripped) = s.strip_prefix("\\\\?\\")
+    {
+        return PathBuf::from(stripped);
     }
     path.to_path_buf()
 }

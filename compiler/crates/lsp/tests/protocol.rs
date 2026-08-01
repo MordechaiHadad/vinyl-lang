@@ -948,6 +948,75 @@ fn import_prefix_completion_reopen() {
 }
 
 #[test]
+fn goto_definition_from_non_entry_file() {
+    let project = TestProject::new();
+    std::fs::write(&project.main, "fn main(): int {\n    0\n}\n").unwrap();
+    let app = project.root.join("app.vn");
+    std::fs::write(
+        &app,
+        "import math;\nfn run(): int {\n    math::answer()\n}\n",
+    )
+    .unwrap();
+    let app_uri = TestProject::uri(&app);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": app_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn run(): int {\n    math::answer()\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": TestProject::uri(&project.main), "languageId": "vinyl", "version": 1,
+                "text": "fn main(): int {\n    0\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": app_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"],
+        math_uri,
+        "goto-definition from non-entry file should resolve to math.vn, got: {}",
+        definition
+    );
+
+    let _ = lsp;
+}
+
+#[test]
 fn private_access_diagnostic() {
     let project = TestProject::new();
     let main_uri = TestProject::uri(&project.main);

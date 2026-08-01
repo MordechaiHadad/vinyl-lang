@@ -28,13 +28,12 @@ pub fn format_source_with_config(
     Ok(trimmed)
 }
 
+// todo: support formatting a range of the source code, currently just formats the whole source
 pub fn format_range(
     source: &str,
     config: &FormatterConfig,
     _range: Range<usize>,
 ) -> Result<String, FormatError> {
-    // ponytail: formatting the whole file is fine for now; range-aware
-    // formatting would need to diff or reformat a specific CST subtree.
     format_source_with_config(source, config)
 }
 

@@ -1,6 +1,5 @@
 # Mutability and reference examples
 # Run: vinyl run examples/mutability.vn
-
 fn set_value(slot: &int) {
     slot = 10;
 }
