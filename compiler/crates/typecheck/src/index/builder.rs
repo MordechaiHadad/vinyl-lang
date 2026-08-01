@@ -125,6 +125,9 @@ impl IndexBuilder {
     fn walk_item(&mut self, item: &HirItem) {
         match &item.kind {
             HirItemKind::Function(f) => {
+                if f.name.contains("::") {
+                    return;
+                }
                 self.scopes.push(HashMap::new());
                 for param in &f.params {
                     self.add_definition(

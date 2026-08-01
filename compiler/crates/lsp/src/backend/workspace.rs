@@ -229,6 +229,10 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
     Ok((analyses, diagnostics, resolver, entry_module_table))
 }
 
+/// Recursively threads per-module collection state; args are split across
+/// shared (`diagnostics`) and per-call (`all_items`, `module_table`, `visited`)
+/// lifetimes, so grouping them into a struct would not reduce the surface.
+#[allow(clippy::too_many_arguments)]
 fn collect_modules(
     vfs: &Vfs,
     resolver: &mut Resolver,

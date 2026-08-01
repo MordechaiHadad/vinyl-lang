@@ -8,8 +8,10 @@ use tower_lsp::lsp_types::{Location, Url};
 use tower_lsp::Client;
 use vinyl_resolver::Resolver;
 use vinyl_typecheck::module::ModuleTable;
+use vinyl_typecheck::Definition;
 
 use crate::position::span_range;
+use crate::text::name_range;
 use crate::vfs::Vfs;
 
 pub(crate) struct Analysis {
@@ -60,51 +62,42 @@ impl Backend {
         self.state.read().await.cache.values().cloned().collect()
     }
 
-    pub(crate) async fn workspace_locations(&self, target: &vinyl_typecheck::Definition) -> Vec<Location> {
-        let target_name = target.name.rsplit("::").next().unwrap_or(&target.name);
+    pub(crate) async fn workspace_locations(&self, target: &Definition) -> Vec<Location> {
         self.analyses()
             .await
             .into_iter()
             .flat_map(|analysis| {
-                let uri = Url::from_file_path(&analysis.path).ok();
+                let Some(uri) = Url::from_file_path(&analysis.path).ok() else {
+                    return Vec::new();
+                };
                 let line_index = &analysis.line_index;
-                let mut locations = analysis
+                let mut locations = Vec::new();
+                for (offset, referenced) in analysis.result.references.iter() {
+                    if referenced.span != target.span {
+                        continue;
+                    }
+                    let (start, end) = match referenced.name.rsplit_once("::") {
+                        Some((_, last)) => {
+                            let end = *offset + referenced.name.len();
+                            (end - last.len(), end)
+                        }
+                        None => (*offset, *offset + referenced.name.len()),
+                    };
+                    locations.push(Location::new(uri.clone(), span_range(line_index, start, end - start)));
+                }
+                if let Some(definition) = analysis
                     .result
-                    .references
-                    .iter()
-                    .filter(|(_, definition)| {
-                        definition
-                            .name
-                            .rsplit("::")
-                            .next()
-                            .unwrap_or(&definition.name)
-                            == target_name
-                    })
-                    .filter_map(|(offset, definition)| {
-                        uri.clone().map(|uri| {
-                            Location::new(
-                                uri,
-                                span_range(line_index, *offset, definition.name.len()),
-                            )
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if let Some(definition) =
-                    analysis
-                        .result
-                        .definitions
-                        .get(target_name)
-                        .and_then(|definitions| {
-                            definitions.iter().find(|definition| {
-                                definition.span == target.span || definition.name == target_name
-                            })
-                        })
-                    && let Some(uri) = uri
+                    .definitions
+                    .values()
+                    .flatten()
+                    .find(|d| d.span == target.span && !d.name.contains("::"))
                 {
-                    locations.push(Location::new(
-                        uri,
-                        span_range(line_index, definition.span.offset(), definition.name.len()),
-                    ));
+                    let (start, end) = name_range(
+                        &analysis.source,
+                        (definition.span.offset(), definition.span.offset() + definition.span.len()),
+                        &definition.name,
+                    );
+                    locations.push(Location::new(uri.clone(), span_range(line_index, start, end - start)));
                 }
                 locations
             })

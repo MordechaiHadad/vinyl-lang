@@ -1061,3 +1061,235 @@ fn private_access_diagnostic() {
     let _ = lsp;
 }
 
+fn open_pair(lsp: &mut LspProcess, math_uri: &str, main_uri: &str) {
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+}
+
+#[test]
+fn rename_from_definition_updates_both_files() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+    open_pair(&mut lsp, &math_uri, &main_uri);
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/rename",
+        "params": {
+            "textDocument": { "uri": math_uri },
+            "position": { "line": 0, "character": 11 },
+            "newName": "answer_new"
+        }
+    }));
+    let rename = lsp.response(2);
+    let changes = rename["result"]["changes"].as_object().unwrap();
+    assert_eq!(
+        changes.len(),
+        2,
+        "rename should touch declaration + call site, got: {rename}"
+    );
+    let math_edits = changes[&math_uri].as_array().unwrap();
+    assert_eq!(math_edits.len(), 1);
+    assert_eq!(
+        math_edits[0]["range"],
+        json!({"start": {"line": 0, "character": 10}, "end": {"line": 0, "character": 16}})
+    );
+    assert_eq!(math_edits[0]["newText"], "answer_new");
+    let main_edits = changes[&main_uri].as_array().unwrap();
+    assert_eq!(main_edits.len(), 1);
+    assert_eq!(
+        main_edits[0]["range"],
+        json!({"start": {"line": 2, "character": 10}, "end": {"line": 2, "character": 16}})
+    );
+    assert_eq!(
+        main_edits[0]["newText"], "answer_new",
+        "call site should keep the math:: prefix, got: {rename}"
+    );
+}
+
+#[test]
+fn references_from_definition_include_declaration_and_site() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+    open_pair(&mut lsp, &math_uri, &main_uri);
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/references",
+        "params": {
+            "textDocument": { "uri": math_uri },
+            "position": { "line": 0, "character": 11 },
+            "context": { "includeDeclaration": true }
+        }
+    }));
+    let references = lsp.response(2);
+    let locations = references["result"].as_array().unwrap();
+    assert_eq!(
+        locations.len(),
+        2,
+        "references should include declaration + call site, got: {references}"
+    );
+    let math_site = locations.iter().find(|l| l["uri"] == math_uri).unwrap();
+    assert_eq!(
+        math_site["range"],
+        json!({"start": {"line": 0, "character": 10}, "end": {"line": 0, "character": 16}})
+    );
+    let main_site = locations.iter().find(|l| l["uri"] == main_uri).unwrap();
+    assert_eq!(
+        main_site["range"],
+        json!({"start": {"line": 2, "character": 10}, "end": {"line": 2, "character": 16}})
+    );
+}
+
+fn open_scope_file(lsp: &mut LspProcess, main_uri: &str) {
+    let text = "fn double(n: int): int {\n    n * 2\n}\n\nfn square(n: int): int {\n    n * n\n}\n";
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": text }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+}
+
+#[test]
+fn rename_local_symbol_is_scoped() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "fn double(n: int): int {\n    n * 2\n}\n\nfn square(n: int): int {\n    n * n\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+    open_scope_file(&mut lsp, &main_uri);
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/rename",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 0, "character": 10 },
+            "newName": "num"
+        }
+    }));
+    let rename = lsp.response(2);
+    let changes = rename["result"]["changes"].as_object().unwrap();
+    assert_eq!(changes.len(), 1, "rename should only touch main.vn, got: {rename}");
+    let edits = changes[&main_uri].as_array().unwrap();
+    let mut ranges: Vec<(u64, u64, u64)> = edits
+        .iter()
+        .map(|e| {
+            (
+                e["range"]["start"]["line"].as_u64().unwrap(),
+                e["range"]["start"]["character"].as_u64().unwrap(),
+                e["range"]["end"]["character"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    ranges.sort_unstable();
+    assert_eq!(
+        ranges,
+        vec![(0, 10, 11), (1, 4, 5)],
+        "only double's param + body reference should be renamed, got: {rename}"
+    );
+}
+
+#[test]
+fn cursor_on_whitespace_returns_nothing() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "fn double(n: int): int {\n    n * 2\n}\n\nfn square(n: int): int {\n    n * n\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+    open_scope_file(&mut lsp, &main_uri);
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/references",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 0 },
+            "context": { "includeDeclaration": true }
+        }
+    }));
+    let references = lsp.response(2);
+    assert!(
+        references["result"].as_array().unwrap().is_empty(),
+        "cursor on a closing brace should not match a symbol, got: {references}"
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/rename",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 0 },
+            "newName": "num"
+        }
+    }));
+    let rename = lsp.response(3);
+    assert!(
+        rename["result"].is_null(),
+        "cursor on a closing brace should not rename anything, got: {rename}"
+    );
+}
+

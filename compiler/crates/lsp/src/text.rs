@@ -5,6 +5,29 @@ use tower_lsp::lsp_types::Range;
 
 use crate::position::position_at;
 
+pub(crate) fn name_range(source: &str, span: (usize, usize), name: &str) -> (usize, usize) {
+    let (start, end) = span;
+    if let Some(text) = source.get(start..end)
+        && let Some(relative) = find_identifier(text, name)
+    {
+        (start + relative, start + relative + name.len())
+    } else {
+        span
+    }
+}
+
+fn find_identifier(text: &str, name: &str) -> Option<usize> {
+    let name_len = name.len();
+    let is_ident = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
+    text.match_indices(name).find_map(|(index, _)| {
+        let before = text.as_bytes().get(index.wrapping_sub(1)).copied();
+        let after = text.as_bytes().get(index + name_len).copied();
+        let before_ok = before.is_none_or(|byte| !is_ident(byte));
+        let after_ok = after.is_none_or(|byte| !is_ident(byte));
+        (before_ok && after_ok).then_some(index)
+    })
+}
+
 pub(crate) fn word_prefix(source: &str, offset: usize) -> String {
     let before = &source[..offset.min(source.len())];
     before
