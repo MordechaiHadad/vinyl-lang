@@ -3,6 +3,9 @@
 install-lsp:
     cargo install --path compiler/crates/lsp
 
+install-compiler:
+    cargo install --path compiler/crates/cli
+
 test-workspace:
     cd compiler && cargo test --workspace --all-targets
 
