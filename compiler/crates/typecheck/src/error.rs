@@ -155,4 +155,8 @@ pub enum TypeDiagnosticKind {
         expected: String,
         found: crate::hir::Type,
     },
+
+    #[error("item `{module}::{name}` is private")]
+    #[diagnostic(code(typeck::private_access))]
+    PrivateAccess { module: String, name: String },
 }

@@ -24,17 +24,26 @@ pub fn format_source_with_config(
         indent_str,
     };
     f.format_root(root);
-    let trimmed = f.output.trim_end().to_string();
-    Ok(trimmed)
+    let normalized = f.output.replace("\r\n", "\n").trim_end().to_string();
+    let with_newline = if source.ends_with('\n') && !normalized.ends_with('\n') {
+        format!("{normalized}\n")
+    } else {
+        normalized
+    };
+    let output = if source.contains("\r\n") {
+        with_newline.replace('\n', "\r\n")
+    } else {
+        with_newline
+    };
+    Ok(output)
 }
 
+// todo: support formatting a range of the source code, currently just formats the whole source
 pub fn format_range(
     source: &str,
     config: &FormatterConfig,
     _range: Range<usize>,
 ) -> Result<String, FormatError> {
-    // ponytail: formatting the whole file is fine for now; range-aware
-    // formatting would need to diff or reformat a specific CST subtree.
     format_source_with_config(source, config)
 }
 

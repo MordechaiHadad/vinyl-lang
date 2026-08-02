@@ -82,12 +82,14 @@ impl InferState {
             return_type = Type::Primitive(Primitive::Unit);
         }
         let body = self.resolve_hir_stmts(body);
+        return_type = self.resolve_hir_type(&return_type);
 
         self.errors.extend(self.collect_literal_type_errors(&body));
 
         Ok(HirFunction {
             span: func.span,
             name: func.name.clone(),
+            public: func.public,
             params,
             return_type,
             body,

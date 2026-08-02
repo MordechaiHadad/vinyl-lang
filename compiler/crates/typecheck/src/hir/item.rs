@@ -21,6 +21,7 @@ pub enum HirItemKind {
 pub struct HirFunction {
     pub span: SourceSpan,
     pub name: String,
+    pub public: bool,
     pub params: Vec<HirParam>,
     pub return_type: Type,
     pub body: Vec<HirStatement>,
@@ -30,6 +31,7 @@ pub struct HirFunction {
 pub struct HirStruct {
     pub span: SourceSpan,
     pub name: String,
+    pub public: bool,
     pub repr_c: bool,
     pub fields: Vec<HirField>,
 }
@@ -38,6 +40,7 @@ pub struct HirStruct {
 pub struct HirTupleStruct {
     pub span: SourceSpan,
     pub name: String,
+    pub public: bool,
     pub types: Vec<Type>,
 }
 
@@ -45,17 +48,20 @@ pub struct HirTupleStruct {
 pub struct HirEnum {
     pub span: SourceSpan,
     pub name: String,
+    pub public: bool,
     pub variants: Vec<HirEnumVariant>,
 }
 
 #[derive(Debug, Clone)]
 pub struct HirField {
+    pub span: SourceSpan,
     pub name: String,
     pub type_: Type,
 }
 
 #[derive(Debug, Clone)]
 pub struct HirEnumVariant {
+    pub span: SourceSpan,
     pub name: String,
     pub data: Option<HirEnumVariantData>,
 }

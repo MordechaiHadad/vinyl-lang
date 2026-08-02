@@ -1,0 +1,259 @@
+use std::{fs, path::PathBuf};
+
+use vinyl_compiler::compile_entry;
+
+fn script_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("vinyl_compiler_script_{name}"));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    for (file, source) in files {
+        let path = root.join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source).unwrap();
+    }
+    root
+}
+
+fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("vinyl_compiler_test_{name}"));
+    let _ = fs::remove_dir_all(&root);
+    for (file, source) in files {
+        let path = root.join(file);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, source).unwrap();
+    }
+    fs::write(root.join("vinyl.toml"), "").unwrap();
+    root
+}
+
+#[test]
+fn compiles_public_import() {
+    let root = project(
+        "public_import",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): int { math::answer() }",
+            ),
+            ("src/math.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn rejects_private_import() {
+    let root = project(
+        "private_import",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): int { math::answer() }",
+            ),
+            ("src/math.vn", "fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err());
+}
+
+#[test]
+fn import_not_found_errors() {
+    let root = project(
+        "import_not_found",
+        &[("src/main.vn", "import math; fn main(): int { 0 }")],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err());
+}
+
+#[test]
+fn nested_module_import() {
+    let root = project(
+        "nested_import",
+        &[
+            (
+                "src/main.vn",
+                "import utils::format; fn main(): string { format::greet() }",
+            ),
+            (
+                "src/utils/format.vn",
+                "public fn greet(): string { \"hi\" }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn entry_without_main_or_lib() {
+    let root = project("no_entry", &[("src/foo.vn", "fn foo(): int { 1 }")]);
+    let result = compile_entry(&root, Some(&root));
+    assert!(result.is_err());
+}
+
+#[test]
+fn compiles_script_project_with_import() {
+    let root = script_project(
+        "script_import",
+        &[
+            (
+                "main.vn",
+                "import math; fn main(): int { math::double(21) }",
+            ),
+            ("math.vn", "public fn double(n: int): int { n * 2 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn compiles_manifest_via_detect() {
+    let root = project(
+        "manifest_detect",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): int { math::answer() }",
+            ),
+            ("src/math.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn resolves_directory_module() {
+    let root = project(
+        "directory_module",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): int { math::answer() }",
+            ),
+            ("src/math/math.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn script_self_prefix_errors() {
+    let root = script_project(
+        "script_self_errors",
+        &[("main.vn", "import self::helper; fn main(): int { 0 }")],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_err(), "self:: should error in imports");
+}
+
+#[test]
+fn script_parent_prefix_same_dir() {
+    let root = script_project(
+        "script_parent_same_dir",
+        &[
+            (
+                "sub/main.vn",
+                "import parent::helper; fn main(): int { helper::answer() }",
+            ),
+            ("sub/helper.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("sub/main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn script_parent_parent_prefix() {
+    let root = script_project(
+        "script_parent_parent",
+        &[
+            (
+                "sub/main.vn",
+                "import parent::parent::helper; fn main(): int { helper::answer() }",
+            ),
+            ("helper.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("sub/main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn script_package_prefix_rejected() {
+    let root = script_project(
+        "script_package_rejected",
+        &[
+            ("main.vn", "import package::helper; fn main(): int { 0 }"),
+            ("helper.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(
+        result.is_err(),
+        "package:: should be rejected in script mode"
+    );
+}
+
+#[test]
+fn manifest_self_prefix_errors() {
+    let root = project(
+        "manifest_self_errors",
+        &[("src/main.vn", "import self::helper; fn main(): int { 0 }")],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err(), "self:: should error in imports");
+}
+
+#[test]
+fn manifest_parent_prefix_same_dir() {
+    let root = project(
+        "manifest_parent_same_dir",
+        &[
+            (
+                "src/sub/main.vn",
+                "import parent::helper; fn main(): int { helper::answer() }",
+            ),
+            ("src/sub/helper.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/sub/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn manifest_parent_parent_prefix() {
+    let root = project(
+        "manifest_parent_parent",
+        &[
+            (
+                "src/sub/main.vn",
+                "import parent::parent::helper; fn main(): int { helper::answer() }",
+            ),
+            ("src/helper.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/sub/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn manifest_package_prefix() {
+    let root = project(
+        "manifest_package_prefix",
+        &[
+            (
+                "src/main.vn",
+                "import package::helper; fn main(): int { helper::answer() }",
+            ),
+            ("src/helper.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}

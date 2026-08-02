@@ -77,10 +77,29 @@ impl InferState {
                     ))),
                 }
             }
-            Expression::ValuePath { segments, span } => Ok(HirExpression {
-                kind: HirExpressionKind::Ident(segments.join("::"), *span),
-                type_: Type::Primitive(Primitive::Unit),
-            }),
+            Expression::ValuePath { segments, span } => {
+                if segments.len() >= 2 {
+                    let module_name = &segments[0];
+                    let item_name = &segments[1];
+                    if let Some(exports) = self.module_table.get(module_name.as_str()) {
+                        let is_public = exports.functions.iter().any(|f| f.name == *item_name)
+                            || exports.types.iter().any(|t| t == item_name);
+                        if !is_public {
+                            self.errors.push(self.source.error(
+                                *span,
+                                TypeDiagnosticKind::PrivateAccess {
+                                    module: module_name.clone(),
+                                    name: item_name.clone(),
+                                },
+                            ));
+                        }
+                    }
+                }
+                Ok(HirExpression {
+                    kind: HirExpressionKind::Ident(segments.join("::"), *span),
+                    type_: Type::Primitive(Primitive::Unit),
+                })
+            }
             Expression::Binary {
                 span,
                 left,
@@ -173,7 +192,10 @@ impl InferState {
                     .collect();
                 let hir_args = hir_args?;
 
-                if let Expression::ValuePath { segments, .. } = function.as_ref()
+                if let Expression::ValuePath {
+                    segments,
+                    span: function_span,
+                } = function.as_ref()
                     && segments.len() == 2
                     && let Some(module_function) = self
                         .module_table
@@ -208,7 +230,7 @@ impl InferState {
                         kind: HirExpressionKind::Call {
                             span: *span,
                             function: Box::new(HirExpression {
-                                kind: HirExpressionKind::Ident(segments.join("::"), *span),
+                                kind: HirExpressionKind::Ident(segments.join("::"), *function_span),
                                 type_: Type::Primitive(Primitive::Unit),
                             }),
                             args: hir_args,
