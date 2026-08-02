@@ -8,7 +8,7 @@ use vinyl_parser::ast::item::Item;
 use vinyl_resolver::{ImportPrefix, Resolver, ResolverMode};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
-use crate::backend::state::{Analysis, SourceDiagnostic, WorkspaceState};
+use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
 use crate::vfs::{LspFileSystem, Vfs};
 
 pub(crate) fn analyze_with_diagnostics(
@@ -144,9 +144,11 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
     let mut visited = HashSet::new();
     let mut analyses = HashMap::new();
     let mut diagnostics = HashMap::new();
+    let mut publics = HashMap::new();
 
     match parse_file_with_diagnostics(vfs, entry_path) {
         Ok((entry_source, entry_items)) => {
+            collect_publics(&entry_items, entry_path, &mut publics);
             let mut all_items = entry_items.clone();
             collect_modules(
                 vfs,
@@ -185,6 +187,7 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
             unique.push(file);
         }
     }
+    let mut publics = HashMap::new();
     for file in &unique {
         if file == entry_path {
             continue;
@@ -211,6 +214,7 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
             &mut file_visited,
             &mut diagnostics,
         );
+        collect_publics(&items, file, &mut publics);
         match analyze_with_diagnostics(file, &source, &all_items, &module_table) {
             Ok(analysis) => {
                 let key = non_canonical_key(file, &resolver, root);
@@ -226,7 +230,31 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
             a.offset == b.offset && a.length == b.length && a.message == b.message
         });
     }
-    Ok((analyses, diagnostics, resolver, entry_module_table))
+    let modules = resolver
+        .all_modules()
+        .iter()
+        .map(|(_, info)| (info.import_name.clone(), info.file_path.clone()))
+        .collect();
+    Ok((analyses, diagnostics, resolver, entry_module_table, publics, modules))
+}
+
+fn collect_publics(items: &[Item], path: &Path, publics: &mut HashMap<String, PublicSymbol>) {
+    for item in items {
+        let (name, span) = match item {
+            Item::Function(f) if f.public => (&f.name, f.span),
+            Item::Struct(s) if s.public => (&s.name, s.span),
+            Item::TupleStruct(t) if t.public => (&t.name, t.span),
+            Item::Enum(e) if e.public => (&e.name, e.span),
+            _ => continue,
+        };
+        publics.insert(
+            name.clone(),
+            PublicSymbol {
+                path: path.to_path_buf(),
+                span,
+            },
+        );
+    }
 }
 
 /// Recursively threads per-module collection state; args are split across

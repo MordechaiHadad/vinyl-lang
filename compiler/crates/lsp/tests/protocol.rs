@@ -193,11 +193,14 @@ fn serves_core_lsp_features_over_stdio() {
         }
     }));
     let hover = lsp.response(2);
+    let hover_text = hover["result"]["contents"].as_str().unwrap();
     assert!(
-        hover["result"]["contents"]
-            .as_str()
-            .unwrap()
-            .contains("type:")
+        hover_text.contains("fn answer(): int"),
+        "hover should show the function signature, got: {hover_text}"
+    );
+    assert!(
+        hover_text.contains("math"),
+        "hover should mention the source module, got: {hover_text}"
     );
 
     lsp.send(json!({
@@ -1239,6 +1242,523 @@ fn rename_local_symbol_is_scoped() {
         ranges,
         vec![(0, 10, 11), (1, 4, 5)],
         "only double's param + body reference should be renamed, got: {rename}"
+    );
+}
+
+#[test]
+fn goto_definition_across_module_with_type_error() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "public fn answer(): int { 42 }\nfn broken(): int { \"nope\" }\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\nfn broken(): int { \"nope\" }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 10 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"],
+        math_uri,
+        "goto-definition should still resolve when the target module has a type error, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 10}),
+        "definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 0, "character": 16}),
+        "definition range end mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
+fn goto_definition_parent_import_through_pipe() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("examples")
+        .join("example_project");
+    let main = root.join("main.vn");
+    let math = root.join("math.vn");
+    let main_uri = TestProject::uri(&main);
+    let math_uri = TestProject::uri(&math.canonicalize().unwrap());
+    let root_uri = TestProject::uri(&root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (main_uri.clone(), "import parent::math;\n\nfn main() {\n    69 |> math::double()\n}\n"),
+        (math_uri.clone(), "public fn double(n: int): int {\n    n * 2\n}\n"),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 16 } }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(definition["result"]["uri"], math_uri);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/hover",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 16 } }
+    }));
+    let hover = lsp.response(3);
+    assert!(hover["result"]["contents"].as_str().unwrap().contains("fn double"));
+}
+
+#[test]
+fn goto_definition_on_type_annotation() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "struct Point { x: int, y: int }\n\nfn main(): int {\n    let origin: Point = Point { x: 0, y: 0 };\n    origin.x\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "struct Point { x: int, y: int }\n\nfn main(): int {\n    let origin: Point = Point { x: 0, y: 0 };\n    origin.x\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 3, "character": 16 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"],
+        main_uri,
+        "goto-definition on a type annotation should resolve to the struct, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 7}),
+        "struct definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 0, "character": 12}),
+        "struct definition range end mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
+fn goto_definition_on_struct_field() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "struct Point { x: int, y: int }\n\nfn main(): int {\n    let p = Point { x: 0, y: 0 };\n    p.x\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "struct Point { x: int, y: int }\n\nfn main(): int {\n    let p = Point { x: 0, y: 0 };\n    p.x\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 4, "character": 6 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"],
+        main_uri,
+        "goto-definition on a struct field access should resolve to the field, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 15}),
+        "field definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 0, "character": 16}),
+        "field definition range end mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
+fn goto_definition_on_enum_variant() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn main(): int {\n    let s = Shape::Empty();\n    if s == Shape::Empty() { 1 } else { 0 }\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn main(): int {\n    let s = Shape::Empty();\n    if s == Shape::Empty() { 1 } else { 0 }\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 3, "character": 19 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"],
+        main_uri,
+        "goto-definition on an enum variant should resolve to the variant, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 13}),
+        "variant definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 0, "character": 18}),
+        "variant definition range end mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
+fn goto_definition_on_module_segment() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 4 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"],
+        math_uri,
+        "goto-definition on a module segment should resolve to the module file, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 0}),
+        "module location start mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
+fn hover_on_let_binding_shows_type() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "fn main(): int {\n    let value = 42;\n    value\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "fn main(): int {\n    let value = 42;\n    value\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 1, "character": 8 }
+        }
+    }));
+    let hover = lsp.response(2);
+    let hover_text = hover["result"]["contents"].as_str().unwrap();
+    assert!(
+        hover_text.contains("value: int"),
+        "hover on a let binding should show its type, got: {hover_text}"
+    );
+}
+
+#[test]
+fn hover_on_local_function_shows_signature() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "fn helper(): int { 42 }\n\nfn main(): int {\n    helper()\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "fn helper(): int { 42 }\n\nfn main(): int {\n    helper()\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 3, "character": 4 }
+        }
+    }));
+    let hover = lsp.response(2);
+    let hover_text = hover["result"]["contents"].as_str().unwrap();
+    assert!(
+        hover_text.contains("fn helper(): int"),
+        "hover on a local function call should show its signature, got: {hover_text}"
+    );
+}
+
+#[test]
+fn rename_updates_three_modules() {
+    let project = TestProject::new();
+    let b_vn = project.root.join("b.vn");
+    let a_vn = project.root.join("a.vn");
+    let c_vn = project.root.join("c.vn");
+    std::fs::write(&b_vn, "public fn worker(): int { 42 }\n").unwrap();
+    std::fs::write(
+        &a_vn,
+        "import parent::b;\nfn run(): int {\n    b::worker()\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &c_vn,
+        "import parent::b;\nfn run(): int {\n    b::worker()\n}\n",
+    )
+    .unwrap();
+    let b_uri = TestProject::uri(&b_vn);
+    let a_uri = TestProject::uri(&a_vn);
+    let c_uri = TestProject::uri(&c_vn);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    for (uri, text) in [
+        (b_uri.clone(), "public fn worker(): int { 42 }\n"),
+        (
+            a_uri.clone(),
+            "import parent::b;\nfn run(): int {\n    b::worker()\n}\n",
+        ),
+        (
+            c_uri.clone(),
+            "import parent::b;\nfn run(): int {\n    b::worker()\n}\n",
+        ),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text }
+            }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/rename",
+        "params": {
+            "textDocument": { "uri": b_uri },
+            "position": { "line": 0, "character": 10 },
+            "newName": "worker2"
+        }
+    }));
+    let rename = lsp.response(2);
+    let changes = rename["result"]["changes"].as_object().unwrap();
+    let touched: Vec<String> = changes.keys().cloned().collect();
+    assert!(
+        touched.contains(&b_uri) && touched.contains(&a_uri) && touched.contains(&c_uri),
+        "rename should touch the definition plus both call sites, got: {touched:?}"
+    );
+    for uri in [&b_uri, &a_uri, &c_uri] {
+        let edits = changes.get(uri).unwrap().as_array().unwrap();
+        assert_eq!(edits.len(), 1, "{uri} should get exactly one edit, got: {rename}");
+        assert_eq!(edits[0]["newText"], "worker2");
+    }
+    let b_edits = changes[&b_uri].as_array().unwrap();
+    assert_eq!(
+        b_edits[0]["range"],
+        json!({"start": {"line": 0, "character": 10}, "end": {"line": 0, "character": 16}})
+    );
+    let a_edits = changes[&a_uri].as_array().unwrap();
+    assert_eq!(
+        a_edits[0]["range"],
+        json!({"start": {"line": 2, "character": 7}, "end": {"line": 2, "character": 13}})
     );
 }
 

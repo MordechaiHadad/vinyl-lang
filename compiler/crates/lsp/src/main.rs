@@ -91,11 +91,16 @@ impl LanguageServer for Backend {
                 .workspace_root
                 .as_ref()
                 .and_then(|root| {
-                    [root.join("main.vn"), root.join("lib.vn")]
+                    let source_root = if root.join("vinyl.toml").exists() {
+                        root.join("src")
+                    } else {
+                        root.clone()
+                    };
+                    [source_root.join("main.vn"), source_root.join("lib.vn")]
                         .into_iter()
                         .find(|p| p.exists())
                         .or_else(|| {
-                            std::fs::read_dir(root)
+                            std::fs::read_dir(&source_root)
                                 .ok()
                                 .and_then(|mut entries| {
                                     entries.find_map(|e| {

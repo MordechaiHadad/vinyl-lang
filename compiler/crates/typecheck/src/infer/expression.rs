@@ -192,7 +192,7 @@ impl InferState {
                     .collect();
                 let hir_args = hir_args?;
 
-                if let Expression::ValuePath { segments, .. } = function.as_ref()
+                if let Expression::ValuePath { segments, span: function_span } = function.as_ref()
                     && segments.len() == 2
                     && let Some(module_function) = self
                         .module_table
@@ -227,7 +227,7 @@ impl InferState {
                         kind: HirExpressionKind::Call {
                             span: *span,
                             function: Box::new(HirExpression {
-                                kind: HirExpressionKind::Ident(segments.join("::"), *span),
+                                kind: HirExpressionKind::Ident(segments.join("::"), *function_span),
                                 type_: Type::Primitive(Primitive::Unit),
                             }),
                             args: hir_args,

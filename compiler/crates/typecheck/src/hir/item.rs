@@ -54,12 +54,14 @@ pub struct HirEnum {
 
 #[derive(Debug, Clone)]
 pub struct HirField {
+    pub span: SourceSpan,
     pub name: String,
     pub type_: Type,
 }
 
 #[derive(Debug, Clone)]
 pub struct HirEnumVariant {
+    pub span: SourceSpan,
     pub name: String,
     pub data: Option<HirEnumVariantData>,
 }

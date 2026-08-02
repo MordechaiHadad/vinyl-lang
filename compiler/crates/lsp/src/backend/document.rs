@@ -2,7 +2,9 @@ use tower_lsp::lsp_types::*;
 use vinyl_typecheck::hir::HirItemKind;
 
 use crate::position::{offset_at, span_range};
+use crate::backend::definition::definition_detail;
 use crate::backend::state::Backend;
+use crate::backend::symbol::{resolve_symbol, target_definition};
 use crate::text::word_prefix;
 
 impl Backend {
@@ -17,21 +19,25 @@ impl Backend {
             &analysis.line_index,
             params.text_document_position_params.position,
         );
-        let Some(expression) = analysis
+        let content = if let Some(target) = resolve_symbol(&analysis, offset)
+            && let Some(definition) = target_definition(&analysis, &target)
+            && let Some(detail) = definition_detail(&definition, &analysis.result, &analysis.source)
+        {
+            detail
+        } else if let Some(expression) = analysis
             .result
             .expr_at_pos
             .range(..=offset)
             .next_back()
             .map(|(_, expression)| expression)
             .filter(|expression| offset < expression.span.offset() + expression.span.len())
-        else {
+        {
+            format!("type: {:?}", expression.type_)
+        } else {
             return Ok(None);
         };
         Ok(Some(Hover {
-            contents: HoverContents::Scalar(MarkedString::String(format!(
-                "type: {:?}",
-                expression.type_
-            ))),
+            contents: HoverContents::Scalar(MarkedString::String(content)),
             range: None,
         }))
     }

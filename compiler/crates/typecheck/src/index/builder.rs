@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::hir::{
     HirExpression, HirExpressionKind, HirItem, HirItemKind, HirStatement, HirStatementKind,
 };
-use crate::index::types::{Definition, DefinitionKind, HirExprRef, HirIndex};
+use crate::index::types::{Definition, DefinitionKind, FieldAccessRef, HirExprRef, HirIndex};
 
 pub struct IndexBuilder {
     expr_at_pos: BTreeMap<usize, HirExprRef>,
@@ -11,6 +11,7 @@ pub struct IndexBuilder {
     references: BTreeMap<usize, Definition>,
     scopes: Vec<HashMap<String, usize>>,
     next_definition_id: usize,
+    field_accesses: BTreeMap<usize, FieldAccessRef>,
 }
 
 impl Default for IndexBuilder {
@@ -21,6 +22,7 @@ impl Default for IndexBuilder {
             references: BTreeMap::new(),
             scopes: vec![HashMap::new()],
             next_definition_id: 0,
+            field_accesses: BTreeMap::new(),
         }
     }
 }
@@ -45,6 +47,7 @@ impl IndexBuilder {
             definitions: self.definitions,
             references: self.references,
             unused,
+            field_accesses: self.field_accesses,
         }
     }
 
@@ -264,7 +267,17 @@ impl IndexBuilder {
                     self.walk_expr(e);
                 }
             }
-            HirExpressionKind::FieldAccess { object, .. } => self.walk_expr(object),
+            HirExpressionKind::FieldAccess { span, object, name } => {
+                self.field_accesses.insert(
+                    span.offset(),
+                    FieldAccessRef {
+                        span: *span,
+                        object_type: object.type_.clone(),
+                        name: name.clone(),
+                    },
+                );
+                self.walk_expr(object);
+            }
             HirExpressionKind::EnumVariant { payload, .. } => {
                 for e in payload {
                     self.walk_expr(e);

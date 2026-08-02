@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use miette::{NamedSource, SourceSpan};
+use vinyl_parser::ast::expression::Expression;
 use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
+use vinyl_parser::ast::statement::Statement;
 
 use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
@@ -132,6 +134,7 @@ pub fn typeck_with_modules(
                         .fields
                         .iter()
                         .map(|f| HirField {
+                            span: f.span,
                             name: f.name.clone(),
                             type_: f.type_.clone(),
                         })
@@ -157,6 +160,7 @@ pub fn typeck_with_modules(
                         .variants
                         .iter()
                         .map(|v| HirEnumVariant {
+                            span: v.span,
                             name: v.name.clone(),
                             data: v.data.as_ref().map(|d| match d {
                                 EnumVariantData::Tuple(types) => {
@@ -166,6 +170,7 @@ pub fn typeck_with_modules(
                                     fields
                                         .iter()
                                         .map(|f| HirField {
+                                            span: f.span,
                                             name: f.name.clone(),
                                             type_: f.type_.clone(),
                                         })
@@ -235,7 +240,167 @@ pub fn typeck_with_index(
             definitions: index.definitions,
             references: index.references,
             unused: index.unused,
+            type_positions: collect_type_positions(items, source),
+            field_accesses: index.field_accesses,
         },
         warnings,
     ))
+}
+
+fn collect_type_positions(items: &[Item], source: &str) -> BTreeMap<usize, String> {
+    let mut positions = BTreeMap::new();
+    for item in items {
+        match item {
+            Item::Function(f) => {
+                if let Some(offset) = return_type_offset(source, f.span) {
+                    positions.insert(offset, f.return_type.as_ref().map(ToString::to_string).unwrap_or_default());
+                }
+                for param in &f.params {
+                    if let Some(offset) = type_after_colon(source, param.span) {
+                        positions.insert(offset, param.type_.to_string());
+                    }
+                }
+                for stmt in &f.body {
+                    collect_statement_type_positions(stmt, source, &mut positions);
+                }
+            }
+            Item::Struct(s) => {
+                for field in &s.fields {
+                    if let Some(offset) = type_after_colon(source, field.span) {
+                        positions.insert(offset, field.type_.to_string());
+                    }
+                }
+            }
+            Item::TupleStruct(t) => {
+                collect_parenthesized_types(source, t.span, &t.types, &mut positions);
+            }
+            Item::Enum(e) => {
+                for variant in &e.variants {
+                    if let Some(data) = &variant.data {
+                        match data {
+                            EnumVariantData::Tuple(types) => {
+                                collect_parenthesized_types(source, variant.span, types, &mut positions);
+                            }
+                            EnumVariantData::Struct(fields) => {
+                                for field in fields {
+                                    if let Some(offset) = type_after_colon(source, field.span) {
+                                        positions.insert(offset, field.type_.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Item::Import(_) => {}
+        }
+    }
+    positions
+}
+
+fn collect_statement_type_positions(
+    stmt: &Statement,
+    source: &str,
+    positions: &mut BTreeMap<usize, String>,
+) {
+    match stmt {
+        Statement::Let {
+            span,
+            type_: Some(type_),
+            ..
+        } => {
+            if let Some(offset) = let_type_offset(source, *span) {
+                positions.insert(offset, type_.to_string());
+            }
+        }
+        Statement::Expression(expr) => {
+            if let Expression::Block(stmts, _) = expr {
+                for s in stmts {
+                    collect_statement_type_positions(s, source, positions);
+                }
+            }
+        }
+        Statement::If {
+            then_block,
+            else_if,
+            else_block,
+            ..
+        } => {
+            for s in then_block {
+                collect_statement_type_positions(s, source, positions);
+            }
+            for (_, block) in else_if {
+                for s in block {
+                    collect_statement_type_positions(s, source, positions);
+                }
+            }
+            if let Some(block) = else_block {
+                for s in block {
+                    collect_statement_type_positions(s, source, positions);
+                }
+            }
+        }
+        Statement::While { body, .. } | Statement::Loop { body, .. } => {
+            for s in body {
+                collect_statement_type_positions(s, source, positions);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn type_after_colon(source: &str, span: SourceSpan) -> Option<usize> {
+    let text = source.get(span.offset()..span.offset() + span.len())?;
+    let colon = text.find(':')?;
+    let after = &text[colon + 1..];
+    let start = after.find(|c: char| !c.is_whitespace())?;
+    Some(span.offset() + colon + 1 + start)
+}
+
+fn let_type_offset(source: &str, span: SourceSpan) -> Option<usize> {
+    let text = source.get(span.offset()..span.offset() + span.len())?;
+    let before_eq = text.split('=').next()?;
+    let colon = before_eq.find(':')?;
+    let after = &before_eq[colon + 1..];
+    let start = after.find(|c: char| !c.is_whitespace())?;
+    Some(span.offset() + colon + 1 + start)
+}
+
+fn return_type_offset(source: &str, span: SourceSpan) -> Option<usize> {
+    let text = source.get(span.offset()..span.offset() + span.len())?;
+    let paren = text.find(')')?;
+    let after_paren = &text[paren + 1..];
+    let colon = after_paren.find(':')?;
+    let after = &after_paren[colon + 1..];
+    let start = after.find(|c: char| !c.is_whitespace())?;
+    Some(span.offset() + paren + 1 + colon + 1 + start)
+}
+
+fn collect_parenthesized_types(
+    source: &str,
+    span: SourceSpan,
+    types: &[Type],
+    positions: &mut BTreeMap<usize, String>,
+) {
+    let Some(text) = source.get(span.offset()..span.offset() + span.len()) else {
+        return;
+    };
+    let Some(paren) = text.find('(') else {
+        return;
+    };
+    let mut cursor = paren + 1;
+    for type_ in types {
+        let rest = &text[cursor..];
+        let Some(start) = rest.find(|c: char| !c.is_whitespace()) else {
+            return;
+        };
+        cursor += start;
+        let name = type_.to_string();
+        positions.insert(span.offset() + cursor, name.clone());
+        cursor += name.len();
+        let rest = &text[cursor..];
+        if let Some(comma) = rest.find(',') {
+            cursor += comma + 1;
+        }
+    }
 }

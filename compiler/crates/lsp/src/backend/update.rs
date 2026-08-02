@@ -74,15 +74,21 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
         let Some(root) = root else {
             return;
         };
-        let entry_path = [root.join("main.vn"), root.join("lib.vn")]
+        let manifest = root.join("vinyl.toml").exists();
+        let candidates = if manifest {
+            [root.join("src/main.vn"), root.join("src/lib.vn")]
+        } else {
+            [root.join("main.vn"), root.join("lib.vn")]
+        };
+        let entry_path = candidates
             .into_iter()
-            .find(|candidate| candidate.exists())
+            .find(|candidate| guard.vfs.source(candidate).is_some() || candidate.exists())
             .unwrap_or(path.clone());
         (guard.vfs.clone(), root, entry_path)
     };
 
     match analyze_workspace(&vfs, &root, &entry_path) {
-        Ok((analyses, diagnostics, resolver, module_table)) => {
+        Ok((analyses, diagnostics, resolver, module_table, publics, modules)) => {
             info!(files = analyses.len(), "workspace analysis complete");
             let entry_source = vfs.source(&entry_path).unwrap_or_default();
             let entry_line_index = LineIndex::new(&entry_source);
@@ -105,6 +111,8 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
                 let mut guard = state.write().await;
                 guard.resolver = Some(resolver);
                 guard.module_table = module_table;
+                guard.publics = publics;
+                guard.modules = modules;
                 guard.cache.extend(analyses);
                 if let Some(analysis) = guard.cache.get(&entry_path) {
                     for definition in &analysis.result.unused {

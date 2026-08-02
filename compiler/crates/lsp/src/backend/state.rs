@@ -8,7 +8,7 @@ use tower_lsp::lsp_types::{Location, Url};
 use tower_lsp::Client;
 use vinyl_resolver::Resolver;
 use vinyl_typecheck::module::ModuleTable;
-use vinyl_typecheck::Definition;
+use vinyl_typecheck::{Definition, SourceSpan};
 
 use crate::position::span_range;
 use crate::text::name_range;
@@ -21,6 +21,12 @@ pub(crate) struct Analysis {
     pub(crate) result: vinyl_typecheck::TypeckResult,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PublicSymbol {
+    pub(crate) path: PathBuf,
+    pub(crate) span: SourceSpan,
+}
+
 #[derive(Clone)]
 pub(crate) struct SourceDiagnostic {
     pub(crate) message: String,
@@ -30,11 +36,14 @@ pub(crate) struct SourceDiagnostic {
 
 pub(crate) type WorkspaceAnalyses = HashMap<PathBuf, Arc<Analysis>>;
 pub(crate) type WorkspaceDiagnostics = HashMap<PathBuf, Vec<SourceDiagnostic>>;
+pub(crate) type WorkspaceSymbols = HashMap<String, PublicSymbol>;
 pub(crate) type WorkspaceState = (
     WorkspaceAnalyses,
     WorkspaceDiagnostics,
     Resolver,
     ModuleTable,
+    WorkspaceSymbols,
+    HashMap<String, PathBuf>,
 );
 
 #[derive(Default)]
@@ -45,6 +54,8 @@ pub(crate) struct State {
     pub(crate) update_version: u64,
     pub(crate) resolver: Option<Resolver>,
     pub(crate) module_table: ModuleTable,
+    pub(crate) publics: WorkspaceSymbols,
+    pub(crate) modules: HashMap<String, PathBuf>,
 }
 
 pub(crate) struct Backend {

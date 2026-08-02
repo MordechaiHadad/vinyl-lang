@@ -12,6 +12,12 @@ pub struct HirExprRef {
 }
 
 #[derive(Debug, Clone)]
+pub struct FieldAccessRef {
+    pub span: SourceSpan,
+    pub object_type: Type,
+    pub name: String,
+}
+#[derive(Debug, Clone)]
 pub struct Definition {
     pub id: usize,
     pub name: String,
@@ -38,6 +44,8 @@ pub struct TypeckResult {
     pub definitions: HashMap<String, Vec<Definition>>,
     pub references: BTreeMap<usize, Definition>,
     pub unused: Vec<Definition>,
+    pub type_positions: BTreeMap<usize, String>,
+    pub field_accesses: BTreeMap<usize, FieldAccessRef>,
 }
 
 #[derive(Debug, Default)]
@@ -46,4 +54,5 @@ pub struct HirIndex {
     pub definitions: HashMap<String, Vec<Definition>>,
     pub references: BTreeMap<usize, Definition>,
     pub unused: Vec<Definition>,
+    pub field_accesses: BTreeMap<usize, FieldAccessRef>,
 }
