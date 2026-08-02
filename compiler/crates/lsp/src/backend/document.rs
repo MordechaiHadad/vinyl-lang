@@ -1,14 +1,17 @@
 use tower_lsp::lsp_types::*;
 use vinyl_typecheck::hir::HirItemKind;
 
-use crate::position::{offset_at, span_range};
 use crate::backend::definition::{definition_detail, function_signature};
 use crate::backend::state::Backend;
 use crate::backend::symbol::{resolve_symbol, target_definition};
+use crate::position::{offset_at, span_range};
 use crate::text::word_prefix;
 
 impl Backend {
-    pub(crate) async fn hover(&self, params: HoverParams) -> tower_lsp::jsonrpc::Result<Option<Hover>> {
+    pub(crate) async fn hover(
+        &self,
+        params: HoverParams,
+    ) -> tower_lsp::jsonrpc::Result<Option<Hover>> {
         let Some(analysis) = self
             .analysis(&params.text_document_position_params.text_document.uri)
             .await
@@ -66,18 +69,10 @@ impl Backend {
                 .iter()
                 .map(|item| {
                     let (name, kind) = match &item.kind {
-                        HirItemKind::Function(function) => {
-                            (&function.name, SymbolKind::FUNCTION)
-                        }
-                        HirItemKind::Struct(structure) => {
-                            (&structure.name, SymbolKind::STRUCT)
-                        }
-                        HirItemKind::TupleStruct(tuple) => {
-                            (&tuple.name, SymbolKind::STRUCT)
-                        }
-                        HirItemKind::Enum(enumeration) => {
-                            (&enumeration.name, SymbolKind::ENUM)
-                        }
+                        HirItemKind::Function(function) => (&function.name, SymbolKind::FUNCTION),
+                        HirItemKind::Struct(structure) => (&structure.name, SymbolKind::STRUCT),
+                        HirItemKind::TupleStruct(tuple) => (&tuple.name, SymbolKind::STRUCT),
+                        HirItemKind::Enum(enumeration) => (&enumeration.name, SymbolKind::ENUM),
                     };
                     DocumentSymbol {
                         name: name.clone(),

@@ -49,7 +49,6 @@ fn split_segments(source: &str, span: SourceSpan) -> Option<(usize, String, Stri
 pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
     let source = &analysis.source;
 
-
     if let Some(symbol) = resolve_type_position(analysis, offset) {
         return Some(symbol);
     }
@@ -81,7 +80,15 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
         .result
         .expr_at_pos
         .values()
-        .filter(|expression| span_contains((expression.span.offset(), expression.span.offset() + expression.span.len()), offset))
+        .filter(|expression| {
+            span_contains(
+                (
+                    expression.span.offset(),
+                    expression.span.offset() + expression.span.len(),
+                ),
+                offset,
+            )
+        })
         .min_by_key(|expression| expression.span.len());
     if let Some(expression) = innermost {
         return match &expression.kind {
@@ -118,7 +125,9 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                     None
                 }
             }
-            HirExpressionKind::Struct { span, type_name, .. } => {
+            HirExpressionKind::Struct {
+                span, type_name, ..
+            } => {
                 let type_end = span.offset() + type_name.len();
                 if offset < type_end {
                     Some(SymbolRef::TypeRef {
@@ -162,7 +171,10 @@ fn resolve_field_access(analysis: &Analysis, offset: usize) -> Option<SymbolRef>
         let name_start = access.span.offset() + access.span.len() - access.name.len();
         if offset >= name_start
             && span_contains(
-                (access.span.offset(), access.span.offset() + access.span.len()),
+                (
+                    access.span.offset(),
+                    access.span.offset() + access.span.len(),
+                ),
                 offset,
             )
         {
@@ -192,43 +204,51 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                     .cloned()
             }),
         SymbolRef::TypeRef { name, .. } => find_type_definition(analysis, name),
-        SymbolRef::FieldRef { object_type, name, .. } => {
+        SymbolRef::FieldRef {
+            object_type, name, ..
+        } => {
             let type_name = type_name(object_type)?;
-            analysis.result.items.iter().find_map(|item| match &item.kind {
-                HirItemKind::Struct(structure) if structure.name == type_name => {
-                    structure.fields.iter().find(|field| field.name == *name).map(|field| {
-                        Definition {
+            analysis
+                .result
+                .items
+                .iter()
+                .find_map(|item| match &item.kind {
+                    HirItemKind::Struct(structure) if structure.name == type_name => structure
+                        .fields
+                        .iter()
+                        .find(|field| field.name == *name)
+                        .map(|field| Definition {
                             id: 0,
                             name: name.clone(),
                             kind: DefinitionKind::Variable,
                             span: field.span,
                             scope_depth: 1,
                             type_name: Some(field.type_.to_string()),
-                        }
-                    })
-                }
-                _ => None,
-            })
+                        }),
+                    _ => None,
+                })
         }
-        SymbolRef::VariantRef { type_name, name, .. } => {
-            analysis.result.items.iter().find_map(|item| match &item.kind {
-                HirItemKind::Enum(enumeration) if enumeration.name == *type_name => {
-                    enumeration
-                        .variants
-                        .iter()
-                        .find(|variant| variant.name == *name)
-                        .map(|variant| Definition {
-                            id: 0,
-                            name: name.clone(),
-                            kind: DefinitionKind::Enum,
-                            span: variant.span,
-                            scope_depth: 1,
-                            type_name: None,
-                        })
-                }
+        SymbolRef::VariantRef {
+            type_name, name, ..
+        } => analysis
+            .result
+            .items
+            .iter()
+            .find_map(|item| match &item.kind {
+                HirItemKind::Enum(enumeration) if enumeration.name == *type_name => enumeration
+                    .variants
+                    .iter()
+                    .find(|variant| variant.name == *name)
+                    .map(|variant| Definition {
+                        id: 0,
+                        name: name.clone(),
+                        kind: DefinitionKind::Enum,
+                        span: variant.span,
+                        scope_depth: 1,
+                        type_name: None,
+                    }),
                 _ => None,
-            })
-        }
+            }),
         SymbolRef::ModuleRef { name } => Some(Definition {
             id: 0,
             name: name.clone(),
@@ -274,13 +294,15 @@ impl Backend {
                 let definition = find_type_definition(analysis, name)?;
                 self.location_for_definition(&definition).await
             }
-            SymbolRef::FieldRef { object_type, name, .. } => {
+            SymbolRef::FieldRef {
+                object_type, name, ..
+            } => {
                 let type_name = type_name(object_type)?;
                 self.field_location(analysis, type_name, name).await
             }
-            SymbolRef::VariantRef { type_name, name, .. } => {
-                self.variant_location(analysis, type_name, name).await
-            }
+            SymbolRef::VariantRef {
+                type_name, name, ..
+            } => self.variant_location(analysis, type_name, name).await,
             SymbolRef::ModuleRef { name, .. } => {
                 let path = self.state.read().await.modules.get(name)?.clone();
                 Some(Location::new(
@@ -294,12 +316,11 @@ impl Backend {
     async fn module_item_location(&self, module: &str, item: &str) -> Option<Location> {
         let module_path = self.state.read().await.modules.get(module)?.clone();
         let publics = self.state.read().await.publics.clone();
-        let (name, public) = publics
-            .iter()
-            .find(|(name, public)| {
-                *name == item && crate::backend::workspace::same_file(&public.path, &module_path)
-            })?;
-        self.location_for_symbol(&public.path, public.span, name).await
+        let (name, public) = publics.iter().find(|(name, public)| {
+            *name == item && crate::backend::workspace::same_file(&public.path, &module_path)
+        })?;
+        self.location_for_symbol(&public.path, public.span, name)
+            .await
     }
 
     async fn location_for_definition(&self, definition: &Definition) -> Option<Location> {
@@ -336,7 +357,12 @@ impl Backend {
         None
     }
 
-    async fn field_location(&self, analysis: &Analysis, type_name: &str, name: &str) -> Option<Location> {
+    async fn field_location(
+        &self,
+        analysis: &Analysis,
+        type_name: &str,
+        name: &str,
+    ) -> Option<Location> {
         let others = self.analyses().await;
         let mut candidates = vec![analysis];
         for candidate in &others {
@@ -345,12 +371,16 @@ impl Backend {
             }
         }
         if let Some(candidate) = candidates.into_iter().next() {
-            let field = candidate.result.items.iter().find_map(|item| match &item.kind {
-                HirItemKind::Struct(structure) if structure.name == type_name => {
-                    structure.fields.iter().find(|field| field.name == name)
-                }
-                _ => None,
-            })?;
+            let field = candidate
+                .result
+                .items
+                .iter()
+                .find_map(|item| match &item.kind {
+                    HirItemKind::Struct(structure) if structure.name == type_name => {
+                        structure.fields.iter().find(|field| field.name == name)
+                    }
+                    _ => None,
+                })?;
             let (start, end) = name_range(
                 &candidate.source,
                 (field.span.offset(), field.span.offset() + field.span.len()),
@@ -365,7 +395,12 @@ impl Backend {
         }
     }
 
-    async fn variant_location(&self, analysis: &Analysis, type_name: &str, name: &str) -> Option<Location> {
+    async fn variant_location(
+        &self,
+        analysis: &Analysis,
+        type_name: &str,
+        name: &str,
+    ) -> Option<Location> {
         let others = self.analyses().await;
         let mut candidates = vec![analysis];
         for candidate in &others {
@@ -374,15 +409,23 @@ impl Backend {
             }
         }
         if let Some(candidate) = candidates.into_iter().next() {
-            let variant = candidate.result.items.iter().find_map(|item| match &item.kind {
-                HirItemKind::Enum(enumeration) if enumeration.name == type_name => {
-                    enumeration.variants.iter().find(|variant| variant.name == name)
-                }
-                _ => None,
-            })?;
+            let variant = candidate
+                .result
+                .items
+                .iter()
+                .find_map(|item| match &item.kind {
+                    HirItemKind::Enum(enumeration) if enumeration.name == type_name => enumeration
+                        .variants
+                        .iter()
+                        .find(|variant| variant.name == name),
+                    _ => None,
+                })?;
             let (start, end) = name_range(
                 &candidate.source,
-                (variant.span.offset(), variant.span.offset() + variant.span.len()),
+                (
+                    variant.span.offset(),
+                    variant.span.offset() + variant.span.len(),
+                ),
                 name,
             );
             Some(Location::new(

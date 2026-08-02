@@ -2,19 +2,19 @@ use std::path::Path;
 
 use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
-use vinyl_resolver::Resolver;
-use vinyl_typecheck::hir::HirItemKind;
+use vinyl_resolver::resolver::Resolver;
 use vinyl_typecheck::DefinitionKind;
+use vinyl_typecheck::hir::HirItemKind;
 
-use crate::consts::KEYWORDS;
 use crate::backend::definition::definition_detail;
-use crate::position::{offset_at, position_at};
 use crate::backend::state::{Analysis, Backend, State};
+use crate::backend::workspace::{non_canonical_key, relative_import_path, same_file};
+use crate::consts::KEYWORDS;
+use crate::position::{offset_at, position_at};
 use crate::text::{
     current_imports, detect_import_prefix, import_edit_range, module_ref_prefix, word_before_colon,
     word_prefix,
 };
-use crate::backend::workspace::{non_canonical_key, relative_import_path, same_file};
 
 impl Backend {
     pub(crate) async fn completion(
@@ -59,14 +59,13 @@ impl Backend {
             });
 
             if is_colon_trigger && !in_import_context && module_ref_simple.is_none() {
-                let has_pending_module = word_before_colon(&current_source, offset).is_some_and(
-                    |word| {
+                let has_pending_module =
+                    word_before_colon(&current_source, offset).is_some_and(|word| {
                         resolver
                             .all_modules()
                             .values()
                             .any(|info| info.import_name == word)
-                    },
-                );
+                    });
                 if !has_pending_module {
                     return Ok(Some(CompletionResponse::Array(Vec::new())));
                 }
@@ -196,11 +195,8 @@ fn module_ref_completions(
                 DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
                 _ => continue,
             };
-            let detail = definition_detail(
-                definition,
-                &module_analysis.result,
-                &module_analysis.source,
-            );
+            let detail =
+                definition_detail(definition, &module_analysis.result, &module_analysis.source);
             let cursor_pos = position_at(current_line_index, offset);
             let edit_range = Range::new(
                 position_at(current_line_index, offset.saturating_sub(partial.len())),
@@ -211,7 +207,8 @@ fn module_ref_completions(
                 kind: Some(kind),
                 detail,
                 text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
-                    edit_range, name.clone(),
+                    edit_range,
+                    name.clone(),
                 ))),
                 ..CompletionItem::default()
             });
@@ -261,11 +258,8 @@ fn auto_import_completions(
                 DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
                 _ => continue,
             };
-            let detail = definition_detail(
-                definition,
-                &module_analysis.result,
-                &module_analysis.source,
-            );
+            let detail =
+                definition_detail(definition, &module_analysis.result, &module_analysis.source);
             let detail = Some(
                 detail
                     .map(|d| format!("{d} (from {import_path})"))
@@ -330,10 +324,7 @@ fn import_prefix_completions(
             detail: Some("module".to_string()),
             text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
                 Range::new(
-                    position_at(
-                        current_line_index,
-                        offset.saturating_sub(partial.len()),
-                    ),
+                    position_at(current_line_index, offset.saturating_sub(partial.len())),
                     position_at(current_line_index, offset),
                 ),
                 stem,

@@ -253,7 +253,13 @@ fn collect_type_positions(items: &[Item], source: &str) -> BTreeMap<usize, Strin
         match item {
             Item::Function(f) => {
                 if let Some(offset) = return_type_offset(source, f.span) {
-                    positions.insert(offset, f.return_type.as_ref().map(ToString::to_string).unwrap_or_default());
+                    positions.insert(
+                        offset,
+                        f.return_type
+                            .as_ref()
+                            .map(ToString::to_string)
+                            .unwrap_or_default(),
+                    );
                 }
                 for param in &f.params {
                     if let Some(offset) = type_after_colon(source, param.span) {
@@ -279,7 +285,12 @@ fn collect_type_positions(items: &[Item], source: &str) -> BTreeMap<usize, Strin
                     if let Some(data) = &variant.data {
                         match data {
                             EnumVariantData::Tuple(types) => {
-                                collect_parenthesized_types(source, variant.span, types, &mut positions);
+                                collect_parenthesized_types(
+                                    source,
+                                    variant.span,
+                                    types,
+                                    &mut positions,
+                                );
                             }
                             EnumVariantData::Struct(fields) => {
                                 for field in fields {

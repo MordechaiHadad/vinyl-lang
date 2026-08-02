@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
 
-use crate::position::{full_range, offset_at};
 use crate::backend::state::Backend;
-use crate::text::{current_imports, import_edit_range, word_prefix};
 use crate::backend::workspace::{non_canonical_key, relative_import_path, same_file};
+use crate::position::{full_range, offset_at};
+use crate::text::{current_imports, import_edit_range, word_prefix};
 
 impl Backend {
     pub(crate) async fn code_action(
@@ -113,7 +113,10 @@ impl Backend {
         Ok(Some(actions))
     }
 
-    pub(crate) async fn format(&self, uri: Url) -> tower_lsp::jsonrpc::Result<Option<Vec<TextEdit>>> {
+    pub(crate) async fn format(
+        &self,
+        uri: Url,
+    ) -> tower_lsp::jsonrpc::Result<Option<Vec<TextEdit>>> {
         let Some(path) = uri.to_file_path().ok() else {
             return Ok(None);
         };

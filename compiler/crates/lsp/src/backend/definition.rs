@@ -87,16 +87,12 @@ pub(crate) fn definition_detail(
     match definition.kind {
         DefinitionKind::Function => result.items.iter().find_map(|item| match &item.kind {
             HirItemKind::Function(f) if f.name == definition.name => {
-                let module = definition.name.contains("::").then(|| {
-                    definition.name.split("::").next().unwrap().to_string()
-                });
-                let mut function = f.clone();
-                function.name = definition
+                let module = definition
                     .name
-                    .rsplit("::")
-                    .next()
-                    .unwrap()
-                    .to_string();
+                    .contains("::")
+                    .then(|| definition.name.split("::").next().unwrap().to_string());
+                let mut function = f.clone();
+                function.name = definition.name.rsplit("::").next().unwrap().to_string();
                 let mut signature = function_signature(&function, source);
                 if let Some(module) = module {
                     signature.push_str(&format!(" (from {module})"));

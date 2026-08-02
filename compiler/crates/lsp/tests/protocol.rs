@@ -466,7 +466,10 @@ fn serves_core_lsp_features_over_stdio() {
             "auto-import completion should have additionalTextEdits"
         );
         assert!(
-            helper["detail"].as_str().unwrap().contains("from parent::utils"),
+            helper["detail"]
+                .as_str()
+                .unwrap()
+                .contains("from parent::utils"),
             "auto-import detail should mention module: got {:?}",
             helper["detail"]
         );
@@ -542,20 +545,37 @@ fn completion_module_ref() {
     let resp = lsp.response(2);
     let items = resp["result"].as_array().unwrap();
 
-    let answer = items.iter().find(|i| i["label"] == "answer")
+    let answer = items
+        .iter()
+        .find(|i| i["label"] == "answer")
         .expect("module-ref should offer answer");
     assert_eq!(answer["kind"], 3, "answer should be a function (kind=3)");
-    assert!(answer["textEdit"].is_object(), "module-ref should have textEdit");
+    assert!(
+        answer["textEdit"].is_object(),
+        "module-ref should have textEdit"
+    );
 
-    assert!(answer["textEdit"].is_object(), "module-ref should have textEdit");
+    assert!(
+        answer["textEdit"].is_object(),
+        "module-ref should have textEdit"
+    );
     let text_edit = &answer["textEdit"];
     assert_eq!(text_edit["newText"], "answer", "newText mismatch");
-    assert_eq!(text_edit["range"]["start"], json!({"line": 2, "character": 10}));
-    assert_eq!(text_edit["range"]["end"], json!({"line": 2, "character": 13}));
+    assert_eq!(
+        text_edit["range"]["start"],
+        json!({"line": 2, "character": 10})
+    );
+    assert_eq!(
+        text_edit["range"]["end"],
+        json!({"line": 2, "character": 13})
+    );
 
     // there should be NO auto-import "math::answer" since module is already imported
     let auto = items.iter().find(|i| i["label"] == "math::answer");
-    assert!(auto.is_none(), "no auto-import when module is already imported");
+    assert!(
+        auto.is_none(),
+        "no auto-import when module is already imported"
+    );
 
     let _ = lsp;
 }
@@ -597,7 +617,10 @@ fn completion_colon_trigger_guard() {
     let resp = lsp.response(2);
     let result = &resp["result"];
     assert!(result.is_array(), "result should be an array");
-    assert!(result.as_array().unwrap().is_empty(), ":: trigger in plain code should return empty");
+    assert!(
+        result.as_array().unwrap().is_empty(),
+        ":: trigger in plain code should return empty"
+    );
 
     let _ = lsp;
 }
@@ -650,7 +673,10 @@ fn completion_colon_after_module() {
     let resp = lsp.response(2);
     let items = resp["result"].as_array().unwrap();
     let answer = items.iter().find(|i| i["label"] == "math::answer");
-    assert!(answer.is_some(), "\":\" after module name should show completions for answer");
+    assert!(
+        answer.is_some(),
+        "\":\" after module name should show completions for answer"
+    );
 
     let _ = lsp;
 }
@@ -709,10 +735,19 @@ fn completion_no_duplicate_imported_colon() {
     }));
     let resp = lsp.response(2);
     let items = resp["result"].as_array().unwrap();
-    let math_answer = items.iter().filter(|i| i["label"] == "math::answer").count();
-    assert_eq!(math_answer, 1,
+    let math_answer = items
+        .iter()
+        .filter(|i| i["label"] == "math::answer")
+        .count();
+    assert_eq!(
+        math_answer,
+        1,
         "math: should offer math::answer exactly once, got: {:?}",
-        items.iter().map(|i| i["label"].as_str().unwrap_or("")).collect::<Vec<_>>());
+        items
+            .iter()
+            .map(|i| i["label"].as_str().unwrap_or(""))
+            .collect::<Vec<_>>()
+    );
 
     let _ = lsp;
 }
@@ -761,10 +796,15 @@ fn completion_module_ref_reopen() {
     }));
     let resp = lsp.response(2);
     let items = resp["result"].as_array().unwrap();
-    let answer = items.iter().find(|i| i["label"] == "answer")
+    let answer = items
+        .iter()
+        .find(|i| i["label"] == "answer")
         .expect("keybind reopen at math:: should offer answer");
     assert_eq!(answer["kind"], 3, "answer should be a function (kind=3)");
-    assert!(answer["textEdit"].is_object(), "module-ref should have textEdit");
+    assert!(
+        answer["textEdit"].is_object(),
+        "module-ref should have textEdit"
+    );
 
     let _ = lsp;
 }
@@ -826,7 +866,14 @@ fn completion_colon_reopen() {
     let resp = lsp.response(2);
     let items = resp["result"].as_array().unwrap();
     let math_answer = items.iter().find(|i| i["label"] == "math::answer");
-    assert!(math_answer.is_some(), "colon reopen should show math::answer, got: {:?}", items.iter().map(|i| i["label"].as_str()).collect::<Vec<_>>());
+    assert!(
+        math_answer.is_some(),
+        "colon reopen should show math::answer, got: {:?}",
+        items
+            .iter()
+            .map(|i| i["label"].as_str())
+            .collect::<Vec<_>>()
+    );
 
     // retype to "math::" and trigger ":" again
     lsp.send(json!({
@@ -849,7 +896,14 @@ fn completion_colon_reopen() {
     let resp = lsp.response(3);
     let items = resp["result"].as_array().unwrap();
     let answer = items.iter().find(|i| i["label"] == "answer");
-    assert!(answer.is_some(), "second colon reopen should show answer, got: {:?}", items.iter().map(|i| i["label"].as_str()).collect::<Vec<_>>());
+    assert!(
+        answer.is_some(),
+        "second colon reopen should show answer, got: {:?}",
+        items
+            .iter()
+            .map(|i| i["label"].as_str())
+            .collect::<Vec<_>>()
+    );
 
     let _ = lsp;
 }
@@ -900,10 +954,16 @@ fn completion_private_filtered() {
     let items = resp["result"].as_array().unwrap();
 
     let visible = items.iter().find(|i| i["label"] == "visible");
-    assert!(visible.is_some(), "public function 'visible' should appear in completions");
+    assert!(
+        visible.is_some(),
+        "public function 'visible' should appear in completions"
+    );
 
     let hidden = items.iter().find(|i| i["label"] == "hidden");
-    assert!(hidden.is_none(), "private function 'hidden' should NOT appear in completions");
+    assert!(
+        hidden.is_none(),
+        "private function 'hidden' should NOT appear in completions"
+    );
 
     let _ = lsp;
 }
@@ -954,7 +1014,14 @@ fn import_prefix_completion_reopen() {
     let resp = lsp.response(2);
     let items = resp["result"].as_array().unwrap();
     let math = items.iter().find(|i| i["label"] == "math");
-    assert!(math.is_some(), "import parent:: should show math module, got: {:?}", items.iter().map(|i| i["label"].as_str()).collect::<Vec<_>>());
+    assert!(
+        math.is_some(),
+        "import parent:: should show math module, got: {:?}",
+        items
+            .iter()
+            .map(|i| i["label"].as_str())
+            .collect::<Vec<_>>()
+    );
 
     let _ = lsp;
 }
@@ -1019,8 +1086,7 @@ fn goto_definition_from_non_entry_file() {
     }));
     let definition = lsp.response(2);
     assert_eq!(
-        definition["result"]["uri"],
-        math_uri,
+        definition["result"]["uri"], math_uri,
         "goto-definition from non-entry file should resolve to math.vn, got: {}",
         definition
     );
@@ -1063,7 +1129,10 @@ fn private_access_diagnostic() {
     }));
     let diag = lsp.notification("textDocument/publishDiagnostics");
     let diagnostics = diag["params"]["diagnostics"].as_array().unwrap();
-    assert!(!diagnostics.is_empty(), "calling private function should produce a diagnostic");
+    assert!(
+        !diagnostics.is_empty(),
+        "calling private function should produce a diagnostic"
+    );
     let msg = diagnostics[0]["message"].as_str().unwrap();
     assert!(
         msg.contains("private") || msg.contains("not found"),
@@ -1234,7 +1303,11 @@ fn rename_local_symbol_is_scoped() {
     }));
     let rename = lsp.response(2);
     let changes = rename["result"]["changes"].as_object().unwrap();
-    assert_eq!(changes.len(), 1, "rename should only touch main.vn, got: {rename}");
+    assert_eq!(
+        changes.len(),
+        1,
+        "rename should only touch main.vn, got: {rename}"
+    );
     let edits = changes[&main_uri].as_array().unwrap();
     let mut ranges: Vec<(u64, u64, u64)> = edits
         .iter()
@@ -1303,8 +1376,7 @@ fn goto_definition_across_module_with_type_error() {
     }));
     let definition = lsp.response(2);
     assert_eq!(
-        definition["result"]["uri"],
-        math_uri,
+        definition["result"]["uri"], math_uri,
         "goto-definition should still resolve when the target module has a type error, got: {}",
         definition
     );
@@ -1343,8 +1415,14 @@ fn goto_definition_parent_import_through_pipe() {
     lsp.response(1);
     lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
     for (uri, text) in [
-        (main_uri.clone(), "import parent::math;\n\nfn main() {\n    69 |> math::double()\n}\n"),
-        (math_uri.clone(), "public fn double(n: int): int {\n    n * 2\n}\n"),
+        (
+            main_uri.clone(),
+            "import parent::math;\n\nfn main() {\n    69 |> math::double()\n}\n",
+        ),
+        (
+            math_uri.clone(),
+            "public fn double(n: int): int {\n    n * 2\n}\n",
+        ),
     ] {
         lsp.send(json!({
             "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -1363,7 +1441,12 @@ fn goto_definition_parent_import_through_pipe() {
         "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 16 } }
     }));
     let hover = lsp.response(3);
-    assert!(hover["result"]["contents"].as_str().unwrap().contains("fn double"));
+    assert!(
+        hover["result"]["contents"]
+            .as_str()
+            .unwrap()
+            .contains("fn double")
+    );
 }
 
 #[test]
@@ -1395,10 +1478,12 @@ fn imported_file_change_clears_parent_diagnostic() {
                 "text": "import parent::math;\n\nfn main() {\n    69 |> math::double()\n}\n" }
         }
     }));
-    assert!(lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -1407,10 +1492,12 @@ fn imported_file_change_clears_parent_diagnostic() {
                 "text": "public fn double(n: int): int {\n    n * 2\n}\n" }
         }
     }));
-    assert!(lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didChange",
@@ -1421,10 +1508,13 @@ fn imported_file_change_clears_parent_diagnostic() {
     }));
     let diagnostics = lsp.notification("textDocument/publishDiagnostics");
     assert_eq!(diagnostics["params"]["uri"], main_uri);
-    assert!(diagnostics["params"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .is_empty(), "main diagnostics should be cleared: {diagnostics}");
+    assert!(
+        diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "main diagnostics should be cleared: {diagnostics}"
+    );
 }
 
 #[test]
@@ -1513,12 +1603,14 @@ fn incremental_changes_update_the_full_document() {
         }
     }));
     let diagnostics = lsp.diagnostics_for(&math_uri);
-    assert!(diagnostics["params"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|diagnostic| diagnostic["message"] == "unexpected token `6`"),
-        "intermediate edit should report its temporary parse error: {diagnostics}");
+    assert!(
+        diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|diagnostic| diagnostic["message"] == "unexpected token `6`"),
+        "intermediate edit should report its temporary parse error: {diagnostics}"
+    );
 
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didChange",
@@ -1535,10 +1627,13 @@ fn incremental_changes_update_the_full_document() {
         }
     }));
     let recovered = lsp.diagnostics_for(&math_uri);
-    assert!(recovered["params"]["diagnostics"]
-        .as_array()
-        .unwrap()
-        .is_empty(), "recovered document diagnostics should clear: {recovered}");
+    assert!(
+        recovered["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "recovered document diagnostics should clear: {recovered}"
+    );
 }
 
 #[test]
@@ -1580,8 +1675,7 @@ fn goto_definition_on_type_annotation() {
     }));
     let definition = lsp.response(2);
     assert_eq!(
-        definition["result"]["uri"],
-        main_uri,
+        definition["result"]["uri"], main_uri,
         "goto-definition on a type annotation should resolve to the struct, got: {}",
         definition
     );
@@ -1638,8 +1732,7 @@ fn goto_definition_on_struct_field() {
     }));
     let definition = lsp.response(2);
     assert_eq!(
-        definition["result"]["uri"],
-        main_uri,
+        definition["result"]["uri"], main_uri,
         "goto-definition on a struct field access should resolve to the field, got: {}",
         definition
     );
@@ -1696,8 +1789,7 @@ fn goto_definition_on_enum_variant() {
     }));
     let definition = lsp.response(2);
     assert_eq!(
-        definition["result"]["uri"],
-        main_uri,
+        definition["result"]["uri"], main_uri,
         "goto-definition on an enum variant should resolve to the variant, got: {}",
         definition
     );
@@ -1759,8 +1851,7 @@ fn goto_definition_on_module_segment() {
     }));
     let definition = lsp.response(2);
     assert_eq!(
-        definition["result"]["uri"],
-        math_uri,
+        definition["result"]["uri"], math_uri,
         "goto-definition on a module segment should resolve to the module file, got: {}",
         definition
     );
@@ -1931,7 +2022,11 @@ fn rename_updates_three_modules() {
     );
     for uri in [&b_uri, &a_uri, &c_uri] {
         let edits = changes.get(uri).unwrap().as_array().unwrap();
-        assert_eq!(edits.len(), 1, "{uri} should get exactly one edit, got: {rename}");
+        assert_eq!(
+            edits.len(),
+            1,
+            "{uri} should get exactly one edit, got: {rename}"
+        );
         assert_eq!(edits[0]["newText"], "worker2");
     }
     let b_edits = changes[&b_uri].as_array().unwrap();
@@ -2051,9 +2146,11 @@ fn format_noop_and_code_action_hidden_when_already_formatted() {
     }));
     let actions = lsp.response(3);
     assert!(
-        !actions["result"].as_array().unwrap().iter().any(|action| {
-            action["title"].as_str() == Some("Format document")
-        }),
+        !actions["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|action| { action["title"].as_str() == Some("Format document") }),
         "an already-formatted file should not offer a Format document action, got: {}",
         actions
     );
@@ -2093,7 +2190,10 @@ fn formatting_is_idempotent_after_reopen() {
             "options": { "tabSize": 4, "insertSpaces": true }
         }
     }));
-    let formatted = lsp.response(2)["result"][0]["newText"].as_str().unwrap().to_string();
+    let formatted = lsp.response(2)["result"][0]["newText"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didClose",
@@ -2189,7 +2289,10 @@ fn formatting_is_idempotent_with_crlf() {
             "options": { "tabSize": 4, "insertSpaces": true }
         }
     }));
-    let formatted = lsp.response(2)["result"][0]["newText"].as_str().unwrap().to_string();
+    let formatted = lsp.response(2)["result"][0]["newText"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert!(
         formatted.contains("\r\n"),
         "format of a CRLF file should keep CRLF line endings, got: {formatted:?}"
@@ -2258,8 +2361,10 @@ fn hover_and_signature_help_preserve_written_primitive_names() {
         );
     }
 
-    lsp.send(json!({"jsonrpc": "2.0", "id": 6, "method": "textDocument/signatureHelp", "params": {
-        "textDocument": { "uri": main_uri }, "position": { "line": 4, "character": 9 } }}));
+    lsp.send(
+        json!({"jsonrpc": "2.0", "id": 6, "method": "textDocument/signatureHelp", "params": {
+        "textDocument": { "uri": main_uri }, "position": { "line": 4, "character": 9 } }}),
+    );
     let sig = lsp.response(6);
     let label = sig["result"]["signatures"][0]["label"].as_str().unwrap();
     assert_eq!(
@@ -2267,5 +2372,3 @@ fn hover_and_signature_help_preserve_written_primitive_names() {
         "signature help should preserve the written primitive name, got: {label}"
     );
 }
-
-

@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use vinyl_resolver::{DiskFileSystem, FileSystem, ResolveDiagnostic};
+use vinyl_resolver::{error::ResolveDiagnostic, structs::DiskFileSystem, traits::FileSystem};
 
 #[derive(Default, Clone)]
 pub struct Vfs {

@@ -1,7 +1,10 @@
 use std::{collections::HashMap, fs, path::PathBuf};
 
 use std::path::Path;
-use vinyl_resolver::{FileSystem, ImportPrefix, ResolveDiagnostic, Resolver, ResolverMode};
+
+use vinyl_resolver::ResolveDiagnostic;
+use vinyl_resolver::resolver::{ImportPrefix, Resolver, ResolverMode};
+use vinyl_resolver::traits::FileSystem;
 
 #[derive(Debug)]
 struct TestFileSystem(HashMap<PathBuf, String>);

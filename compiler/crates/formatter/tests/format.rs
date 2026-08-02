@@ -1,6 +1,8 @@
 use std::{fs, path::PathBuf};
 
-use vinyl_formatter::{FormatterConfig, format_project, format_range, format_source, format_source_with_config};
+use vinyl_formatter::{
+    FormatterConfig, format_project, format_range, format_source, format_source_with_config,
+};
 
 fn script_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
     let root = std::env::temp_dir().join(format!("vinyl_formatter_script_{name}"));

@@ -84,7 +84,11 @@ pub(crate) fn word_before_colon(source: &str, offset: usize) -> Option<String> {
         .map(|i| i + 1)
         .unwrap_or(0);
     let word = &before[word_start..offset - 1];
-    if word.is_empty() { None } else { Some(word.to_string()) }
+    if word.is_empty() {
+        None
+    } else {
+        Some(word.to_string())
+    }
 }
 
 pub(crate) fn module_ref_prefix(source: &str, offset: usize) -> Option<(String, String)> {
@@ -92,9 +96,14 @@ pub(crate) fn module_ref_prefix(source: &str, offset: usize) -> Option<(String, 
     let before = &source[..offset];
     let bytes = source.as_bytes();
 
-    let colon_at = before.rfind("::")
+    let colon_at = before
+        .rfind("::")
         .or_else(|| {
-            if offset >= 1 && offset < source.len() && bytes[offset - 1] == b':' && bytes[offset] == b':' {
+            if offset >= 1
+                && offset < source.len()
+                && bytes[offset - 1] == b':'
+                && bytes[offset] == b':'
+            {
                 Some(offset - 1)
             } else {
                 None

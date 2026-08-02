@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use line_index::LineIndex;
 use tokio::sync::RwLock;
-use tower_lsp::lsp_types::{Location, Url};
 use tower_lsp::Client;
-use vinyl_resolver::Resolver;
+use tower_lsp::lsp_types::{Location, Url};
+use vinyl_resolver::resolver::Resolver;
 use vinyl_typecheck::module::ModuleTable;
 use vinyl_typecheck::{Definition, SourceSpan};
 
@@ -106,7 +106,10 @@ impl Backend {
                         }
                         None => (*offset, *offset + referenced.name.len()),
                     };
-                    locations.push(Location::new(uri.clone(), span_range(line_index, start, end - start)));
+                    locations.push(Location::new(
+                        uri.clone(),
+                        span_range(line_index, start, end - start),
+                    ));
                 }
                 if let Some(definition) = analysis
                     .result
@@ -117,10 +120,16 @@ impl Backend {
                 {
                     let (start, end) = name_range(
                         &analysis.source,
-                        (definition.span.offset(), definition.span.offset() + definition.span.len()),
+                        (
+                            definition.span.offset(),
+                            definition.span.offset() + definition.span.len(),
+                        ),
                         &definition.name,
                     );
-                    locations.push(Location::new(uri.clone(), span_range(line_index, start, end - start)));
+                    locations.push(Location::new(
+                        uri.clone(),
+                        span_range(line_index, start, end - start),
+                    ));
                 }
                 locations
             })

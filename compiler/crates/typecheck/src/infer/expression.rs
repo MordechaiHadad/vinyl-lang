@@ -192,7 +192,10 @@ impl InferState {
                     .collect();
                 let hir_args = hir_args?;
 
-                if let Expression::ValuePath { segments, span: function_span } = function.as_ref()
+                if let Expression::ValuePath {
+                    segments,
+                    span: function_span,
+                } = function.as_ref()
                     && segments.len() == 2
                     && let Some(module_function) = self
                         .module_table

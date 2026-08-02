@@ -5,7 +5,7 @@ use thiserror::Error;
 pub enum FormatError {
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Resolve(#[from] vinyl_resolver::ResolveDiagnostic),
+    Resolve(#[from] vinyl_resolver::error::ResolveDiagnostic),
 
     #[error(transparent)]
     #[diagnostic(transparent)]

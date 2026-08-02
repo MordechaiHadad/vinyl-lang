@@ -5,7 +5,7 @@ use std::sync::Arc;
 use eyre::{Result, eyre};
 use line_index::LineIndex;
 use vinyl_parser::ast::item::Item;
-use vinyl_resolver::{ImportPrefix, Resolver, ResolverMode};
+use vinyl_resolver::resolver::{ImportPrefix, Resolver, ResolverMode};
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
 use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
@@ -90,8 +90,16 @@ pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-pub(crate) fn non_canonical_key(path: &Path, resolver: &Resolver, workspace_root: &Path) -> PathBuf {
-    let plain = PathBuf::from(path.to_string_lossy().trim_start_matches(r"\\?\").to_string());
+pub(crate) fn non_canonical_key(
+    path: &Path,
+    resolver: &Resolver,
+    workspace_root: &Path,
+) -> PathBuf {
+    let plain = PathBuf::from(
+        path.to_string_lossy()
+            .trim_start_matches(r"\\?\")
+            .to_string(),
+    );
     let source_root = match resolver.mode() {
         ResolverMode::Manifest => resolver.root().join("src"),
         ResolverMode::Script => resolver.root().to_path_buf(),
@@ -102,7 +110,11 @@ pub(crate) fn non_canonical_key(path: &Path, resolver: &Resolver, workspace_root
         .unwrap_or(plain)
 }
 
-pub(crate) fn relative_import_path(from_file: &Path, to_module: &Path, resolver: &Resolver) -> String {
+pub(crate) fn relative_import_path(
+    from_file: &Path,
+    to_module: &Path,
+    resolver: &Resolver,
+) -> String {
     let to_stem = to_module
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
@@ -120,14 +132,21 @@ pub(crate) fn relative_import_path(from_file: &Path, to_module: &Path, resolver:
     };
     if let Ok(relative) = to_module.strip_prefix(&source_root) {
         let relative = relative.with_extension("");
-        let relative = relative.to_string_lossy().replace('\\', "/").replace('/', "::");
+        let relative = relative
+            .to_string_lossy()
+            .replace('\\', "/")
+            .replace('/', "::");
         format!("parent::{relative}")
     } else {
         to_stem
     }
 }
 
-pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Result<WorkspaceState> {
+pub(crate) fn analyze_workspace(
+    vfs: &Vfs,
+    root: &Path,
+    entry_path: &Path,
+) -> Result<WorkspaceState> {
     let vfs_map: HashMap<PathBuf, String> = vfs.files().clone();
     let fs = Box::new(LspFileSystem::new(vfs_map));
     let mut resolver = Resolver::detect_with(root, fs).map_err(|e| eyre!("resolver error: {e}"))?;
@@ -161,7 +180,12 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
                 &mut visited,
                 &mut diagnostics,
             );
-            match analyze_with_diagnostics(entry_path, &entry_source, &all_items, &entry_module_table) {
+            match analyze_with_diagnostics(
+                entry_path,
+                &entry_source,
+                &all_items,
+                &entry_module_table,
+            ) {
                 Ok(analysis) => {
                     analyses.insert(entry_path.to_path_buf(), analysis);
                 }
@@ -195,8 +219,7 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
         let (source, items) = match parse_file_with_diagnostics(vfs, file) {
             Ok(result) => result,
             Err(file_diagnostics) => {
-                diagnostics
-                    .insert(non_canonical_key(file, &resolver, root), file_diagnostics);
+                diagnostics.insert(non_canonical_key(file, &resolver, root), file_diagnostics);
                 continue;
             }
         };
@@ -235,7 +258,14 @@ pub(crate) fn analyze_workspace(vfs: &Vfs, root: &Path, entry_path: &Path) -> Re
         .iter()
         .map(|(_, info)| (info.import_name.clone(), info.file_path.clone()))
         .collect();
-    Ok((analyses, diagnostics, resolver, entry_module_table, publics, modules))
+    Ok((
+        analyses,
+        diagnostics,
+        resolver,
+        entry_module_table,
+        publics,
+        modules,
+    ))
 }
 
 fn collect_publics(items: &[Item], path: &Path, publics: &mut HashMap<String, PublicSymbol>) {
@@ -283,36 +313,38 @@ fn collect_modules(
                     diagnostics
                         .entry(non_canonical_key(from, resolver, workspace_root))
                         .or_default()
-                        .push(
-                            SourceDiagnostic {
-                                message: format!("{err}"),
-                                offset: item.span.offset(),
-                                length: item.span.len(),
-                            },
-                        );
+                        .push(SourceDiagnostic {
+                            message: format!("{err}"),
+                            offset: item.span.offset(),
+                            length: item.span.len(),
+                        });
                     continue;
                 }
             }
         } else {
-            let package_count =
-                item.prefix.iter().filter(|s| s.as_str() == "package").count();
-            let parent_count =
-                item.prefix.iter().filter(|s| s.as_str() == "parent").count();
+            let package_count = item
+                .prefix
+                .iter()
+                .filter(|s| s.as_str() == "package")
+                .count();
+            let parent_count = item
+                .prefix
+                .iter()
+                .filter(|s| s.as_str() == "parent")
+                .count();
             let total = item.prefix.len();
             if total != package_count + parent_count {
                 diagnostics
                     .entry(non_canonical_key(from, resolver, workspace_root))
                     .or_default()
-                    .push(
-                        SourceDiagnostic {
-                            message:
-                                "`self::` prefix refers to the current file, not an external module; \
+                    .push(SourceDiagnostic {
+                        message:
+                            "`self::` prefix refers to the current file, not an external module; \
                                  use `parent::` for relative imports"
-                                    .to_string(),
-                            offset: item.span.offset(),
-                            length: item.span.len(),
-                        },
-                    );
+                                .to_string(),
+                        offset: item.span.offset(),
+                        length: item.span.len(),
+                    });
                 continue;
             }
             let p = if package_count > 0 {
@@ -329,13 +361,11 @@ fn collect_modules(
                     diagnostics
                         .entry(non_canonical_key(from, resolver, workspace_root))
                         .or_default()
-                        .push(
-                            SourceDiagnostic {
-                                message: format!("{err}"),
-                                offset: item.span.offset(),
-                                length: item.span.len(),
-                            },
-                        );
+                        .push(SourceDiagnostic {
+                            message: format!("{err}"),
+                            offset: item.span.offset(),
+                            length: item.span.len(),
+                        });
                     continue;
                 }
             }

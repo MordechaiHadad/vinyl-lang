@@ -4,15 +4,15 @@ use std::time::Duration;
 
 use line_index::LineIndex;
 use tokio::sync::RwLock;
+use tower_lsp::Client;
 use tower_lsp::lsp_types::notification::Progress;
 use tower_lsp::lsp_types::*;
-use tower_lsp::Client;
 use tracing::{debug, info};
 use vinyl_typecheck::DefinitionKind;
 
-use crate::position::span_range;
 use crate::backend::state::{Backend, State};
 use crate::backend::workspace::{analyze_workspace, same_file};
+use crate::position::span_range;
 
 impl Backend {
     pub(crate) async fn schedule_update(&self, uri: &Url) {

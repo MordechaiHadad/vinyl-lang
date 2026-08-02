@@ -62,15 +62,15 @@ pub fn format_project(source_root: &Path) -> Result<(), Vec<FormatError>> {
     let source_root = source_root
         .canonicalize()
         .map_err(|e| vec![FormatError::Io(e)])?;
-    let resolver = vinyl_resolver::Resolver::detect(&source_root)
+    let resolver = vinyl_resolver::resolver::Resolver::detect(&source_root)
         .map_err(|e| vec![FormatError::Resolve(e)])?;
     let files: Vec<PathBuf> = match resolver.mode() {
-        vinyl_resolver::ResolverMode::Manifest => resolver
+        vinyl_resolver::resolver::ResolverMode::Manifest => resolver
             .all_modules()
             .values()
             .map(|info| info.file_path.clone())
             .collect(),
-        vinyl_resolver::ResolverMode::Script => collect_vn_files(resolver.root()),
+        vinyl_resolver::resolver::ResolverMode::Script => collect_vn_files(resolver.root()),
     };
     let mut errors = Vec::new();
     for path in &files {
