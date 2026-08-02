@@ -24,8 +24,18 @@ pub fn format_source_with_config(
         indent_str,
     };
     f.format_root(root);
-    let trimmed = f.output.trim_end().to_string();
-    Ok(trimmed)
+    let normalized = f.output.replace("\r\n", "\n").trim_end().to_string();
+    let with_newline = if source.ends_with('\n') && !normalized.ends_with('\n') {
+        format!("{normalized}\n")
+    } else {
+        normalized
+    };
+    let output = if source.contains("\r\n") {
+        with_newline.replace('\n', "\r\n")
+    } else {
+        with_newline
+    };
+    Ok(output)
 }
 
 // todo: support formatting a range of the source code, currently just formats the whole source

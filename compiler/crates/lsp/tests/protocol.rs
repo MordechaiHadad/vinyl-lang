@@ -231,7 +231,7 @@ fn serves_core_lsp_features_over_stdio() {
     );
     assert_eq!(
         formatting["result"][0]["newText"],
-        "import math;\n\nfn main(): int {\n    math::answer()\n}"
+        "import math;\n\nfn main(): int {\n    math::answer()\n}\n"
     );
 
     lsp.send(json!({
@@ -1812,4 +1812,276 @@ fn cursor_on_whitespace_returns_nothing() {
         "cursor on a closing brace should not rename anything, got: {rename}"
     );
 }
+
+#[test]
+fn format_noop_and_code_action_hidden_when_already_formatted() {
+    let project = TestProject::new();
+    let already_formatted = "fn main(): int {\n    answer()\n}\n";
+    std::fs::write(&project.main, already_formatted).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": already_formatted }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let formatting = lsp.response(2);
+    assert!(
+        formatting["result"].is_null(),
+        "formatting an already-formatted file should return null, got: {}",
+        formatting
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 2, "character": 0 }
+            },
+            "context": { "diagnostics": [] }
+        }
+    }));
+    let actions = lsp.response(3);
+    assert!(
+        !actions["result"].as_array().unwrap().iter().any(|action| {
+            action["title"].as_str() == Some("Format document")
+        }),
+        "an already-formatted file should not offer a Format document action, got: {}",
+        actions
+    );
+}
+
+#[test]
+fn formatting_is_idempotent_after_reopen() {
+    let project = TestProject::new();
+    let raw = "import   math ;\nfn main() {\n69 |> math::answer()\n}\n";
+    std::fs::write(&project.main, raw).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": raw }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let formatted = lsp.response(2)["result"][0]["newText"].as_str().unwrap().to_string();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didClose",
+        "params": { "textDocument": { "uri": main_uri } }
+    }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 2,
+                "text": &formatted }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let again = lsp.response(3);
+    assert!(
+        again["result"].is_null(),
+        "formatting the already-formatted file after reopen should return null, got: {}",
+        again
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didClose",
+        "params": { "textDocument": { "uri": main_uri } }
+    }));
+    let editor_saved = if formatted.ends_with('\n') {
+        formatted
+    } else {
+        format!("{formatted}\n")
+    };
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 3,
+                "text": &editor_saved }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 4, "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let with_newline = lsp.response(4);
+    assert!(
+        with_newline["result"].is_null(),
+        "formatting should not churn on an editor-added final newline, got: {}",
+        with_newline
+    );
+}
+
+#[test]
+fn formatting_is_idempotent_with_crlf() {
+    let project = TestProject::new();
+    let raw = "import   math;\r\nfn main() {\r\n69 |> math::answer()\r\n}\r\n";
+    std::fs::write(&project.main, raw).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": raw }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let formatted = lsp.response(2)["result"][0]["newText"].as_str().unwrap().to_string();
+    assert!(
+        formatted.contains("\r\n"),
+        "format of a CRLF file should keep CRLF line endings, got: {formatted:?}"
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didClose",
+        "params": { "textDocument": { "uri": main_uri } }
+    }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 2,
+                "text": &formatted }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/formatting",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "options": { "tabSize": 4, "insertSpaces": true }
+        }
+    }));
+    let again = lsp.response(3);
+    assert!(
+        again["result"].is_null(),
+        "formatting an already-formatted CRLF file after reopen should return null, got: {}",
+        again
+    );
+}
+
+#[test]
+fn hover_and_signature_help_preserve_written_primitive_names() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "fn alias(n: int): int { n }\nfn explicit(n: int64): int64 { n }\nstruct Point { x: int, y: int64 }\nfn main() {\n    alias(1)\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "rootUri": root_uri, "capabilities": {} }}));
+    lsp.response(1);
+    lsp.send(json!({"jsonrpc": "2.0", "method": "initialized", "params": {}}));
+    lsp.send(json!({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
+        "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": "fn alias(n: int): int { n }\nfn explicit(n: int64): int64 { n }\nstruct Point { x: int, y: int64 }\nfn main() {\n    alias(1)\n}\n" } }}));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    for (id, line, character, expected) in [
+        (2, 0, 4, "fn alias(n: int): int"),
+        (3, 1, 4, "fn explicit(n: int64): int64"),
+        (4, 2, 7, "struct Point { x: int, y: int64 }"),
+        (5, 4, 5, "fn alias(n: int): int"),
+    ] {
+        lsp.send(json!({"jsonrpc": "2.0", "id": id, "method": "textDocument/hover", "params": {
+            "textDocument": { "uri": main_uri }, "position": { "line": line, "character": character } }}));
+        let hover = lsp.response(id);
+        let hover_text = hover["result"]["contents"].as_str().unwrap();
+        assert!(
+            hover_text.contains(expected),
+            "hover should preserve the written primitive name, got: {hover_text}"
+        );
+    }
+
+    lsp.send(json!({"jsonrpc": "2.0", "id": 6, "method": "textDocument/signatureHelp", "params": {
+        "textDocument": { "uri": main_uri }, "position": { "line": 4, "character": 9 } }}));
+    let sig = lsp.response(6);
+    let label = sig["result"]["signatures"][0]["label"].as_str().unwrap();
+    assert_eq!(
+        label, "fn alias(n: int): int",
+        "signature help should preserve the written primitive name, got: {label}"
+    );
+}
+
 

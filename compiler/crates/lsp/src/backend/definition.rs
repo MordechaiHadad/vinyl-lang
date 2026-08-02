@@ -110,7 +110,12 @@ pub(crate) fn definition_detail(
                 let fields: Vec<_> = s
                     .fields
                     .iter()
-                    .map(|f| format!("{}: {}", f.name, f.type_))
+                    .map(|f| {
+                        let type_name =
+                            extract_type_from_span(source, f.span.offset(), f.span.len(), false)
+                                .unwrap_or_else(|| f.type_.to_string());
+                        format!("{}: {}", f.name, type_name)
+                    })
                     .collect();
                 Some(format!("struct {} {{ {} }}", s.name, fields.join(", ")))
             }
@@ -150,7 +155,7 @@ pub(crate) fn definition_detail(
     }
 }
 
-fn function_signature(function: &HirFunction, source: &str) -> String {
+pub(crate) fn function_signature(function: &HirFunction, source: &str) -> String {
     let params: Vec<_> = function
         .params
         .iter()

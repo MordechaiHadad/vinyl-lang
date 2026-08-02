@@ -28,22 +28,24 @@ impl Backend {
             return Ok(None);
         };
         let source_line_index = LineIndex::new(&source);
-        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-            title: "Format document".to_string(),
-            kind: Some(CodeActionKind::SOURCE_FIX_ALL),
-            diagnostics: None,
-            edit: Some(WorkspaceEdit {
-                changes: Some(HashMap::from([(
-                    uri.clone(),
-                    vec![TextEdit::new(full_range(&source_line_index), formatted)],
-                )])),
-                ..WorkspaceEdit::default()
-            }),
-            command: None,
-            is_preferred: Some(true),
-            disabled: None,
-            data: None,
-        }));
+        if formatted != source {
+            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                title: "Format document".to_string(),
+                kind: Some(CodeActionKind::SOURCE_FIX_ALL),
+                diagnostics: None,
+                edit: Some(WorkspaceEdit {
+                    changes: Some(HashMap::from([(
+                        uri.clone(),
+                        vec![TextEdit::new(full_range(&source_line_index), formatted)],
+                    )])),
+                    ..WorkspaceEdit::default()
+                }),
+                command: None,
+                is_preferred: Some(true),
+                disabled: None,
+                data: None,
+            }));
+        }
 
         let cursor_offset = offset_at(&source_line_index, params.range.start);
         let prefix = word_prefix(&source, cursor_offset);
@@ -123,6 +125,9 @@ impl Backend {
             Ok(formatted) => formatted,
             Err(_) => return Ok(None),
         };
+        if formatted == source {
+            return Ok(None);
+        }
         let line_index = LineIndex::new(&source);
         Ok(Some(vec![TextEdit::new(
             full_range(&line_index),

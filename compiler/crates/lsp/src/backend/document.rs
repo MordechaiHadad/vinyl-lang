@@ -2,7 +2,7 @@ use tower_lsp::lsp_types::*;
 use vinyl_typecheck::hir::HirItemKind;
 
 use crate::position::{offset_at, span_range};
-use crate::backend::definition::definition_detail;
+use crate::backend::definition::{definition_detail, function_signature};
 use crate::backend::state::Backend;
 use crate::backend::symbol::{resolve_symbol, target_definition};
 use crate::text::word_prefix;
@@ -19,10 +19,18 @@ impl Backend {
             &analysis.line_index,
             params.text_document_position_params.position,
         );
-        let content = if let Some(target) = resolve_symbol(&analysis, offset)
+        let detail = if let Some(target) = resolve_symbol(&analysis, offset)
             && let Some(definition) = target_definition(&analysis, &target)
-            && let Some(detail) = definition_detail(&definition, &analysis.result, &analysis.source)
         {
+            let source = self
+                .definition_source(&definition)
+                .await
+                .unwrap_or_else(|| analysis.source.clone());
+            definition_detail(&definition, &analysis.result, &source)
+        } else {
+            None
+        };
+        let content = if let Some(detail) = detail {
             detail
         } else if let Some(expression) = analysis
             .result
@@ -32,7 +40,7 @@ impl Backend {
             .map(|(_, expression)| expression)
             .filter(|expression| offset < expression.span.offset() + expression.span.len())
         {
-            format!("type: {:?}", expression.type_)
+            format!("type: {}", expression.type_)
         } else {
             return Ok(None);
         };
@@ -120,17 +128,7 @@ impl Backend {
                         return None;
                     }
                     Some(SignatureInformation {
-                        label: format!(
-                            "fn {}({}): {}",
-                            function.name,
-                            function
-                                .params
-                                .iter()
-                                .map(|param| format!("{}: {}", param.name, param.type_))
-                                .collect::<Vec<_>>()
-                                .join(", "),
-                            function.return_type
-                        ),
+                        label: function_signature(function, &analysis.source),
                         documentation: None,
                         parameters: None,
                         active_parameter: None,

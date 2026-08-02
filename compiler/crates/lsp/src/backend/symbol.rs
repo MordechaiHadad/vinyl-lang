@@ -344,7 +344,7 @@ impl Backend {
                 candidates.push(candidate);
             }
         }
-        for candidate in candidates {
+        if let Some(candidate) = candidates.into_iter().next() {
             let field = candidate.result.items.iter().find_map(|item| match &item.kind {
                 HirItemKind::Struct(structure) if structure.name == type_name => {
                     structure.fields.iter().find(|field| field.name == name)
@@ -356,12 +356,13 @@ impl Backend {
                 (field.span.offset(), field.span.offset() + field.span.len()),
                 name,
             );
-            return Some(Location::new(
+            Some(Location::new(
                 Url::from_file_path(&candidate.path).ok()?,
                 span_range(&candidate.line_index, start, end - start),
-            ));
+            ))
+        } else {
+            None
         }
-        None
     }
 
     async fn variant_location(&self, analysis: &Analysis, type_name: &str, name: &str) -> Option<Location> {
@@ -372,7 +373,7 @@ impl Backend {
                 candidates.push(candidate);
             }
         }
-        for candidate in candidates {
+        if let Some(candidate) = candidates.into_iter().next() {
             let variant = candidate.result.items.iter().find_map(|item| match &item.kind {
                 HirItemKind::Enum(enumeration) if enumeration.name == type_name => {
                     enumeration.variants.iter().find(|variant| variant.name == name)
@@ -384,12 +385,13 @@ impl Backend {
                 (variant.span.offset(), variant.span.offset() + variant.span.len()),
                 name,
             );
-            return Some(Location::new(
+            Some(Location::new(
                 Url::from_file_path(&candidate.path).ok()?,
                 span_range(&candidate.line_index, start, end - start),
-            ));
+            ))
+        } else {
+            None
         }
-        None
     }
 
     pub(crate) async fn location_for_symbol(

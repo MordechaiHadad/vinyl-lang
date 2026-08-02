@@ -73,6 +73,17 @@ impl Backend {
         self.state.read().await.cache.values().cloned().collect()
     }
 
+    pub(crate) async fn definition_source(&self, definition: &Definition) -> Option<String> {
+        let module = definition.name.split_once("::")?.0;
+        let path = self.state.read().await.modules.get(module)?.clone();
+        self.state
+            .read()
+            .await
+            .cache
+            .get(&path)
+            .map(|analysis| analysis.source.clone())
+    }
+
     pub(crate) async fn workspace_locations(&self, target: &Definition) -> Vec<Location> {
         self.analyses()
             .await

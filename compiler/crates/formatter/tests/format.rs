@@ -87,6 +87,19 @@ fn empty_source() {
 }
 
 #[test]
+fn preserves_crlf_line_endings() {
+    let input = "fn f(): int {\r\n    return 1;\r\n}\r\n";
+    assert_eq!(format_source(input).unwrap(), input);
+}
+
+#[test]
+fn formats_crlf_without_changing_line_endings() {
+    let input = "fn   f(): int {\r\nreturn 1;\r\n}";
+    let expected = "fn f(): int {\r\n    return 1;\r\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
 fn configurable_indent_width() {
     let input = "fn f(): int {\nreturn 1;\n}";
     let config = FormatterConfig { indent_width: 2 };
