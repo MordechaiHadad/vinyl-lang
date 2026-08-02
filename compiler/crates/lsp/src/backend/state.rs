@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -56,6 +56,7 @@ pub(crate) struct State {
     pub(crate) module_table: ModuleTable,
     pub(crate) publics: WorkspaceSymbols,
     pub(crate) modules: HashMap<String, PathBuf>,
+    pub(crate) diagnostic_files: HashSet<PathBuf>,
 }
 
 pub(crate) struct Backend {

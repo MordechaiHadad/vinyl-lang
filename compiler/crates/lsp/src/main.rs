@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use eyre::Result;
+use line_index::LineIndex;
 use tokio::sync::RwLock;
 use tower_lsp::lsp_types::notification::Progress;
 use tower_lsp::lsp_types::*;
@@ -17,6 +18,7 @@ use tracing::info;
 
 use crate::backend::state::{Backend, State};
 use crate::backend::update::perform_update;
+use crate::position::offset_at;
 use crate::utils::{Cli, init_tracing};
 
 #[tower_lsp::async_trait]
@@ -141,10 +143,26 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        if let Some(change) = params.content_changes.into_iter().next()
-            && let Ok(path) = params.text_document.uri.to_file_path()
-        {
-            self.state.write().await.vfs.set(path, change.text);
+        if let Ok(path) = params.text_document.uri.to_file_path() {
+            let mut state = self.state.write().await;
+            let mut source = state.vfs.source(&path).unwrap_or_default();
+            for change in params.content_changes {
+                if let Some(range) = change.range {
+                    let line_index = LineIndex::new(&source);
+                    let start = offset_at(&line_index, range.start);
+                    let end = offset_at(&line_index, range.end);
+                    if start <= end
+                        && end <= source.len()
+                        && source.is_char_boundary(start)
+                        && source.is_char_boundary(end)
+                    {
+                        source.replace_range(start..end, &change.text);
+                    }
+                } else {
+                    source = change.text;
+                }
+            }
+            state.vfs.set(path, source);
         }
         self.schedule_update(&params.text_document.uri).await;
     }
@@ -158,6 +176,12 @@ impl LanguageServer for Backend {
         self.client
             .publish_diagnostics(params.text_document.uri, Vec::new(), None)
             .await;
+    }
+
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        for change in params.changes {
+            self.schedule_update(&change.uri).await;
+        }
     }
 
     async fn hover(&self, params: HoverParams) -> tower_lsp::jsonrpc::Result<Option<Hover>> {

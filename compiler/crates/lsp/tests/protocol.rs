@@ -70,6 +70,15 @@ impl LspProcess {
             }
         }
     }
+
+    fn diagnostics_for(&mut self, uri: &str) -> Value {
+        loop {
+            let message = self.notification("textDocument/publishDiagnostics");
+            if message["params"]["uri"] == uri {
+                return message;
+            }
+        }
+    }
 }
 
 impl Drop for LspProcess {
@@ -1355,6 +1364,181 @@ fn goto_definition_parent_import_through_pipe() {
     }));
     let hover = lsp.response(3);
     assert!(hover["result"]["contents"].as_str().unwrap().contains("fn double"));
+}
+
+#[test]
+fn imported_file_change_clears_parent_diagnostic() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("examples")
+        .join("example_project");
+    let main = root.join("main.vn");
+    let math = root.join("math.vn");
+    let main_uri = TestProject::uri(&main.canonicalize().unwrap());
+    let math_uri = TestProject::uri(&math.canonicalize().unwrap());
+    let root_uri = TestProject::uri(&root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import parent::math;\n\nfn main() {\n    69 |> math::double()\n}\n" }
+        }
+    }));
+    assert!(lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn double(n: int): int {\n    n * 2\n}\n" }
+        }
+    }));
+    assert!(lsp.notification("textDocument/publishDiagnostics")["params"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": math_uri, "version": 2 },
+            "contentChanges": [{ "text": "public fn double(n: int64): int {\n    n * 2\n}\n" }]
+        }
+    }));
+    let diagnostics = lsp.notification("textDocument/publishDiagnostics");
+    assert_eq!(diagnostics["params"]["uri"], main_uri);
+    assert!(diagnostics["params"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .is_empty(), "main diagnostics should be cleared: {diagnostics}");
+}
+
+#[test]
+fn imported_file_change_uses_nearest_project_entry() {
+    let repository = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..");
+    let root = repository.join("examples").join("example_project");
+    let main = root.join("main.vn");
+    let math = root.join("math.vn");
+    let main_uri = TestProject::uri(&main.canonicalize().unwrap());
+    let math_uri = TestProject::uri(&math.canonicalize().unwrap());
+    let root_uri = TestProject::uri(&repository);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+
+    for (uri, text) in [
+        (
+            main_uri.clone(),
+            "import parent::math;\n\nfn main() {\n    69 |> math::double()\n}\n",
+        ),
+        (
+            math_uri.clone(),
+            "public fn double(n: int): int {\n    n * 2\n}\n",
+        ),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": math_uri, "version": 2 },
+            "contentChanges": [{ "text": "public fn double(n: int64): int {\n    n * 2\n}\n" }]
+        }
+    }));
+    let diagnostics = lsp.notification("textDocument/publishDiagnostics");
+    assert_eq!(diagnostics["params"]["uri"], main_uri);
+}
+
+#[test]
+fn incremental_changes_update_the_full_document() {
+    let project = TestProject::new();
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn double(n: int): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": math_uri, "version": 2 },
+            "contentChanges": [{
+                "range": {
+                    "start": { "line": 0, "character": 20 },
+                    "end": { "line": 0, "character": 23 }
+                },
+                "rangeLength": 3,
+                "text": "int6"
+            }]
+        }
+    }));
+    let diagnostics = lsp.diagnostics_for(&math_uri);
+    assert!(diagnostics["params"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|diagnostic| diagnostic["message"] == "unexpected token `6`"),
+        "intermediate edit should report its temporary parse error: {diagnostics}");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": math_uri, "version": 3 },
+            "contentChanges": [{
+                "range": {
+                    "start": { "line": 0, "character": 24 },
+                    "end": { "line": 0, "character": 24 }
+                },
+                "rangeLength": 0,
+                "text": "4"
+            }]
+        }
+    }));
+    let recovered = lsp.diagnostics_for(&math_uri);
+    assert!(recovered["params"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .is_empty(), "recovered document diagnostics should clear: {recovered}");
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ use vinyl_typecheck::DefinitionKind;
 
 use crate::position::span_range;
 use crate::backend::state::{Backend, State};
-use crate::backend::workspace::analyze_workspace;
+use crate::backend::workspace::{analyze_workspace, same_file};
 
 impl Backend {
     pub(crate) async fn schedule_update(&self, uri: &Url) {
@@ -58,6 +58,7 @@ impl Backend {
 
 pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, uri: &Url) {
     debug!(%uri, "performing update");
+    let update_version = state.read().await.update_version;
     let Some(path) = uri.to_file_path().ok() else {
         return;
     };
@@ -83,12 +84,24 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
         let entry_path = candidates
             .into_iter()
             .find(|candidate| guard.vfs.source(candidate).is_some() || candidate.exists())
+            .or_else(|| {
+                path.ancestors().skip(1).find_map(|directory| {
+                    [directory.join("main.vn"), directory.join("lib.vn")]
+                        .into_iter()
+                        .find(|candidate| {
+                            guard.vfs.source(candidate).is_some() || candidate.exists()
+                        })
+                })
+            })
             .unwrap_or(path.clone());
         (guard.vfs.clone(), root, entry_path)
     };
 
     match analyze_workspace(&vfs, &root, &entry_path) {
         Ok((analyses, diagnostics, resolver, module_table, publics, modules)) => {
+            if state.read().await.update_version != update_version {
+                return;
+            }
             info!(files = analyses.len(), "workspace analysis complete");
             let entry_source = vfs.source(&entry_path).unwrap_or_default();
             let entry_line_index = LineIndex::new(&entry_source);
@@ -107,13 +120,31 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
                 })
                 .unwrap_or_default();
 
-            {
+            let current_diagnostic_files: Vec<PathBuf> = diagnostics
+                .iter()
+                .filter(|(_, file_diags)| !file_diags.is_empty())
+                .map(|(file_path, _)| file_path.clone())
+                .collect();
+            let entry_has_diagnostics = !entry_diagnostics.is_empty();
+
+            let should_clear_changed_file = {
                 let mut guard = state.write().await;
+                let should_clear = guard
+                    .diagnostic_files
+                    .iter()
+                    .any(|file_path| same_file(file_path, &path))
+                    && !current_diagnostic_files
+                        .iter()
+                        .any(|file_path| same_file(file_path, &path));
                 guard.resolver = Some(resolver);
                 guard.module_table = module_table;
                 guard.publics = publics;
                 guard.modules = modules;
                 guard.cache.extend(analyses);
+                guard.diagnostic_files = current_diagnostic_files.iter().cloned().collect();
+                if entry_has_diagnostics {
+                    guard.diagnostic_files.insert(entry_path.clone());
+                }
                 if let Some(analysis) = guard.cache.get(&entry_path) {
                     for definition in &analysis.result.unused {
                         entry_diagnostics.push(Diagnostic {
@@ -136,7 +167,8 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
                         });
                     }
                 }
-            }
+                should_clear
+            };
 
             client
                 .publish_diagnostics(
@@ -147,7 +179,7 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
                 .await;
 
             for (file_path, file_diags) in &diagnostics {
-                if file_path == &entry_path || file_diags.is_empty() {
+                if file_path == &entry_path {
                     continue;
                 }
                 let source = vfs.source(file_path).unwrap_or_default();
@@ -167,6 +199,12 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
                         diags,
                         None,
                     )
+                    .await;
+            }
+
+            if should_clear_changed_file {
+                client
+                    .publish_diagnostics(uri.clone(), Vec::new(), None)
                     .await;
             }
         }
