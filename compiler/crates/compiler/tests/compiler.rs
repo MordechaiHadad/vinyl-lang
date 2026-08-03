@@ -43,6 +43,24 @@ fn compiles_public_import() {
 }
 
 #[test]
+fn missing_module_import_is_a_type_diagnostic() {
+    let root = script_project(
+        "missing_import_diagnostic",
+        &[
+            ("main.vn", "fn main(): int { math::double() }\n"),
+            ("math.vn", "public fn double(): int { 2 }\n"),
+        ],
+    );
+    let errors = compile_entry(&root.join("main.vn"), None).unwrap_err();
+    let message = errors
+        .iter()
+        .map(ToString::to_string)
+        .find(|message| message.contains("missing import"))
+        .expect("missing import diagnostic");
+    assert!(message.contains("import parent::math"), "{message}");
+}
+
+#[test]
 fn rejects_private_import() {
     let root = project(
         "private_import",

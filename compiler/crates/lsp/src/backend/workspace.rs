@@ -11,6 +11,30 @@ use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
 use crate::vfs::{LspFileSystem, Vfs};
 
+pub(crate) fn is_public_symbol(analysis: &Analysis, name: &str) -> bool {
+    analysis.result.items.iter().any(|item| {
+        let (item_name, public) = match &item.kind {
+            vinyl_typecheck::hir::HirItemKind::Function(function) => {
+                (&function.name, function.public)
+            }
+            vinyl_typecheck::hir::HirItemKind::Struct(structure) => {
+                (&structure.name, structure.public)
+            }
+            vinyl_typecheck::hir::HirItemKind::TupleStruct(tuple) => (&tuple.name, tuple.public),
+            vinyl_typecheck::hir::HirItemKind::Enum(enumeration) => {
+                (&enumeration.name, enumeration.public)
+            }
+        };
+        item_name == name && public
+    })
+}
+
+pub(crate) fn is_imported(imports: &HashSet<String>, import_name: &str) -> bool {
+    imports
+        .iter()
+        .any(|import| import == import_name || import.ends_with(&format!("::{import_name}")))
+}
+
 pub(crate) fn analyze_with_diagnostics(
     path: &Path,
     source: &str,
@@ -180,6 +204,7 @@ pub(crate) fn analyze_workspace(
                 &mut visited,
                 &mut diagnostics,
             );
+            add_resolved_modules(vfs, &resolver, entry_path, &mut entry_module_table);
             match analyze_with_diagnostics(
                 entry_path,
                 &entry_source,
@@ -237,6 +262,7 @@ pub(crate) fn analyze_workspace(
             &mut file_visited,
             &mut diagnostics,
         );
+        add_resolved_modules(vfs, &resolver, file, &mut module_table);
         collect_publics(&items, file, &mut publics);
         match analyze_with_diagnostics(file, &source, &all_items, &module_table) {
             Ok(analysis) => {
@@ -247,6 +273,11 @@ pub(crate) fn analyze_workspace(
                 diagnostics.insert(non_canonical_key(file, &resolver, root), error);
             }
         }
+    }
+    for file_diags in diagnostics.values_mut() {
+        file_diags.dedup_by(|a, b| {
+            a.offset == b.offset && a.length == b.length && a.message == b.message
+        });
     }
     for file_diags in diagnostics.values_mut() {
         file_diags.dedup_by(|a, b| {
@@ -282,6 +313,48 @@ fn collect_publics(items: &[Item], path: &Path, publics: &mut HashMap<String, Pu
             PublicSymbol {
                 path: path.to_path_buf(),
                 span,
+            },
+        );
+    }
+}
+
+fn add_resolved_modules(
+    vfs: &Vfs,
+    resolver: &Resolver,
+    from: &Path,
+    module_table: &mut ModuleTable,
+) {
+    for info in resolver.all_modules().values() {
+        if module_table.contains_key(&info.import_name) {
+            continue;
+        }
+        let Ok((_, items)) = parse_file_with_diagnostics(vfs, &info.file_path) else {
+            continue;
+        };
+        let functions = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Function(function) if function.public => Some(function.clone()),
+                _ => None,
+            })
+            .collect();
+        let types = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Struct(structure) if structure.public => Some(structure.name.clone()),
+                Item::TupleStruct(tuple) if tuple.public => Some(tuple.name.clone()),
+                Item::Enum(enumeration) if enumeration.public => Some(enumeration.name.clone()),
+                _ => None,
+            })
+            .collect();
+        module_table.insert(
+            info.import_name.clone(),
+            ModuleExports {
+                import_name: info.import_name.clone(),
+                import_path: relative_import_path(from, &info.file_path, resolver),
+                imported: false,
+                functions,
+                types,
             },
         );
     }
@@ -416,6 +489,8 @@ fn collect_modules(
             info.import_name.clone(),
             ModuleExports {
                 import_name: info.import_name.clone(),
+                import_path: relative_import_path(from, &info.file_path, resolver),
+                imported: true,
                 functions,
                 types,
             },

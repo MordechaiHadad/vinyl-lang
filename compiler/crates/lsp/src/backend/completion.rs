@@ -4,12 +4,13 @@ use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
 use vinyl_resolver::resolver::Resolver;
 use vinyl_typecheck::DefinitionKind;
-use vinyl_typecheck::hir::HirItemKind;
 
 use crate::backend::definition::definition_detail;
 use crate::backend::state::{Analysis, Backend, State};
-use crate::backend::workspace::{non_canonical_key, relative_import_path, same_file};
-use crate::consts::KEYWORDS;
+use crate::backend::workspace::{
+    is_imported, is_public_symbol, non_canonical_key, relative_import_path, same_file,
+};
+use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
 use crate::text::{
     current_imports, detect_import_prefix, import_edit_range, module_ref_prefix, word_before_colon,
@@ -46,17 +47,17 @@ impl Backend {
         } else {
             Vec::new()
         };
+        if !in_import_context && module_ref_simple.is_none() {
+            items.extend(module_prefix_completions(
+                &prefix,
+                &current_line_index,
+                offset,
+            ));
+        }
 
         if let Some(resolver) = &state.resolver {
             let existing_imports = current_imports(&current_source);
             let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
-
-            let has_module_ref = module_ref_simple.as_ref().and_then(|(name, _)| {
-                existing_imports
-                    .iter()
-                    .any(|imp| imp == name || imp.ends_with(&format!("::{name}")))
-                    .then_some(name.clone())
-            });
 
             if is_colon_trigger && !in_import_context && module_ref_simple.is_none() {
                 let has_pending_module =
@@ -71,18 +72,7 @@ impl Backend {
                 }
             }
 
-            if let Some(module_name) = has_module_ref {
-                let (_, partial) = module_ref_simple.as_ref().unwrap();
-                items.extend(module_ref_completions(
-                    &state,
-                    resolver,
-                    &module_name,
-                    partial,
-                    &current_line_index,
-                    offset,
-                    workspace_root,
-                ));
-            } else {
+            if in_import_context {
                 items.extend(auto_import_completions(
                     &state,
                     resolver,
@@ -102,6 +92,38 @@ impl Backend {
                         offset,
                     ));
                 }
+            } else if let Some((module_name, partial)) = module_ref_simple.as_ref() {
+                let Some(info) = resolver
+                    .all_modules()
+                    .values()
+                    .find(|info| info.import_name == *module_name)
+                else {
+                    items.clear();
+                    drop(state);
+                    return Ok(Some(CompletionResponse::Array(items)));
+                };
+                let import_path = relative_import_path(&path, &info.file_path, resolver);
+                let imported = is_imported(&existing_imports, module_name);
+                items.extend(module_ref_completions(
+                    &state,
+                    resolver,
+                    module_name,
+                    partial,
+                    &current_line_index,
+                    offset,
+                    workspace_root,
+                    (!imported).then_some((current_source.as_str(), import_path.as_str())),
+                ));
+            } else {
+                items.extend(auto_import_completions(
+                    &state,
+                    resolver,
+                    &path,
+                    &prefix,
+                    &current_source,
+                    &current_line_index,
+                    offset,
+                ));
             }
         }
         drop(state);
@@ -159,6 +181,7 @@ fn module_ref_completions(
     current_line_index: &LineIndex,
     offset: usize,
     workspace_root: &Path,
+    auto_import: Option<(&str, &str)>,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     for info in resolver.all_modules().values() {
@@ -176,16 +199,7 @@ fn module_ref_completions(
             let Some(definition) = definitions.first() else {
                 continue;
             };
-            let is_public = module_analysis.result.items.iter().any(|item| {
-                let (item_name, item_public) = match &item.kind {
-                    HirItemKind::Function(f) => (&f.name, f.public),
-                    HirItemKind::Struct(s) => (&s.name, s.public),
-                    HirItemKind::TupleStruct(t) => (&t.name, t.public),
-                    HirItemKind::Enum(e) => (&e.name, e.public),
-                };
-                item_name == name && item_public
-            });
-            if !is_public {
+            if !is_public_symbol(module_analysis, name) {
                 continue;
             }
             let kind = match definition.kind {
@@ -202,6 +216,12 @@ fn module_ref_completions(
                 position_at(current_line_index, offset.saturating_sub(partial.len())),
                 cursor_pos,
             );
+            let additional_text_edits = auto_import.map(|(source, import_path)| {
+                vec![TextEdit::new(
+                    import_edit_range(current_line_index, source),
+                    format!("import {import_path};\n"),
+                )]
+            });
             items.push(CompletionItem {
                 label: name.clone(),
                 kind: Some(kind),
@@ -210,6 +230,7 @@ fn module_ref_completions(
                     edit_range,
                     name.clone(),
                 ))),
+                additional_text_edits,
                 ..CompletionItem::default()
             });
         }
@@ -238,9 +259,7 @@ fn auto_import_completions(
             continue;
         };
         let import_path = relative_import_path(path, &info.file_path, resolver);
-        let already_imported = existing_imports.iter().any(|imp| {
-            imp == &info.import_name || imp.ends_with(&format!("::{}", info.import_name))
-        });
+        let already_imported = is_imported(&existing_imports, &info.import_name);
         if already_imported {
             continue;
         }
@@ -251,6 +270,9 @@ fn auto_import_completions(
             let Some(definition) = definitions.first() else {
                 continue;
             };
+            if !is_public_symbol(module_analysis, name) {
+                continue;
+            }
             let kind = match definition.kind {
                 DefinitionKind::Function => CompletionItemKind::FUNCTION,
                 DefinitionKind::Struct => CompletionItemKind::STRUCT,
@@ -292,6 +314,31 @@ fn auto_import_completions(
     items
 }
 
+fn module_prefix_completions(
+    prefix: &str,
+    current_line_index: &LineIndex,
+    offset: usize,
+) -> Vec<CompletionItem> {
+    let cursor = position_at(current_line_index, offset);
+    let range = Range::new(
+        position_at(current_line_index, offset.saturating_sub(prefix.len())),
+        cursor,
+    );
+    MODULE_PREFIXES
+        .iter()
+        .filter(|(label, _)| label.starts_with(prefix))
+        .map(|(label, kind)| CompletionItem {
+            label: (*label).to_string(),
+            kind: Some(*kind),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                range,
+                (*label).to_string(),
+            ))),
+            ..CompletionItem::default()
+        })
+        .collect()
+}
+
 fn import_prefix_completions(
     resolver: &Resolver,
     path: &Path,
@@ -301,6 +348,13 @@ fn import_prefix_completions(
     offset: usize,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
+    if prefix_count == 0 {
+        items.extend(module_prefix_completions(
+            partial,
+            current_line_index,
+            offset,
+        ));
+    }
     let mut dir = path.parent().unwrap_or(Path::new("")).to_path_buf();
     for _ in 1..prefix_count {
         dir.push("..");

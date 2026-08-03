@@ -57,6 +57,14 @@ pub enum TypeDiagnosticKind {
     #[diagnostic(code(typeck::cannot_infer_call_target))]
     CannotInferCallTarget,
 
+    #[error("missing import for `{module}::{name}`; add `import {import_path};`")]
+    #[diagnostic(code(typeck::missing_import))]
+    MissingImport {
+        module: String,
+        name: String,
+        import_path: String,
+    },
+
     #[error("break outside of loop")]
     #[diagnostic(code(typeck::break_outside_loop))]
     BreakOutsideLoop,
@@ -139,10 +147,7 @@ pub enum TypeDiagnosticKind {
 
     #[error("float literal `{value}` is out of range for type `{found}`")]
     #[diagnostic(code(typeck::float_literal_out_of_range))]
-    FloatLiteralOutOfRange {
-        value: f64,
-        found: crate::hir::Type,
-    },
+    FloatLiteralOutOfRange { value: f64, found: crate::hir::Type },
 
     #[error("integer power with negative exponent `{value}` is not defined")]
     #[diagnostic(code(typeck::pow_negative_exponent))]

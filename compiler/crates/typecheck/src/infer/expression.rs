@@ -82,6 +82,16 @@ impl InferState {
                     let module_name = &segments[0];
                     let item_name = &segments[1];
                     if let Some(exports) = self.module_table.get(module_name.as_str()) {
+                        if !exports.imported {
+                            self.errors.push(self.source.error(
+                                *span,
+                                TypeDiagnosticKind::MissingImport {
+                                    module: module_name.clone(),
+                                    name: item_name.clone(),
+                                    import_path: exports.import_path.clone(),
+                                },
+                            ));
+                        }
                         let is_public = exports.functions.iter().any(|f| f.name == *item_name)
                             || exports.types.iter().any(|t| t == item_name);
                         if !is_public {
@@ -302,10 +312,15 @@ impl InferState {
                     });
                 }
 
-                self.errors.push(
-                    self.source
-                        .error(*span, TypeDiagnosticKind::CannotInferCallTarget),
-                );
+                if !matches!(
+                    function.as_ref(),
+                    Expression::ValuePath { segments, .. } if segments.len() >= 2
+                ) {
+                    self.errors.push(
+                        self.source
+                            .error(*span, TypeDiagnosticKind::CannotInferCallTarget),
+                    );
+                }
                 Ok(HirExpression {
                     kind: HirExpressionKind::Call {
                         span: *span,

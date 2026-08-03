@@ -477,6 +477,7 @@ fn serves_core_lsp_features_over_stdio() {
             helper.get("textEdit").is_some(),
             "auto-import completion should have textEdit for qualified insertion"
         );
+        assert_eq!(helper["textEdit"]["newText"], "utils::helper");
     }
 
     lsp.send(json!({
@@ -966,6 +967,126 @@ fn completion_private_filtered() {
     );
 
     let _ = lsp;
+}
+
+#[test]
+fn auto_import_private_filtered() {
+    let project = TestProject::new();
+    let app = project.root.join("app.vn");
+    std::fs::write(
+        &project.math,
+        "fn hidden(): int { 1 }\npublic fn visible(): int { 2 }\n",
+    )
+    .unwrap();
+    std::fs::write(&app, "fn run(): int { 0 }\n").unwrap();
+    let app_uri = TestProject::uri(&app);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (
+            math_uri,
+            "fn hidden(): int { 1 }\npublic fn visible(): int { 2 }\n",
+        ),
+        (app_uri.clone(), "fn run(): int { 0 }\n"),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": app_uri }, "position": { "line": 0, "character": 0 } }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    let visible = items
+        .iter()
+        .find(|item| item["label"] == "math::visible")
+        .expect("public auto-import completion");
+    assert_eq!(visible["textEdit"]["newText"], "math::visible");
+    assert!(!items.iter().any(|item| item["label"] == "math::hidden"));
+}
+
+#[test]
+fn module_prefix_completion_in_import_and_expression() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    let text = "import par\nfn main(): int { par }\n";
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1, "text": text } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 0, "character": 10 } }
+    }));
+    let import_items = lsp.response(2)["result"].as_array().unwrap().clone();
+    assert!(import_items.iter().any(|item| item["label"] == "parent::"));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 1, "character": 19 } }
+    }));
+    let expression_items = lsp.response(3)["result"].as_array().unwrap().clone();
+    assert!(
+        expression_items
+            .iter()
+            .any(|item| item["label"] == "parent::")
+    );
+}
+
+#[test]
+fn code_action_adds_import_for_qualified_module_reference() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (math_uri, "public fn double(): int { 2 }\n"),
+        (main_uri.clone(), "fn main(): int { math::double() }\n"),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
+        "params": { "textDocument": { "uri": main_uri }, "range": { "start": { "line": 0, "character": 26 }, "end": { "line": 0, "character": 32 } }, "context": { "diagnostics": [] } }
+    }));
+    let response = lsp.response(2);
+    let actions = response["result"].as_array().unwrap();
+    let action = actions
+        .iter()
+        .find(|action| action["title"] == "Add import `parent::math`");
+    assert!(
+        action.is_some(),
+        "qualified reference should offer its module import"
+    );
 }
 
 #[test]

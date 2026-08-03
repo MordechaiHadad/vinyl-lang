@@ -226,6 +226,8 @@ fn resolve_imports(
             import_name.clone(),
             ModuleExports {
                 import_name,
+                import_path: import_display,
+                imported: true,
                 functions: public_functions,
                 types: public_types,
             },
@@ -244,6 +246,69 @@ fn resolve_imports(
     Ok(module_table)
 }
 
+fn add_resolved_modules(
+    module_table: &mut ModuleTable,
+    resolver: &Resolver,
+    from: &Path,
+) -> Result<(), Vec<CompileError>> {
+    for info in resolver.all_modules().values() {
+        if module_table.contains_key(&info.import_name) {
+            continue;
+        }
+        let (_, _, items) = parse_file(&info.file_path)?;
+        let functions = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Function(function) if function.public => Some(function.clone()),
+                _ => None,
+            })
+            .collect();
+        let types = items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Struct(structure) if structure.public => Some(structure.name.clone()),
+                Item::TupleStruct(tuple) if tuple.public => Some(tuple.name.clone()),
+                Item::Enum(enumeration) if enumeration.public => Some(enumeration.name.clone()),
+                _ => None,
+            })
+            .collect();
+        module_table.insert(
+            info.import_name.clone(),
+            ModuleExports {
+                import_name: info.import_name.clone(),
+                import_path: relative_import_path(from, &info.file_path, resolver),
+                imported: false,
+                functions,
+                types,
+            },
+        );
+    }
+    Ok(())
+}
+
+fn relative_import_path(from: &Path, to: &Path, resolver: &Resolver) -> String {
+    let stem = to.file_stem().unwrap_or_default().to_string_lossy();
+    let source_root = match resolver.mode() {
+        vinyl_resolver::resolver::ResolverMode::Manifest => resolver.root().join("src"),
+        vinyl_resolver::resolver::ResolverMode::Script => resolver.root().to_path_buf(),
+    };
+    if let Ok(relative) = to.strip_prefix(&source_root) {
+        let relative = relative
+            .with_extension("")
+            .to_string_lossy()
+            .replace(['/', '\\'], "::");
+        if from
+            .parent()
+            .and_then(|parent| to.parent().map(|target| parent == target))
+            == Some(true)
+        {
+            return format!("parent::{relative}");
+        }
+        return format!("package::{relative}");
+    }
+    stem.into_owned()
+}
+
 pub fn compile_entry(
     file_path: &Path,
     project_root: Option<&Path>,
@@ -255,6 +320,13 @@ pub fn compile_entry(
         vinyl_resolver::resolver::Resolver::detect(file_path)
             .map_err(|e| vec![CompileError::ModResolve(e)])?
     };
+    if matches!(
+        resolver.mode(),
+        vinyl_resolver::resolver::ResolverMode::Script
+    ) {
+        let root = resolver.root().to_path_buf();
+        register_script_modules(&mut resolver, root);
+    }
 
     let (entry_source, entry_source_name, mut all_items) = if file_path.is_dir() {
         let entry = find_entry_file(file_path).ok_or_else(|| {
@@ -283,6 +355,8 @@ pub fn compile_entry(
         &mut all_items,
         &mut visited,
     )?;
+    let mut module_table = module_table;
+    add_resolved_modules(&mut module_table, &resolver, file_path)?;
 
     let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,
@@ -304,4 +378,18 @@ pub fn compile_entry(
         },
         warnings,
     ))
+}
+
+fn register_script_modules(resolver: &mut Resolver, directory: PathBuf) {
+    let Ok(entries) = std::fs::read_dir(&directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            register_script_modules(resolver, path);
+        } else if path.extension().is_some_and(|extension| extension == "vn") {
+            resolver.register_module(&path);
+        }
+    }
 }
