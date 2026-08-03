@@ -23,6 +23,7 @@ pub const KEYWORDS: &[(&str, CompletionItemKind)] = &[
     ("struct", CompletionItemKind::KEYWORD),
     ("enum", CompletionItemKind::KEYWORD),
     ("tuple", CompletionItemKind::KEYWORD),
+    ("type", CompletionItemKind::KEYWORD),
     ("int", CompletionItemKind::KEYWORD),
     ("float", CompletionItemKind::KEYWORD),
     ("bool", CompletionItemKind::KEYWORD),

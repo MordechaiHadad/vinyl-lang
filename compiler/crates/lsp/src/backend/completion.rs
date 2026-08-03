@@ -48,6 +48,9 @@ impl Backend {
             Vec::new()
         };
         if !in_import_context && module_ref_simple.is_none() {
+            items.extend(keyword_completions(&prefix));
+        }
+        if !in_import_context && module_ref_simple.is_none() {
             items.extend(module_prefix_completions(
                 &prefix,
                 &current_line_index,
@@ -160,16 +163,39 @@ fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
         });
     }
 
-    for (keyword, kind) in KEYWORDS {
-        if keyword.starts_with(prefix) {
-            items.push(CompletionItem {
-                label: keyword.to_string(),
-                kind: Some(*kind),
-                ..CompletionItem::default()
-            });
+    items
+}
+
+fn keyword_completions(prefix: &str) -> Vec<CompletionItem> {
+    KEYWORDS
+        .iter()
+        .filter(|(keyword, _)| keyword.starts_with(prefix))
+        .map(|(keyword, kind)| CompletionItem {
+            label: (*keyword).to_string(),
+            kind: Some(*kind),
+            ..CompletionItem::default()
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::keyword_completions;
+
+    #[test]
+    fn includes_type_and_value_keywords() {
+        let labels: Vec<_> = keyword_completions("")
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+        for keyword in [
+            "struct", "enum", "tuple", "type", "int", "float", "bool", "char", "string",
+            "unit", "int8", "int16", "int32", "int64", "int128", "isize", "uint8",
+            "uint16", "uint32", "uint64", "uint128", "usize", "float32", "float64",
+        ] {
+            assert!(labels.iter().any(|label| label == keyword));
         }
     }
-    items
 }
 
 fn module_ref_completions(
@@ -206,6 +232,7 @@ fn module_ref_completions(
                 DefinitionKind::Struct => CompletionItemKind::STRUCT,
                 DefinitionKind::Enum => CompletionItemKind::ENUM,
                 DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                DefinitionKind::TypeAlias => CompletionItemKind::STRUCT,
                 _ => continue,
             };
             let detail =
@@ -277,6 +304,7 @@ fn auto_import_completions(
                 DefinitionKind::Struct => CompletionItemKind::STRUCT,
                 DefinitionKind::Enum => CompletionItemKind::ENUM,
                 DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+                DefinitionKind::TypeAlias => CompletionItemKind::STRUCT,
                 _ => continue,
             };
             let detail =
