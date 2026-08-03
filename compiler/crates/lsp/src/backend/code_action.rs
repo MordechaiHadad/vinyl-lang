@@ -26,29 +26,7 @@ impl Backend {
 
         let mut actions = Vec::new();
 
-        let Ok(formatted) = vinyl_formatter::format_source(&source) else {
-            return Ok(None);
-        };
         let source_line_index = LineIndex::new(&source);
-        if formatted != source {
-            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-                title: "Format document".to_string(),
-                kind: Some(CodeActionKind::SOURCE_FIX_ALL),
-                diagnostics: None,
-                edit: Some(WorkspaceEdit {
-                    changes: Some(HashMap::from([(
-                        uri.clone(),
-                        vec![TextEdit::new(full_range(&source_line_index), formatted)],
-                    )])),
-                    ..WorkspaceEdit::default()
-                }),
-                command: None,
-                is_preferred: Some(true),
-                disabled: None,
-                data: None,
-            }));
-        }
-
         let cursor_offset = offset_at(&source_line_index, params.range.start);
         let prefix = word_prefix(&source, cursor_offset);
         let existing_imports = current_imports(&source);
@@ -125,6 +103,27 @@ impl Backend {
             }
         }
         drop(state);
+
+        if let Ok(formatted) = vinyl_formatter::format_source(&source)
+            && formatted != source
+        {
+            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                title: "Format document".to_string(),
+                kind: Some(CodeActionKind::SOURCE_FIX_ALL),
+                diagnostics: None,
+                edit: Some(WorkspaceEdit {
+                    changes: Some(HashMap::from([(
+                        uri,
+                        vec![TextEdit::new(full_range(&source_line_index), formatted)],
+                    )])),
+                    ..WorkspaceEdit::default()
+                }),
+                command: None,
+                is_preferred: Some(false),
+                disabled: None,
+                data: None,
+            }));
+        }
 
         Ok(Some(actions))
     }
