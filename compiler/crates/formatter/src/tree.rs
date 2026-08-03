@@ -134,9 +134,11 @@ impl Formatter<'_> {
             "struct_definition" => self.format_struct_def(node),
             "tuple_definition" => self.format_tuple_def(node),
             "enum_definition" => self.format_enum_def(node),
+            "type_alias_definition" => self.format_type_alias(node),
             "block" => self.format_block(node),
             "parameters" | "arguments" => self.format_parenthesized_list(node),
             "type_annotation" => self.format_type_annotation(node),
+            "tuple_type" => self.format_parenthesized_list(node),
             "binary_expression" | "pipe_expression" => self.format_infix(node),
             "unary_expression" => self.format_prefix(node),
             "if_expression" => self.format_if(node),
@@ -204,6 +206,7 @@ impl Formatter<'_> {
             let kind = child.kind().to_string();
             match kind.as_str() {
                 "value_identifier" | "type_identifier" => self.emit_node(child),
+                "struct" => {}
                 "{" => self.emit(" {"),
                 "}" => {
                     self.newline();
@@ -237,7 +240,8 @@ impl Formatter<'_> {
             let kind = child.kind().to_string();
             match kind.as_str() {
                 "value_identifier" | "type_identifier" => self.emit_node(child),
-                "(" => self.emit("("),
+                "tuple" => {}
+                "(" => self.emit(" ("),
                 ")" => self.emit(")"),
                 "," => self.emit(", "),
                 _ => {
@@ -271,6 +275,21 @@ impl Formatter<'_> {
                 }
                 "," => self.emit(","),
                 _ => {}
+            }
+        }
+    }
+
+    fn format_type_alias(&mut self, node: Node) {
+        self.emit("type ");
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            let kind = child.kind().to_string();
+            match kind.as_str() {
+                "type" => {}
+                "=" => self.emit(" = "),
+                ";" => self.emit(";"),
+                _ if child.is_named() => self.format_node(child),
+                _ => self.emit_node(child),
             }
         }
     }

@@ -9,7 +9,7 @@ use vinyl_typecheck::hir::{
 
 use super::state::{CodegenCtx, VarInfo, VarSlot};
 use super::types::{
-    element_byte_size, extract_array_element_type, ir_type_from_primitive, is_large_aggregate,
+    extract_array_element_type, ir_type_from_primitive, is_large_aggregate,
 };
 use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
@@ -36,13 +36,12 @@ impl<'a> CodegenCtx<'a> {
                 if is_large_aggregate(type_, self.module.types, ptr_size) {
                     // todo: always stack-backed, keep small aggregates in SSA values for perf
                     let val = self.compile_expr(value)?;
-                    let total_size = crate::layout::size_of(type_, self.module.types, ptr_size);
                     let slot = self
                         .func
                         .builder
                         .create_sized_stack_slot(StackSlotData::new(
                             StackSlotKind::ExplicitSlot,
-                            total_size,
+                            crate::layout::aggregate_slot_size(type_, self.module.types, ptr_size),
                             0,
                         ));
                     let dest =
@@ -50,7 +49,11 @@ impl<'a> CodegenCtx<'a> {
                             .builder
                             .ins()
                             .stack_addr(self.module.pointer_type, slot, 0);
-                    self.emit_memcpy(dest, val, total_size)?;
+                    self.emit_memcpy(
+                        dest,
+                        val,
+                        crate::layout::aggregate_copy_size(type_, self.module.types, ptr_size),
+                    )?;
                     self.func.vars.insert(
                         name.clone(),
                         VarInfo {
@@ -88,7 +91,7 @@ impl<'a> CodegenCtx<'a> {
                 match expr {
                     Some(e) => {
                         let val = self.compile_expr(e)?;
-                        self.func.builder.ins().return_(&[val]);
+                        self.emit_return(val)?;
                     }
                     None => {
                         self.func.builder.ins().return_(&[]);
@@ -99,11 +102,7 @@ impl<'a> CodegenCtx<'a> {
             }
             HirStatementKind::Value(expr, _) => {
                 let val = self.compile_expr(expr)?;
-                if matches!(expr.type_, Type::Primitive(Primitive::Unit)) {
-                    self.func.builder.ins().return_(&[]);
-                } else {
-                    self.func.builder.ins().return_(&[val]);
-                }
+                self.emit_return(val)?;
                 *terminated = true;
                 Ok(())
             }
@@ -178,6 +177,54 @@ impl<'a> CodegenCtx<'a> {
                 Ok(())
             }
         }
+    }
+
+    fn emit_return(&mut self, val: ir::Value) -> Result<(), CraneliftError> {
+        let return_type = &self.func.return_type;
+        if crate::layout::is_aggregate(return_type) {
+            let ptr_size = self.module.pointer_type.bytes();
+            let chunks =
+                crate::layout::aggregate_register_count(return_type, self.module.types, ptr_size);
+            match chunks {
+                0 => {
+                    // >16 bytes: copy into the caller-provided sret pointer
+                    let sret_ptr = self
+                        .func
+                        .sret_ptr
+                        .ok_or_else(|| CraneliftError::Msg("missing sret pointer".to_string()))?;
+                    self.emit_memcpy(
+                        sret_ptr,
+                        val,
+                        crate::layout::size_of(return_type, self.module.types, ptr_size),
+                    )?;
+                    self.func.builder.ins().return_(&[]);
+                }
+                2 => {
+                    // 9-16 bytes: two 64-bit register chunks, stored into the 16-byte slot
+                    let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                    let chunk0 = self.func.builder.ins().load(types::I64, mflags, val, 0);
+                    let addr1 = {
+                        let off = self
+                            .func
+                            .builder
+                            .ins()
+                            .iconst(self.module.pointer_type, 8);
+                        self.func.builder.ins().iadd(val, off)
+                    };
+                    let chunk1 = self.func.builder.ins().load(types::I64, mflags, addr1, 0);
+                    self.func.builder.ins().return_(&[chunk0, chunk1]);
+                }
+                _ => {
+                    // <=8 bytes: passed as a single 64-bit register value
+                    self.func.builder.ins().return_(&[val]);
+                }
+            }
+        } else if matches!(return_type, Type::Primitive(Primitive::Unit)) {
+            self.func.builder.ins().return_(&[]);
+        } else {
+            self.func.builder.ins().return_(&[val]);
+        }
+        Ok(())
     }
 
     fn compile_assign_target(
@@ -259,7 +306,7 @@ impl<'a> CodegenCtx<'a> {
                     }
                 }
             };
-            self.apply_compound_op(current, value, op, value_expr)?
+            self.apply_compound_op(current, value, op, value_expr, target)?
         } else {
             value
         };
@@ -278,7 +325,11 @@ impl<'a> CodegenCtx<'a> {
                 let array_ptr = self.compile_expr(array)?;
                 let index_val = self.compile_expr(index)?;
                 let addr = self.compute_index_addr(array_ptr, index_val, target)?;
-                self.func.builder.ins().store(mflags, write_val, addr, 0);
+                let elem_type = match extract_array_element_type(target) {
+                    Some(t) => t,
+                    None => &Type::Primitive(Primitive::Int32),
+                };
+                self.store_by_value(elem_type, write_val, addr)?;
                 Ok(())
             }
             HirAssignTarget::Field { object, name, .. } => {
@@ -303,7 +354,7 @@ impl<'a> CodegenCtx<'a> {
                             ptr_size,
                         )
                     }
-                    Type::Named(type_name) => match self.module.types.get(type_name) {
+                    Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
                         Some(HirItemKind::Struct(s)) => {
                             let field_types: Vec<(String, Type)> = s
                                 .fields
@@ -364,7 +415,8 @@ impl<'a> CodegenCtx<'a> {
                             .iconst(self.module.pointer_type, offset as i64);
                         self.func.builder.ins().iadd(obj, off_val)
                     };
-                    self.func.builder.ins().store(mflags, write_val, addr, 0);
+                    let field_type = self.resolve_field_type(&object.type_, name, ptr_size)?;
+                    self.store_by_value(&field_type, write_val, addr)?;
                     Ok(())
                 } else if let Some(var_name) = var_name {
                     // Small aggregate packed as i64: materialize on stack, modify field, store back
@@ -425,7 +477,8 @@ impl<'a> CodegenCtx<'a> {
             Some(t) => t,
             None => &Type::Primitive(Primitive::Int32),
         };
-        let elem_size = element_byte_size(elem_type, self.module.pointer_type);
+        let elem_size =
+            crate::layout::array_element_stride(elem_type, self.module.types, self.module.pointer_type.bytes());
         let size_val = self
             .func
             .builder
@@ -453,7 +506,7 @@ impl<'a> CodegenCtx<'a> {
                     ptr_size,
                 ))
             }
-            Type::Named(type_name) => match self.module.types.get(type_name) {
+            Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
                 Some(HirItemKind::Struct(s)) => {
                     let field_types: Vec<(String, Type)> = s
                         .fields
@@ -511,7 +564,7 @@ impl<'a> CodegenCtx<'a> {
                     .map_err(|_| CraneliftError::Msg(format!("invalid tuple index `{name}`")))?;
                 Ok(element_types[index].clone())
             }
-            Type::Named(type_name) => match self.module.types.get(type_name) {
+            Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
                 Some(HirItemKind::Struct(s)) => s
                     .fields
                     .iter()
@@ -536,25 +589,69 @@ impl<'a> CodegenCtx<'a> {
         }
     }
 
+    fn target_is_unsigned(&mut self, target: &HirAssignTarget) -> bool {
+        let target_type: Option<Type> = match target {
+            HirAssignTarget::Ident(name, _) => {
+                self.func.vars.get(name).map(|v| v.vinyl_type.clone())
+            }
+            HirAssignTarget::Index { array, .. } => match &array.type_ {
+                Type::Array { element, .. } => Some((**element).clone()),
+                _ => None,
+            },
+            HirAssignTarget::Field { object, name, .. } => {
+                let ptr_size = self.module.pointer_type.bytes();
+                self.resolve_field_type(&object.type_, name, ptr_size).ok()
+            }
+            HirAssignTarget::Deref(inner, _) => match &inner.type_ {
+                Type::Ref(inner_ty) => Some((**inner_ty).clone()),
+                other => Some(other.clone()),
+            },
+        };
+        matches!(
+            target_type,
+            Some(Type::Primitive(
+                Primitive::UInt8
+                    | Primitive::UInt16
+                    | Primitive::UInt32
+                    | Primitive::UInt64
+                    | Primitive::UInt128
+                    | Primitive::USize
+            ))
+        )
+    }
+
     fn apply_compound_op(
         &mut self,
         current: ir::Value,
         value: ir::Value,
         op: &AssignOp,
         value_expr: &HirExpression,
+        target: &HirAssignTarget,
     ) -> Result<ir::Value, CraneliftError> {
+        let ty = self.func.builder.func.dfg.value_type(current);
+        let unsigned = self.target_is_unsigned(target);
         Ok(match op {
             AssignOp::Eq => value,
             AssignOp::AddEq => self.func.builder.ins().iadd(current, value),
             AssignOp::SubEq => self.func.builder.ins().isub(current, value),
             AssignOp::MulEq => self.func.builder.ins().imul(current, value),
-            AssignOp::DivEq => self.func.builder.ins().sdiv(current, value),
-            AssignOp::RemEq => self.func.builder.ins().srem(current, value),
+            AssignOp::DivEq => self
+                .emit_div_rem(current, value, ty, !unsigned)
+                .0,
+            AssignOp::RemEq => self
+                .emit_div_rem(current, value, ty, !unsigned)
+                .1,
             AssignOp::BitAndEq => self.func.builder.ins().band(current, value),
             AssignOp::BitOrEq => self.func.builder.ins().bor(current, value),
             AssignOp::BitXorEq => self.func.builder.ins().bxor(current, value),
             AssignOp::ShlEq => self.func.builder.ins().ishl(current, value),
-            AssignOp::ShrEq => self.func.builder.ins().sshr(current, value),
+            AssignOp::ShrEq => {
+                if unsigned {
+                    self.func.builder.ins().ushr(current, value)
+                } else {
+                    self.func.builder.ins().sshr(current, value)
+                }
+            }
             AssignOp::PowEq => self.compile_pow(current, value, value_expr)?,
         })
     }

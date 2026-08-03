@@ -25,6 +25,7 @@ pub(crate) fn is_public_symbol(analysis: &Analysis, name: &str) -> bool {
             vinyl_typecheck::hir::HirItemKind::Enum(enumeration) => {
                 (&enumeration.name, enumeration.public)
             }
+            vinyl_typecheck::hir::HirItemKind::TypeAlias(alias) => (&alias.name, alias.public),
         };
         item_name == name && public
     })

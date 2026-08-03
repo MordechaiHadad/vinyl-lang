@@ -1,0 +1,46 @@
+==================
+Type alias
+==================
+
+type Point = (float64, float64);
+
+---
+
+(source_file
+  (type_alias_definition
+    name: (type_identifier)
+    type: (tuple_type
+      (simple_type
+        (primitive_type))
+      (simple_type
+        (primitive_type)))))
+
+==================
+Public type alias
+==================
+
+public type Bytes = [int32; 4];
+
+---
+
+(source_file
+  (type_alias_definition
+    name: (type_identifier)
+    type: (array_type
+      (simple_type
+        (primitive_type))
+      (integer_literal))))
+
+==================
+Type alias of named type
+==================
+
+type Shape = Rectangle;
+
+---
+
+(source_file
+  (type_alias_definition
+    name: (type_identifier)
+    type: (simple_type
+      (type_identifier))))

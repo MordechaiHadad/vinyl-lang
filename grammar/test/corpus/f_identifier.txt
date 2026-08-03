@@ -1,0 +1,90 @@
+==================
+Function named f is not a format string
+==================
+
+fn main(): int32 { let y = f(1); y }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (let_declaration
+        name: (value_identifier)
+        (call_expression
+          function: (value_identifier)
+          arguments: (arguments
+            (integer_literal))))
+      (value_identifier))))
+
+==================
+Let binding named f
+==================
+
+fn main(): int32 { let f = 1; f }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (let_declaration
+        name: (value_identifier)
+        (integer_literal))
+      (value_identifier))))
+
+==================
+Call whose argument is a struct literal binding
+==================
+
+fn main(): int32 { let x = X { a: 5 }; let r = f(x); r }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (let_declaration
+        name: (value_identifier)
+        (struct_literal_expression
+          name: (type_identifier)
+          fields: (struct_literal_fields
+            name: (value_identifier)
+            value: (integer_literal))))
+      (let_declaration
+        name: (value_identifier)
+        (call_expression
+          function: (value_identifier)
+          arguments: (arguments
+            (value_identifier))))
+      (value_identifier))))
+
+==================
+Format string still parses
+==================
+
+fn main() { f"hello" }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    body: (block
+      (string_literal))))

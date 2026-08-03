@@ -206,6 +206,12 @@ fn resolve_imports(
                     }
                     e.public
                 }
+                Item::TypeAlias(a) => {
+                    if a.public {
+                        public_types.push(a.name.clone());
+                    }
+                    a.public
+                }
                 Item::Import(_) => true,
             };
 
@@ -269,6 +275,7 @@ fn add_resolved_modules(
                 Item::Struct(structure) if structure.public => Some(structure.name.clone()),
                 Item::TupleStruct(tuple) if tuple.public => Some(tuple.name.clone()),
                 Item::Enum(enumeration) if enumeration.public => Some(enumeration.name.clone()),
+                Item::TypeAlias(alias) if alias.public => Some(alias.name.clone()),
                 _ => None,
             })
             .collect();

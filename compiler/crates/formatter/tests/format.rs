@@ -58,6 +58,41 @@ fn formats_import() {
 }
 
 #[test]
+fn formats_type_alias() {
+    let input = "type    Point  =  ( float64 , float64 ) ;";
+    let expected = "type Point = (float64, float64);";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_public_type_alias() {
+    let input = "public type Bytes = [int32; 4];";
+    let expected = "public type Bytes = [int32;4];";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_struct_def_keyword_once() {
+    let input = "struct Point { x: int32, y: int32 }";
+    let expected = "struct Point {\n    x:int32,\n    y:int32\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_tuple_def_keyword_once() {
+    let input = "tuple Pair (int32, float64)";
+    let expected = "tuple Pair (int32, float64)";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_enum_def_keyword_once() {
+    let input = "enum Color { Red, Green(int32) }";
+    let expected = "enum Color {\n    Red,\n    Green(int32)\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
 fn preserves_blank_lines_in_block() {
     let input = "fn f() {\n    let mut x = 10;\n\n    x = 69;\n}";
     let expected = "fn f() {\n    let mut x = 10;\n\n    x = 69;\n}";

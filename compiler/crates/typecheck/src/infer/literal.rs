@@ -73,6 +73,26 @@ impl InferState {
                     ));
                 }
             }
+            HirExpressionKind::UInt(value, span) => {
+                if !expr.type_.is_uint() {
+                    errors.push(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::UIntLiteralMismatch {
+                            found: expr.type_.clone(),
+                        },
+                    ));
+                } else if let Some(max) = uint_range(&expr.type_)
+                    && *value > max
+                {
+                    errors.push(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::UIntLiteralOutOfRange {
+                            value: *value,
+                            found: expr.type_.clone(),
+                        },
+                    ));
+                }
+            }
             HirExpressionKind::Float(value, span) => {
                 if !expr.type_.is_float() {
                     errors.push(self.source.error(
@@ -179,6 +199,19 @@ fn int_range(t: &Type) -> Option<(i128, i128)> {
         Primitive::UInt64 => (0, u64::MAX as i128),
         Primitive::UInt128 => (0, i128::MAX),
         Primitive::USize => (0, usize::MAX as i128),
+        _ => return None,
+    })
+}
+
+fn uint_range(t: &Type) -> Option<u128> {
+    let p = t.as_primitive()?;
+    Some(match p {
+        Primitive::UInt8 => u8::MAX as u128,
+        Primitive::UInt16 => u16::MAX as u128,
+        Primitive::UInt32 => u32::MAX as u128,
+        Primitive::UInt64 => u64::MAX as u128,
+        Primitive::UInt128 => u128::MAX,
+        Primitive::USize => usize::MAX as u128,
         _ => return None,
     })
 }

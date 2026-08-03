@@ -1,7 +1,30 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{HirEnumVariantData, HirItemKind, Type};
+
+thread_local! {
+    static TYPE_LAYOUT_STACK: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+fn guard_named_layout<F: FnOnce() -> u32>(name: &str, pointer_size: u32, compute: F) -> u32 {
+    let already_visiting = TYPE_LAYOUT_STACK.with(|stack| {
+        let mut stack = stack.borrow_mut();
+        if stack.iter().any(|n| n == name) {
+            true
+        } else {
+            stack.push(name.to_string());
+            false
+        }
+    });
+    if already_visiting {
+        return pointer_size;
+    }
+    let result = compute();
+    TYPE_LAYOUT_STACK.with(|stack| stack.borrow_mut().pop());
+    result
+}
 
 pub struct Layout {
     pub size: u32,
@@ -11,6 +34,28 @@ pub struct Layout {
 pub struct FieldLayout {
     pub offset: u32,
     pub size: u32,
+}
+
+pub fn resolve_type_item<'a>(
+    name: &str,
+    types: &'a HashMap<String, HirItemKind>,
+    visited: &mut Vec<String>,
+) -> Option<&'a HirItemKind> {
+    match types.get(name) {
+        Some(HirItemKind::TypeAlias(a)) => match &a.type_ {
+            Type::Named(target) => {
+                if visited.contains(target) {
+                    return None;
+                }
+                visited.push(target.clone());
+                let result = resolve_type_item(target, types, visited);
+                visited.pop();
+                result
+            }
+            _ => None,
+        },
+        other => other,
+    }
 }
 
 pub fn size_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
@@ -24,12 +69,14 @@ pub fn size_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u32
             Primitive::ISize | Primitive::USize | Primitive::String => pointer_size,
             Primitive::Unit => 0,
         },
-        Type::Named(name) => named_type_size_of(name, types, pointer_size),
+        Type::Named(name) => chunk_slot_size(named_type_size_of(name, types, pointer_size)),
         Type::Ref(_) => pointer_size,
-        Type::Array { element, size } => size_of(element, types, pointer_size) * (*size as u32),
+        Type::Array { element, size } => {
+            chunk_slot_size(array_element_stride(element, types, pointer_size) * (*size as u32))
+        }
         Type::Tuple(elements) => {
             if elements.is_empty() {
-                return 0;
+                return chunk_slot_size(0);
             }
             let mut total: u32 = 0;
             let max_align = elements
@@ -42,7 +89,7 @@ pub fn size_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u32
                 total = align_up(total, elem_align);
                 total += size_of(element, types, pointer_size);
             }
-            align_up(total, max_align)
+            chunk_slot_size(align_up(total, max_align))
         }
         Type::Generic { .. } | Type::Var(_) => pointer_size,
     }
@@ -72,7 +119,7 @@ pub fn align_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u3
 }
 
 fn named_type_size_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
-    match types.get(name) {
+    guard_named_layout(name, pointer_size, || match types.get(name) {
         Some(HirItemKind::Struct(s)) => {
             let field_types: Vec<(String, Type)> = s
                 .fields
@@ -100,13 +147,13 @@ fn named_type_size_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_
         Some(HirItemKind::TupleStruct(t)) => {
             size_of(&Type::Tuple(t.types.clone()), types, pointer_size)
         }
-        // todo: cycle detection for recursive named types, stack overflow guard
+        Some(HirItemKind::TypeAlias(a)) => size_of(&a.type_, types, pointer_size),
         _ => pointer_size,
-    }
+    })
 }
 
 fn named_type_align_of(name: &str, types: &HashMap<String, HirItemKind>, pointer_size: u32) -> u32 {
-    match types.get(name) {
+    guard_named_layout(name, pointer_size, || match types.get(name) {
         Some(HirItemKind::Struct(s)) => s
             .fields
             .iter()
@@ -132,8 +179,9 @@ fn named_type_align_of(name: &str, types: &HashMap<String, HirItemKind>, pointer
         Some(HirItemKind::TupleStruct(t)) => {
             align_of(&Type::Tuple(t.types.clone()), types, pointer_size)
         }
+        Some(HirItemKind::TypeAlias(a)) => align_of(&a.type_, types, pointer_size),
         _ => pointer_size,
-    }
+    })
 }
 
 pub fn tuple_field_offset(
@@ -243,4 +291,80 @@ pub fn align_up(offset: u32, alignment: u32) -> u32 {
     }
     let mask = alignment - 1;
     (offset + mask) & !mask
+}
+
+/// Byte size of the memory region an aggregate reserves when embedded.
+/// Register-passed aggregates occupy their whole slot (8 or 16 bytes) so a
+/// packed store/load or chunk copy never touches a neighboring field.
+/// This rounding preserves the <=8/<=16/>16 register-chunk thresholds.
+pub fn chunk_slot_size(real: u32) -> u32 {
+    if real <= 8 {
+        8
+    } else if real <= 16 {
+        16
+    } else {
+        real
+    }
+}
+
+pub fn is_aggregate(t: &Type) -> bool {
+    matches!(t, Type::Named(_) | Type::Tuple(_) | Type::Array { .. })
+}
+
+/// Number of i64 registers an aggregate is passed/returned in (0 = byref/sret).
+/// Aggregates up to 16 bytes are split into 8-byte chunks; larger ones use memory.
+pub fn aggregate_register_count(
+    t: &Type,
+    types: &HashMap<String, HirItemKind>,
+    pointer_size: u32,
+) -> usize {
+    let size = size_of(t, types, pointer_size);
+    if size <= 8 {
+        1
+    } else if size <= 16 {
+        2
+    } else {
+        0
+    }
+}
+
+/// Byte size of the stack slot that materializes an aggregate value in memory.
+/// Register-passed aggregates (<=16 bytes) get a fixed 8 or 16-byte slot so a
+/// chunk load never reads past the value; larger aggregates use their real size.
+pub fn aggregate_slot_size(
+    t: &Type,
+    types: &HashMap<String, HirItemKind>,
+    pointer_size: u32,
+) -> u32 {
+    match aggregate_register_count(t, types, pointer_size) {
+        1 => 8,
+        2 => 16,
+        _ => size_of(t, types, pointer_size),
+    }
+}
+
+/// Byte count to copy when moving an aggregate value between memory slots.
+/// Two-chunk aggregates copy the full 16-byte slot so padding stays deterministic.
+pub fn aggregate_copy_size(
+    t: &Type,
+    types: &HashMap<String, HirItemKind>,
+    pointer_size: u32,
+) -> u32 {
+    match aggregate_register_count(t, types, pointer_size) {
+        2 => 16,
+        _ => size_of(t, types, pointer_size),
+    }
+}
+
+/// Byte stride between elements of a by-value array.
+pub fn array_element_stride(
+    element: &Type,
+    types: &HashMap<String, HirItemKind>,
+    pointer_size: u32,
+) -> u32 {
+    if is_aggregate(element) {
+        aggregate_slot_size(element, types, pointer_size)
+    } else {
+        size_of(element, types, pointer_size)
+    }
 }

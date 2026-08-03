@@ -9,6 +9,7 @@ use crate::ast::{
 #[derive(Debug, Clone)]
 pub enum Expression {
     Int(i128, SourceSpan),
+    UInt(u128, SourceSpan),
     Float(f64, SourceSpan),
     String(String, SourceSpan),
     Char(char, SourceSpan),
@@ -82,6 +83,7 @@ impl Expression {
     pub fn span(&self) -> SourceSpan {
         match self {
             Expression::Int(_, s) => *s,
+            Expression::UInt(_, s) => *s,
             Expression::Float(_, s) => *s,
             Expression::String(_, s) => *s,
             Expression::Char(_, s) => *s,

@@ -13,6 +13,7 @@ pub struct HirExpression {
 #[derive(Debug, Clone)]
 pub enum HirExpressionKind {
     Int(i128, SourceSpan),
+    UInt(u128, SourceSpan),
     Float(f64, SourceSpan),
     String(String, SourceSpan),
     Bool(bool, SourceSpan),

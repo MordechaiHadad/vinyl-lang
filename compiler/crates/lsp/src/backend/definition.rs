@@ -131,6 +131,12 @@ pub(crate) fn definition_detail(
             }
             _ => None,
         }),
+        DefinitionKind::TypeAlias => result.items.iter().find_map(|item| match &item.kind {
+            HirItemKind::TypeAlias(a) if a.name == definition.name => {
+                Some(format!("type {} = {}", a.name, a.type_))
+            }
+            _ => None,
+        }),
         DefinitionKind::Parameter => extract_type_from_span(
             source,
             definition.span.offset(),

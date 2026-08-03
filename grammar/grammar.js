@@ -40,6 +40,7 @@ export default grammar({
         $.struct_definition,
         $.tuple_definition,
         $.enum_definition,
+        $.type_alias_definition,
         $.import_statement,
       ),
     ),
@@ -95,6 +96,14 @@ export default grammar({
         seq("(", commaSep($._type), ")"),
         seq("{", commaSep($.field_definition), optional(","), "}"),
       )),
+    ),
+
+    type_alias_definition: $ => seq(
+      "type",
+      field("name", $.type_identifier),
+      "=",
+      field("type", $._type),
+      ";",
     ),
 
     type_annotation: $ => seq(":", $._type),
@@ -235,12 +244,12 @@ export default grammar({
       "'",
     ),
 
-    string_literal: $ => seq(
+    string_literal: $ => token(seq(
       optional("f"),
       '"',
       repeat(/[^"\\]|\\"/),
       '"',
-    ),
+    )),
 
     raw_string_literal: $ => token(seq(
       "r",

@@ -73,6 +73,7 @@ impl Backend {
                         HirItemKind::Struct(structure) => (&structure.name, SymbolKind::STRUCT),
                         HirItemKind::TupleStruct(tuple) => (&tuple.name, SymbolKind::STRUCT),
                         HirItemKind::Enum(enumeration) => (&enumeration.name, SymbolKind::ENUM),
+                        HirItemKind::TypeAlias(alias) => (&alias.name, SymbolKind::STRUCT),
                     };
                     DocumentSymbol {
                         name: name.clone(),

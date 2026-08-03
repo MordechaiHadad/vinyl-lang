@@ -5,7 +5,7 @@ use crate::{
     ParserDiagnostic,
     ast::item::{
         Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, ImportDef,
-        Item, StructDef, StructField, TupleDef,
+        Item, StructDef, StructField, TupleDef, TypeAliasDef,
     },
     lower::{Lowerer, helpers::node_text},
 };
@@ -30,6 +30,9 @@ impl<'a> Lowerer<'a> {
             "enum_definition" => self
                 .lower_enum_definition(node, Vec::new(), public)
                 .map(Item::Enum),
+            "type_alias_definition" => self
+                .lower_type_alias(node, Vec::new(), public)
+                .map(Item::TypeAlias),
             "import_statement" => self.lower_import(node).map(Item::Import),
             kind => Err(self.invalid_kind(node, kind, "item")),
         }
@@ -180,6 +183,25 @@ impl<'a> Lowerer<'a> {
             params,
             return_type,
             body,
+        })
+    }
+
+    pub(super) fn lower_type_alias(
+        &self,
+        node: &Node,
+        attrs: Vec<Attribute>,
+        public: bool,
+    ) -> Result<TypeAliasDef, ParserDiagnostic> {
+        let span = SourceSpan::from(node.start_byte()..node.end_byte());
+        let name = node_text(&self.child_by_field(node, "name")?, self.source);
+        let type_node = self.child_by_field(node, "type")?;
+        let type_ = self.lower_type(&type_node)?;
+        Ok(TypeAliasDef {
+            span,
+            public,
+            attrs,
+            name,
+            type_,
         })
     }
 

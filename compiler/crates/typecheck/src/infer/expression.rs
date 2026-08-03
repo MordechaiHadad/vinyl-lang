@@ -11,6 +11,7 @@ use crate::hir::{
     HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirStatement,
     HirStatementKind, Type,
 };
+use crate::infer::resolve_named_type;
 use crate::infer::InferState;
 
 impl InferState {
@@ -23,6 +24,10 @@ impl InferState {
             Expression::Int(v, span) => Ok(HirExpression {
                 kind: HirExpressionKind::Int(*v, *span),
                 type_: self.subs.fresh_var(),
+            }),
+            Expression::UInt(v, span) => Ok(HirExpression {
+                kind: HirExpressionKind::UInt(*v, *span),
+                type_: Type::Primitive(Primitive::UInt128),
             }),
             Expression::Float(v, span) => {
                 let var = self.subs.fresh_var();
@@ -557,7 +562,7 @@ impl InferState {
                         },
                     )));
                 }
-                let variant_info = self.types.get(type_name).and_then(|kind| {
+                let variant_info = resolve_named_type(type_name, &self.types).and_then(|kind| {
                     if let HirItemKind::Enum(e) = kind {
                         e.variants
                             .iter()
@@ -632,7 +637,7 @@ impl InferState {
                 let mut hir_fields = Vec::new();
                 for (name, expr) in fields {
                     let hir = self.infer_expr(expr, signatures)?;
-                    if let Some(HirItemKind::Struct(s)) = self.types.get(type_name) {
+                    if let Some(HirItemKind::Struct(s)) = resolve_named_type(type_name, &self.types) {
                         if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
                             let field_type = self.subs.apply(&hir.type_);
                             if let Err(e) = self.subs.unify(
@@ -655,7 +660,7 @@ impl InferState {
                     }
                     hir_fields.push((name.clone(), hir));
                 }
-                let struct_type = match self.types.get(type_name) {
+                let struct_type = match resolve_named_type(type_name, &self.types) {
                     Some(HirItemKind::Struct(s)) => {
                         for field in &s.fields {
                             if !hir_fields.iter().any(|(n, _)| n == &field.name) {
@@ -705,7 +710,7 @@ impl InferState {
     ) -> Type {
         match object_type {
             Type::Named(name) => {
-                if let Some(HirItemKind::Struct(s)) = self.types.get(name) {
+                if let Some(HirItemKind::Struct(s)) = resolve_named_type(name, &self.types) {
                     if let Some(field) = s.fields.iter().find(|f| f.name == field_name) {
                         return field.type_.clone();
                     }
@@ -718,7 +723,7 @@ impl InferState {
                     ));
                     return self.subs.fresh_var();
                 }
-                if let Some(HirItemKind::TupleStruct(t)) = self.types.get(name) {
+                if let Some(HirItemKind::TupleStruct(t)) = resolve_named_type(name, &self.types) {
                     if let Ok(index) = field_name.parse::<usize>()
                         && index < t.types.len()
                     {

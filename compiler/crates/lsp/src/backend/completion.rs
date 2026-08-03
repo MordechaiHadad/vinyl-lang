@@ -147,6 +147,7 @@ fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
             DefinitionKind::Struct => CompletionItemKind::STRUCT,
             DefinitionKind::Enum => CompletionItemKind::ENUM,
             DefinitionKind::TupleStruct => CompletionItemKind::STRUCT,
+            DefinitionKind::TypeAlias => CompletionItemKind::STRUCT,
             DefinitionKind::Variable => CompletionItemKind::VARIABLE,
             DefinitionKind::Parameter => CompletionItemKind::VARIABLE,
         };

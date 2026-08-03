@@ -8,7 +8,7 @@ use vinyl_parser::ast::statement::Statement;
 use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
-    HirTupleStruct, Type,
+    HirTupleStruct, HirTypeAlias, Type,
 };
 use crate::module::ModuleTable;
 
@@ -88,6 +88,193 @@ impl InferState {
             loop_depth: 0,
             errors: Vec::new(),
             module_table: module_table.clone(),
+        }
+    }
+}
+
+pub(super) fn resolve_named_type<'a>(
+    name: &str,
+    types: &'a HashMap<String, HirItemKind>,
+) -> Option<&'a HirItemKind> {
+    match types.get(name) {
+        Some(HirItemKind::TypeAlias(a)) => match &a.type_ {
+            Type::Named(target) => resolve_named_type(target, types),
+            _ => None,
+        },
+        other => other,
+    }
+}
+
+enum AliasTargetError {
+    UnknownType(String),
+    Recursive,
+}
+
+fn validate_type_aliases(state: &mut InferState) {
+    let aliases: Vec<(SourceSpan, String, Type)> = state
+        .types
+        .iter()
+        .filter_map(|(name, kind)| {
+            if let HirItemKind::TypeAlias(a) = kind {
+                Some((a.span, name.clone(), a.type_.clone()))
+            } else {
+                None
+            }
+        })
+        .collect();
+    for (span, name, target) in aliases {
+        match validate_alias_target(&target, &state.types, &mut Vec::new()) {
+            Err(AliasTargetError::UnknownType(t)) => state.errors.push(state.source.error(
+                span,
+                TypeDiagnosticKind::UnknownType { name: t },
+            )),
+            Err(AliasTargetError::Recursive) => state.errors.push(state.source.error(
+                span,
+                TypeDiagnosticKind::RecursiveTypeAlias { name },
+            )),
+            Ok(()) => {}
+        }
+    }
+}
+
+fn validate_alias_target(
+    target: &Type,
+    types: &HashMap<String, HirItemKind>,
+    visited: &mut Vec<String>,
+) -> Result<(), AliasTargetError> {
+    match target {
+        Type::Named(n) => {
+            if visited.contains(n) {
+                return Err(AliasTargetError::Recursive);
+            }
+            match types.get(n) {
+                Some(HirItemKind::TypeAlias(a)) => {
+                    visited.push(n.clone());
+                    let result = validate_alias_target(&a.type_, types, visited);
+                    visited.pop();
+                    result
+                }
+                Some(_) => Ok(()),
+                None => Err(AliasTargetError::UnknownType(n.clone())),
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+fn field_types_of<'a>(
+    types: &'a HashMap<String, HirItemKind>,
+    name: &str,
+) -> Vec<&'a Type> {
+    match types.get(name) {
+        Some(HirItemKind::Struct(s)) => s.fields.iter().map(|f| &f.type_).collect(),
+        Some(HirItemKind::TupleStruct(t)) => t.types.iter().collect(),
+        Some(HirItemKind::Enum(e)) => e
+            .variants
+            .iter()
+            .flat_map(|v| match &v.data {
+                Some(HirEnumVariantData::Tuple(tys)) => tys.iter().collect::<Vec<_>>(),
+                Some(HirEnumVariantData::Struct(fields)) => {
+                    fields.iter().map(|f| &f.type_).collect()
+                }
+                None => Vec::new(),
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Collect named types reached by value (through fields, array elements, and
+/// tuples) but not through references.
+fn by_value_named(t: &Type) -> Vec<&Type> {
+    match t {
+        Type::Named(_) => vec![t],
+        Type::Array { element, .. } => by_value_named(element),
+        Type::Tuple(elements) => elements.iter().flat_map(by_value_named).collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Resolve a type alias chain to the underlying named type (or the alias name
+/// itself if the chain bottoms out elsewhere). Cycle-safe for defensive use.
+fn resolve_named_alias<'a>(
+    name: &'a str,
+    types: &'a HashMap<String, HirItemKind>,
+    visited: &mut Vec<String>,
+) -> &'a str {
+    if visited.iter().any(|v| v == name) {
+        return name;
+    }
+    visited.push(name.to_string());
+    let result = match types.get(name) {
+        Some(HirItemKind::TypeAlias(a)) => match &a.type_ {
+            Type::Named(target) => resolve_named_alias(target, types, visited),
+            _ => name,
+        },
+        _ => name,
+    };
+    visited.pop();
+    result
+}
+
+fn contains_by_value_cycle(
+    start: &str,
+    current: &str,
+    types: &HashMap<String, HirItemKind>,
+    in_path: &mut Vec<String>,
+    alias_visited: &mut Vec<String>,
+) -> bool {
+    for field_type in field_types_of(types, current) {
+        for contained in by_value_named(field_type) {
+            let Type::Named(next) = contained else { continue };
+            let resolved = resolve_named_alias(next, types, alias_visited);
+            if resolved == start {
+                return true;
+            }
+            if in_path.iter().any(|p| p.as_str() == resolved) {
+                continue;
+            }
+            in_path.push(resolved.to_string());
+            if contains_by_value_cycle(start, resolved, types, in_path, alias_visited) {
+                return true;
+            }
+            in_path.pop();
+        }
+    }
+    false
+}
+
+/// Reject named types that contain themselves by value, which would have
+/// infinite size (e.g. `struct A { b: B }` with `struct B { a: A }`, or the
+/// same reached through a type alias like `type X = S; struct S { f: X }`).
+fn validate_recursive_types(state: &mut InferState) {
+    let named: Vec<(SourceSpan, String)> = state
+        .types
+        .iter()
+        .filter_map(|(name, kind)| match kind {
+            HirItemKind::Struct(s) => Some((s.span, name.clone())),
+            HirItemKind::TupleStruct(t) => Some((t.span, name.clone())),
+            HirItemKind::Enum(e) => Some((e.span, name.clone())),
+            _ => None,
+        })
+        .collect();
+    for (span, name) in named {
+        let mut in_path = Vec::new();
+        let mut alias_visited = Vec::new();
+        if contains_by_value_cycle(
+            &name,
+            &name,
+            &state.types,
+            &mut in_path,
+            &mut alias_visited,
+        ) {
+            state.errors.push(state.source.error(
+                span,
+                TypeDiagnosticKind::RecursiveType {
+                    a: Type::Named(name.clone()),
+                    b: Type::Named(name),
+                },
+            ));
         }
     }
 }
@@ -181,6 +368,15 @@ pub fn typeck_with_modules(
                         .collect(),
                 }),
             }),
+            Item::TypeAlias(a) => Some(HirItem {
+                span: a.span,
+                kind: HirItemKind::TypeAlias(HirTypeAlias {
+                    span: a.span,
+                    name: a.name.clone(),
+                    public: a.public,
+                    type_: a.type_.clone(),
+                }),
+            }),
             Item::Function(_) => None,
             Item::Import(_) => None,
         };
@@ -189,12 +385,16 @@ pub fn typeck_with_modules(
                 HirItemKind::Struct(s) => s.name.clone(),
                 HirItemKind::TupleStruct(t) => t.name.clone(),
                 HirItemKind::Enum(e) => e.name.clone(),
+                HirItemKind::TypeAlias(a) => a.name.clone(),
                 _ => unreachable!(),
             };
             state.types.insert(name, hir.kind.clone());
             hir_items.push(hir);
         }
     }
+
+    validate_type_aliases(&mut state);
+    validate_recursive_types(&mut state);
 
     for item in items {
         if let Item::Function(f) = item {
@@ -301,6 +501,11 @@ fn collect_type_positions(items: &[Item], source: &str) -> BTreeMap<usize, Strin
                             }
                         }
                     }
+                }
+            }
+            Item::TypeAlias(a) => {
+                if let Some(offset) = type_after_colon(source, a.span) {
+                    positions.insert(offset, a.type_.to_string());
                 }
             }
             Item::Import(_) => {}

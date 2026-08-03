@@ -68,6 +68,9 @@ impl IndexBuilder {
                 HirItemKind::Enum(enumeration) => {
                     (&enumeration.name, DefinitionKind::Enum, enumeration.span)
                 }
+                HirItemKind::TypeAlias(alias) => {
+                    (&alias.name, DefinitionKind::TypeAlias, alias.span)
+                }
             };
             self.add_definition(name, kind, span, None);
         }
@@ -143,7 +146,8 @@ impl IndexBuilder {
                 self.walk_stmts(&f.body);
                 self.scopes.pop();
             }
-            HirItemKind::Struct(_) | HirItemKind::TupleStruct(_) | HirItemKind::Enum(_) => {}
+            HirItemKind::Struct(_) | HirItemKind::TupleStruct(_) | HirItemKind::Enum(_)
+            | HirItemKind::TypeAlias(_) => {}
         }
     }
 
@@ -289,6 +293,7 @@ impl IndexBuilder {
                 }
             }
             HirExpressionKind::Int(_, _)
+            | HirExpressionKind::UInt(_, _)
             | HirExpressionKind::Float(_, _)
             | HirExpressionKind::String(_, _)
             | HirExpressionKind::Bool(_, _)
@@ -301,6 +306,7 @@ impl IndexBuilder {
     fn insert_expr(&mut self, expr: &HirExpression) {
         let span = match &expr.kind {
             HirExpressionKind::Int(_, span)
+            | HirExpressionKind::UInt(_, span)
             | HirExpressionKind::Float(_, span)
             | HirExpressionKind::String(_, span)
             | HirExpressionKind::Bool(_, span)

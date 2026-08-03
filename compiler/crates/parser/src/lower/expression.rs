@@ -231,16 +231,17 @@ impl<'a> Lowerer<'a> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
         let val = if let Some(hex) = raw.strip_prefix("0x") {
-            i128::from_str_radix(hex, 16)
+            u128::from_str_radix(hex, 16)
         } else if let Some(oct) = raw.strip_prefix("0o") {
-            i128::from_str_radix(oct, 8)
+            u128::from_str_radix(oct, 8)
         } else if let Some(bin) = raw.strip_prefix("0b") {
-            i128::from_str_radix(bin, 2)
+            u128::from_str_radix(bin, 2)
         } else {
             raw.parse()
         };
         match val {
-            Ok(v) => Ok(Expression::Int(v, span)),
+            Ok(v) if v <= i128::MAX as u128 => Ok(Expression::Int(v as i128, span)),
+            Ok(v) => Ok(Expression::UInt(v, span)),
             Err(_) => Err(self.span_error(node, &format!("invalid integer literal `{raw}`"))),
         }
     }
@@ -319,6 +320,9 @@ impl<'a> Lowerer<'a> {
         let operand = self.lower_expression(&children[0])?;
         match (&op, &operand) {
             (UnaryOp::Neg, Expression::Int(v, _)) => Ok(Expression::Int(-v, span)),
+            (UnaryOp::Neg, Expression::UInt(v, _)) if *v <= 1u128 << 127 => {
+                Ok(Expression::Int((*v as i128).wrapping_neg(), span))
+            }
             (UnaryOp::Neg, Expression::Float(v, _)) => Ok(Expression::Float(-v, span)),
             (UnaryOp::Not, Expression::Bool(b, _)) => Ok(Expression::Bool(!b, span)),
             (UnaryOp::Ref, _) => Ok(Expression::Ref {

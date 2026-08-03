@@ -15,6 +15,7 @@ pub enum HirItemKind {
     Struct(HirStruct),
     TupleStruct(HirTupleStruct),
     Enum(HirEnum),
+    TypeAlias(HirTypeAlias),
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +65,14 @@ pub struct HirEnumVariant {
     pub span: SourceSpan,
     pub name: String,
     pub data: Option<HirEnumVariantData>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HirTypeAlias {
+    pub span: SourceSpan,
+    pub name: String,
+    pub public: bool,
+    pub type_: Type,
 }
 
 #[derive(Debug, Clone)]

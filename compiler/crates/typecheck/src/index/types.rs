@@ -33,6 +33,7 @@ pub enum DefinitionKind {
     Struct,
     Enum,
     TupleStruct,
+    TypeAlias,
     Variable,
     Parameter,
 }

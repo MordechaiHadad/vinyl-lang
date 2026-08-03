@@ -31,6 +31,8 @@ pub struct FuncEnv<'a> {
     pub ref_vars: &'a HashSet<String>,
     pub break_target: Option<ir::Block>,
     pub continue_target: Option<ir::Block>,
+    pub return_type: Type,
+    pub sret_ptr: Option<ir::Value>,
 }
 
 pub struct CodegenCtx<'a> {

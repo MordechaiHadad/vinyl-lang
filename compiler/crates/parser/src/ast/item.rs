@@ -8,6 +8,7 @@ pub enum Item {
     Struct(StructDef),
     TupleStruct(TupleDef),
     Enum(EnumDef),
+    TypeAlias(TypeAliasDef),
     Import(ImportDef),
 }
 
@@ -18,6 +19,7 @@ impl Item {
             Item::Struct(s) => s.span,
             Item::TupleStruct(t) => t.span,
             Item::Enum(e) => e.span,
+            Item::TypeAlias(a) => a.span,
             Item::Import(i) => i.span,
         }
     }
@@ -81,6 +83,15 @@ pub struct EnumVariant {
     pub span: SourceSpan,
     pub name: String,
     pub data: Option<EnumVariantData>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeAliasDef {
+    pub span: SourceSpan,
+    pub public: bool,
+    pub attrs: Vec<Attribute>,
+    pub name: String,
+    pub type_: Type,
 }
 
 #[derive(Debug, Clone)]
