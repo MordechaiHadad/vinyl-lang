@@ -146,7 +146,9 @@ impl IndexBuilder {
                 self.walk_stmts(&f.body);
                 self.scopes.pop();
             }
-            HirItemKind::Struct(_) | HirItemKind::TupleStruct(_) | HirItemKind::Enum(_)
+            HirItemKind::Struct(_)
+            | HirItemKind::TupleStruct(_)
+            | HirItemKind::Enum(_)
             | HirItemKind::TypeAlias(_) => {}
         }
     }

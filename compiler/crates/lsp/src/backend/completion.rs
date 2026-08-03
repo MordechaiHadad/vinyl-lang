@@ -8,7 +8,8 @@ use vinyl_typecheck::DefinitionKind;
 use crate::backend::definition::definition_detail;
 use crate::backend::state::{Analysis, Backend, State};
 use crate::backend::workspace::{
-    is_imported, is_public_symbol, non_canonical_key, relative_import_path, same_file,
+    analyze_with_diagnostics, is_imported, is_public_symbol, non_canonical_key,
+    parse_file_with_diagnostics, relative_import_path, same_file,
 };
 use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
@@ -26,16 +27,20 @@ impl Backend {
         let Some(path) = uri.to_file_path().ok() else {
             return Ok(None);
         };
-        let analysis = self.analysis(uri).await;
-
         let state = self.state.read().await;
         let current_source = state.vfs.source(&path).unwrap_or_default();
+        let analysis = (|| {
+            let (name, items) = parse_file_with_diagnostics(&state.vfs, &path).ok()?;
+            analyze_with_diagnostics(&path, &name, &items, &state.module_table).ok()
+        })()
+        .or(self.analysis(uri).await);
         let current_line_index = LineIndex::new(&current_source);
         let offset = offset_at(&current_line_index, params.text_document_position.position);
         let prefix = word_prefix(&current_source, offset);
         let import_prefix_info = detect_import_prefix(&current_source, offset);
         let in_import_context = import_prefix_info.is_some();
-        let module_ref_simple = module_ref_prefix(&current_source, offset);
+        let module_ref_simple = module_ref_prefix(&current_source, offset)
+            .map(|(module_name, _)| (module_name, prefix.clone()));
         let is_colon_trigger =
             params.context.and_then(|c| c.trigger_character).as_deref() == Some(":");
 
@@ -163,6 +168,39 @@ fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
         });
     }
 
+    for item in &analysis.result.items {
+        let vinyl_typecheck::hir::HirItemKind::Function(function) = &item.kind else {
+            continue;
+        };
+        for parameter in &function.params {
+            if parameter.name.starts_with(prefix)
+                && !items.iter().any(|item| item.label == parameter.name)
+            {
+                items.push(CompletionItem {
+                    label: parameter.name.clone(),
+                    kind: Some(CompletionItemKind::VARIABLE),
+                    detail: Some(parameter.type_.to_string()),
+                    ..CompletionItem::default()
+                });
+            }
+        }
+    }
+
+    for definition in analysis.result.references.values() {
+        if !matches!(definition.kind, DefinitionKind::Parameter)
+            || !definition.name.starts_with(prefix)
+            || items.iter().any(|item| item.label == definition.name)
+        {
+            continue;
+        }
+        items.push(CompletionItem {
+            label: definition.name.clone(),
+            kind: Some(CompletionItemKind::VARIABLE),
+            detail: definition.type_name.clone(),
+            ..CompletionItem::default()
+        });
+    }
+
     items
 }
 
@@ -189,9 +227,9 @@ mod tests {
             .map(|item| item.label)
             .collect();
         for keyword in [
-            "struct", "enum", "tuple", "type", "int", "float", "bool", "char", "string",
-            "unit", "int8", "int16", "int32", "int64", "int128", "isize", "uint8",
-            "uint16", "uint32", "uint64", "uint128", "usize", "float32", "float64",
+            "struct", "enum", "tuple", "type", "int", "float", "bool", "char", "string", "unit",
+            "int8", "int16", "int32", "int64", "int128", "isize", "uint8", "uint16", "uint32",
+            "uint64", "uint128", "usize", "float32", "float64",
         ] {
             assert!(labels.iter().any(|label| label == keyword));
         }

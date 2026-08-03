@@ -188,8 +188,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                                 ptr_size,
                             );
                             for byte_offset in 0..copy_size {
-                                let off =
-                                    builder.ins().iconst(pointer_type, byte_offset as i64);
+                                let off = builder.ins().iconst(pointer_type, byte_offset as i64);
                                 let src_addr = builder.ins().iadd(values[0], off);
                                 let b = builder.ins().load(types::I8, mflags, src_addr, 0);
                                 let dst_addr = builder.ins().iadd(dest, off);
@@ -197,8 +196,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                             }
                         } else {
                             for (i, chunk) in values.iter().enumerate() {
-                                let off =
-                                    builder.ins().iconst(pointer_type, (i as i64) * 8);
+                                let off = builder.ins().iconst(pointer_type, (i as i64) * 8);
                                 let addr = builder.ins().iadd(dest, off);
                                 builder.ins().store(mflags, *chunk, addr, 0);
                             }

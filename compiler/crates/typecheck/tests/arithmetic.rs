@@ -81,7 +81,10 @@ fn power_negative_exponent_int_literals() {
 fn power_negative_exponent_int_var() {
     let source = "fn main() { let x = 10; x ** -1; }";
     let items = common::compile(source);
-    assert!(items.is_err(), "typeck should fail: int var ** negative int");
+    assert!(
+        items.is_err(),
+        "typeck should fail: int var ** negative int"
+    );
 }
 
 #[test]

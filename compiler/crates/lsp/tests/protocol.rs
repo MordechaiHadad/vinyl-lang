@@ -1049,6 +1049,45 @@ fn module_prefix_completion_in_import_and_expression() {
             .iter()
             .any(|item| item["label"] == "parent::")
     );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 4, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 1, "character": 17 } }
+    }));
+    let keyword_items = lsp.response(4)["result"].as_array().unwrap().clone();
+    assert!(keyword_items.iter().any(|item| item["label"] == "struct"));
+    assert!(keyword_items.iter().any(|item| item["label"] == "int32"));
+    assert!(keyword_items.iter().any(|item| item["label"] == "parent::"));
+}
+
+#[test]
+fn completion_includes_function_parameters() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": "fn ident(n: int): int {\n    n + 1\n}\n" } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 1, "character": 5 } }
+    }));
+    let response = lsp.response(2);
+    let items = response["result"].as_array().unwrap();
+    assert!(
+        items.iter().any(|item| item["label"] == "n"),
+        "completion items: {items:?}"
+    );
 }
 
 #[test]
@@ -1092,11 +1131,7 @@ fn code_action_adds_import_for_qualified_module_reference() {
 #[test]
 fn script_mode_loads_imported_module_for_missing_import_suggestion() {
     let project = TestProject::new();
-    std::fs::write(
-        &project.math,
-        "public fn double(n: int): int { n * 2 }\n",
-    )
-    .unwrap();
+    std::fs::write(&project.math, "public fn double(n: int): int { n * 2 }\n").unwrap();
     let main_uri = TestProject::uri(&project.main);
     let root_uri = TestProject::uri(&project.root);
     let mut lsp = LspProcess::start();

@@ -11,8 +11,8 @@ use crate::hir::{
     HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirStatement,
     HirStatementKind, Type,
 };
-use crate::infer::resolve_named_type;
 use crate::infer::InferState;
+use crate::infer::resolve_named_type;
 
 impl InferState {
     pub(super) fn infer_expr(
@@ -637,7 +637,8 @@ impl InferState {
                 let mut hir_fields = Vec::new();
                 for (name, expr) in fields {
                     let hir = self.infer_expr(expr, signatures)?;
-                    if let Some(HirItemKind::Struct(s)) = resolve_named_type(type_name, &self.types) {
+                    if let Some(HirItemKind::Struct(s)) = resolve_named_type(type_name, &self.types)
+                    {
                         if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
                             let field_type = self.subs.apply(&hir.type_);
                             if let Err(e) = self.subs.unify(

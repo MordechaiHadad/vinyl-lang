@@ -86,7 +86,10 @@ fn power_negative_base() {
 
 #[test]
 fn power_right_associative() {
-    assert_eq!(common::run("fn main(): int32 { 2 ** 3 ** 2 }").unwrap(), 512);
+    assert_eq!(
+        common::run("fn main(): int32 { 2 ** 3 ** 2 }").unwrap(),
+        512
+    );
 }
 
 #[test]

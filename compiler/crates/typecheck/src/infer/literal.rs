@@ -2,7 +2,9 @@ use vinyl_parser::ast::operator::BinaryOp;
 use vinyl_parser::ast::types::Primitive;
 
 use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
-use crate::hir::{AssignOp, HirExpression, HirExpressionKind, HirStatement, HirStatementKind, Type};
+use crate::hir::{
+    AssignOp, HirExpression, HirExpressionKind, HirStatement, HirStatementKind, Type,
+};
 use crate::infer::InferState;
 
 impl InferState {
@@ -24,7 +26,9 @@ impl InferState {
                 self.validate_literal_types(body, errors);
             }
             HirStatementKind::Break(_) | HirStatementKind::Continue(_) => {}
-            HirStatementKind::Assign { span, op, value, .. } => {
+            HirStatementKind::Assign {
+                span, op, value, ..
+            } => {
                 if *op == AssignOp::PowEq {
                     self.check_pow_negative_exponent(&value.type_, value, *span, errors);
                 }
@@ -112,7 +116,11 @@ impl InferState {
                 }
             }
             HirExpressionKind::Binary {
-                span, op, left, right, ..
+                span,
+                op,
+                left,
+                right,
+                ..
             } => {
                 if *op == BinaryOp::Pow {
                     self.check_pow_negative_exponent(&left.type_, right, *span, errors);

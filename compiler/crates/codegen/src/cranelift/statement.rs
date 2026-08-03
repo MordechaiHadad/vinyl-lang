@@ -8,9 +8,7 @@ use vinyl_typecheck::hir::{
 };
 
 use super::state::{CodegenCtx, VarInfo, VarSlot};
-use super::types::{
-    extract_array_element_type, ir_type_from_primitive, is_large_aggregate,
-};
+use super::types::{extract_array_element_type, ir_type_from_primitive, is_large_aggregate};
 use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
 
@@ -204,11 +202,7 @@ impl<'a> CodegenCtx<'a> {
                     let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                     let chunk0 = self.func.builder.ins().load(types::I64, mflags, val, 0);
                     let addr1 = {
-                        let off = self
-                            .func
-                            .builder
-                            .ins()
-                            .iconst(self.module.pointer_type, 8);
+                        let off = self.func.builder.ins().iconst(self.module.pointer_type, 8);
                         self.func.builder.ins().iadd(val, off)
                     };
                     let chunk1 = self.func.builder.ins().load(types::I64, mflags, addr1, 0);
@@ -354,7 +348,11 @@ impl<'a> CodegenCtx<'a> {
                             ptr_size,
                         )
                     }
-                    Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
+                    Type::Named(type_name) => match crate::layout::resolve_type_item(
+                        type_name,
+                        self.module.types,
+                        &mut Vec::new(),
+                    ) {
                         Some(HirItemKind::Struct(s)) => {
                             let field_types: Vec<(String, Type)> = s
                                 .fields
@@ -477,8 +475,11 @@ impl<'a> CodegenCtx<'a> {
             Some(t) => t,
             None => &Type::Primitive(Primitive::Int32),
         };
-        let elem_size =
-            crate::layout::array_element_stride(elem_type, self.module.types, self.module.pointer_type.bytes());
+        let elem_size = crate::layout::array_element_stride(
+            elem_type,
+            self.module.types,
+            self.module.pointer_type.bytes(),
+        );
         let size_val = self
             .func
             .builder
@@ -506,7 +507,11 @@ impl<'a> CodegenCtx<'a> {
                     ptr_size,
                 ))
             }
-            Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
+            Type::Named(type_name) => match crate::layout::resolve_type_item(
+                type_name,
+                self.module.types,
+                &mut Vec::new(),
+            ) {
                 Some(HirItemKind::Struct(s)) => {
                     let field_types: Vec<(String, Type)> = s
                         .fields
@@ -564,7 +569,11 @@ impl<'a> CodegenCtx<'a> {
                     .map_err(|_| CraneliftError::Msg(format!("invalid tuple index `{name}`")))?;
                 Ok(element_types[index].clone())
             }
-            Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
+            Type::Named(type_name) => match crate::layout::resolve_type_item(
+                type_name,
+                self.module.types,
+                &mut Vec::new(),
+            ) {
                 Some(HirItemKind::Struct(s)) => s
                     .fields
                     .iter()
@@ -635,12 +644,8 @@ impl<'a> CodegenCtx<'a> {
             AssignOp::AddEq => self.func.builder.ins().iadd(current, value),
             AssignOp::SubEq => self.func.builder.ins().isub(current, value),
             AssignOp::MulEq => self.func.builder.ins().imul(current, value),
-            AssignOp::DivEq => self
-                .emit_div_rem(current, value, ty, !unsigned)
-                .0,
-            AssignOp::RemEq => self
-                .emit_div_rem(current, value, ty, !unsigned)
-                .1,
+            AssignOp::DivEq => self.emit_div_rem(current, value, ty, !unsigned).0,
+            AssignOp::RemEq => self.emit_div_rem(current, value, ty, !unsigned).1,
             AssignOp::BitAndEq => self.func.builder.ins().band(current, value),
             AssignOp::BitOrEq => self.func.builder.ins().bor(current, value),
             AssignOp::BitXorEq => self.func.builder.ins().bxor(current, value),

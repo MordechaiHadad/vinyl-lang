@@ -1,5 +1,7 @@
 use cranelift_codegen::ir::{
-    self, InstBuilder, StackSlotData, StackSlotKind, condcodes::{FloatCC, IntCC}, types,
+    self, InstBuilder, StackSlotData, StackSlotKind,
+    condcodes::{FloatCC, IntCC},
+    types,
 };
 use cranelift_module::Module;
 
@@ -114,8 +116,13 @@ impl<'a> CodegenCtx<'a> {
                             self.func.builder.ins().fdiv(left_val, right_val)
                         } else {
                             let ty = self.func.builder.func.dfg.value_type(left_val);
-                            self.emit_div_rem(left_val, right_val, ty, !is_unsigned_type(&left.type_))
-                                .0
+                            self.emit_div_rem(
+                                left_val,
+                                right_val,
+                                ty,
+                                !is_unsigned_type(&left.type_),
+                            )
+                            .0
                         }
                     }
                     BinaryOp::Rem => {
@@ -123,8 +130,13 @@ impl<'a> CodegenCtx<'a> {
                             self.func.builder.ins().srem(left_val, right_val)
                         } else {
                             let ty = self.func.builder.func.dfg.value_type(left_val);
-                            self.emit_div_rem(left_val, right_val, ty, !is_unsigned_type(&left.type_))
-                                .1
+                            self.emit_div_rem(
+                                left_val,
+                                right_val,
+                                ty,
+                                !is_unsigned_type(&left.type_),
+                            )
+                            .1
                         }
                     }
                     BinaryOp::Eq => {
@@ -134,12 +146,16 @@ impl<'a> CodegenCtx<'a> {
                                 .ins()
                                 .fcmp(FloatCC::Equal, left_val, right_val)
                         } else if is_large_aggregate(&left.type_, self.module.types, ptr_size) {
-                            let size = crate::layout::size_of(&left.type_, self.module.types, ptr_size);
+                            let size =
+                                crate::layout::size_of(&left.type_, self.module.types, ptr_size);
                             let diff = self.emit_memcmp_diff(left_val, right_val, size);
                             let zero = self.func.builder.ins().iconst(types::I8, 0);
                             self.func.builder.ins().icmp(IntCC::Equal, diff, zero)
                         } else {
-                            self.func.builder.ins().icmp(IntCC::Equal, left_val, right_val)
+                            self.func
+                                .builder
+                                .ins()
+                                .icmp(IntCC::Equal, left_val, right_val)
                         }
                     }
                     BinaryOp::Ne => {
@@ -149,7 +165,8 @@ impl<'a> CodegenCtx<'a> {
                                 .ins()
                                 .fcmp(FloatCC::NotEqual, left_val, right_val)
                         } else if is_large_aggregate(&left.type_, self.module.types, ptr_size) {
-                            let size = crate::layout::size_of(&left.type_, self.module.types, ptr_size);
+                            let size =
+                                crate::layout::size_of(&left.type_, self.module.types, ptr_size);
                             let diff = self.emit_memcmp_diff(left_val, right_val, size);
                             let zero = self.func.builder.ins().iconst(types::I8, 0);
                             self.func.builder.ins().icmp(IntCC::NotEqual, diff, zero)
@@ -180,10 +197,11 @@ impl<'a> CodegenCtx<'a> {
                                 .ins()
                                 .fcmp(FloatCC::GreaterThan, left_val, right_val)
                         } else {
-                            self.func
-                                .builder
-                                .ins()
-                                .icmp(IntCC::SignedGreaterThan, left_val, right_val)
+                            self.func.builder.ins().icmp(
+                                IntCC::SignedGreaterThan,
+                                left_val,
+                                right_val,
+                            )
                         }
                     }
                     BinaryOp::Le => {
@@ -266,11 +284,11 @@ impl<'a> CodegenCtx<'a> {
                             let one = self.emit_iconst(ty, 1);
                             let r_ne_zero = self.func.builder.ins().icmp(IntCC::NotEqual, r, zero);
                             let sign_xor = self.func.builder.ins().bxor(left_val, right_val);
-                            let signs_differ = self
-                                .func
-                                .builder
-                                .ins()
-                                .icmp(IntCC::SignedLessThan, sign_xor, zero);
+                            let signs_differ =
+                                self.func
+                                    .builder
+                                    .ins()
+                                    .icmp(IntCC::SignedLessThan, sign_xor, zero);
                             let adjust = self.func.builder.ins().band(r_ne_zero, signs_differ);
                             let q_minus_1 = self.func.builder.ins().isub(q, one);
                             self.func.builder.ins().select(adjust, q_minus_1, q)
@@ -320,18 +338,18 @@ impl<'a> CodegenCtx<'a> {
                                 ptr_size,
                             ) == 0;
                         let sret_slot = if needs_sret {
-                            let slot = self
-                                .func
-                                .builder
-                                .create_sized_stack_slot(StackSlotData::new(
-                                    StackSlotKind::ExplicitSlot,
-                                    crate::layout::size_of(
-                                        callee_ret_type,
-                                        self.module.types,
-                                        ptr_size,
-                                    ),
-                                    0,
-                                ));
+                            let slot =
+                                self.func
+                                    .builder
+                                    .create_sized_stack_slot(StackSlotData::new(
+                                        StackSlotKind::ExplicitSlot,
+                                        crate::layout::size_of(
+                                            callee_ret_type,
+                                            self.module.types,
+                                            ptr_size,
+                                        ),
+                                        0,
+                                    ));
                             let addr = self.func.builder.ins().stack_addr(
                                 self.module.pointer_type,
                                 slot,
@@ -360,10 +378,11 @@ impl<'a> CodegenCtx<'a> {
                                             0,
                                         );
                                         let addr1 = {
-                                            let off = self.func.builder.ins().iconst(
-                                                self.module.pointer_type,
-                                                8,
-                                            );
+                                            let off = self
+                                                .func
+                                                .builder
+                                                .ins()
+                                                .iconst(self.module.pointer_type, 8);
                                             self.func.builder.ins().iadd(val, off)
                                         };
                                         let chunk1 = self.func.builder.ins().load(
@@ -396,21 +415,20 @@ impl<'a> CodegenCtx<'a> {
                                 callee_ret_type,
                                 self.module.types,
                                 ptr_size,
-                            )
-                                == 2
+                            ) == 2
                         {
-                            let slot = self
-                                .func
-                                .builder
-                                .create_sized_stack_slot(StackSlotData::new(
-                                    StackSlotKind::ExplicitSlot,
-                                    crate::layout::aggregate_slot_size(
-                                        callee_ret_type,
-                                        self.module.types,
-                                        ptr_size,
-                                    ),
-                                    0,
-                                ));
+                            let slot =
+                                self.func
+                                    .builder
+                                    .create_sized_stack_slot(StackSlotData::new(
+                                        StackSlotKind::ExplicitSlot,
+                                        crate::layout::aggregate_slot_size(
+                                            callee_ret_type,
+                                            self.module.types,
+                                            ptr_size,
+                                        ),
+                                        0,
+                                    ));
                             let addr = self.func.builder.ins().stack_addr(
                                 self.module.pointer_type,
                                 slot,
@@ -421,11 +439,8 @@ impl<'a> CodegenCtx<'a> {
                                 .ins()
                                 .store(mflags, result_values[0], addr, 0);
                             let addr1 = {
-                                let off = self
-                                    .func
-                                    .builder
-                                    .ins()
-                                    .iconst(self.module.pointer_type, 8);
+                                let off =
+                                    self.func.builder.ins().iconst(self.module.pointer_type, 8);
                                 self.func.builder.ins().iadd(addr, off)
                             };
                             self.func
@@ -460,14 +475,21 @@ impl<'a> CodegenCtx<'a> {
                     Type::Array { element, .. } => element.as_ref(),
                     _ => &Type::Primitive(Primitive::Int32),
                 };
-                let elem_size =
-                    crate::layout::array_element_stride(element_type, self.module.types, self.module.pointer_type.bytes());
+                let elem_size = crate::layout::array_element_stride(
+                    element_type,
+                    self.module.types,
+                    self.module.pointer_type.bytes(),
+                );
                 let slot = self
                     .func
                     .builder
                     .create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
-                        crate::layout::size_of(&expr.type_, self.module.types, self.module.pointer_type.bytes()),
+                        crate::layout::size_of(
+                            &expr.type_,
+                            self.module.types,
+                            self.module.pointer_type.bytes(),
+                        ),
                         0,
                     ));
                 let base = self
@@ -477,7 +499,11 @@ impl<'a> CodegenCtx<'a> {
                     .stack_addr(self.module.pointer_type, slot, 0);
                 self.zero_slot(
                     base,
-                    crate::layout::size_of(&expr.type_, self.module.types, self.module.pointer_type.bytes()),
+                    crate::layout::size_of(
+                        &expr.type_,
+                        self.module.types,
+                        self.module.pointer_type.bytes(),
+                    ),
                 );
                 for (i, element) in elements.iter().enumerate() {
                     let val = self.compile_expr(element)?;
@@ -503,8 +529,11 @@ impl<'a> CodegenCtx<'a> {
                 } else {
                     index_val
                 };
-                let elem_size =
-                    crate::layout::array_element_stride(&expr.type_, self.module.types, self.module.pointer_type.bytes());
+                let elem_size = crate::layout::array_element_stride(
+                    &expr.type_,
+                    self.module.types,
+                    self.module.pointer_type.bytes(),
+                );
                 let size_val = self
                     .func
                     .builder
@@ -595,7 +624,11 @@ impl<'a> CodegenCtx<'a> {
                             ptr_size,
                         )
                     }
-                    Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
+                    Type::Named(type_name) => match crate::layout::resolve_type_item(
+                        type_name,
+                        self.module.types,
+                        &mut Vec::new(),
+                    ) {
                         Some(HirItemKind::Struct(s)) => {
                             let field_types: Vec<(String, Type)> = s
                                 .fields
@@ -730,25 +763,30 @@ impl<'a> CodegenCtx<'a> {
                     "integer power with negative exponent `{value}` is not defined"
                 )));
             }
-        let one = self.emit_iconst(ty, 1);
-        if *value == 0 {
-            return Ok(one);
-        }
-        if *value == 1 {
-            return Ok(base_val);
-        }
-        if *value <= 3 {
-            let mut result = one;
-            for _ in 0..*value {
-                result = self.func.builder.ins().imul(result, base_val);
+            let one = self.emit_iconst(ty, 1);
+            if *value == 0 {
+                return Ok(one);
             }
-            return Ok(result);
-        }
+            if *value == 1 {
+                return Ok(base_val);
+            }
+            if *value <= 3 {
+                let mut result = one;
+                for _ in 0..*value {
+                    result = self.func.builder.ins().imul(result, base_val);
+                }
+                return Ok(result);
+            }
         }
         Ok(self.compile_int_pow_loop(base_val, exp_val, ty))
     }
 
-    fn compile_int_pow_loop(&mut self, base_val: ir::Value, exp_val: ir::Value, ty: ir::Type) -> ir::Value {
+    fn compile_int_pow_loop(
+        &mut self,
+        base_val: ir::Value,
+        exp_val: ir::Value,
+        ty: ir::Type,
+    ) -> ir::Value {
         let zero = self.emit_iconst(ty, 0);
         let one = self.emit_iconst(ty, 1);
 
@@ -823,7 +861,11 @@ impl<'a> CodegenCtx<'a> {
     /// single-immediate form) via `iconcat` of two 64-bit halves.
     fn emit_iconst(&mut self, ty: ir::Type, value: i128) -> ir::Value {
         if ty == types::I128 {
-            let lo = self.func.builder.ins().iconst(types::I64, value as u64 as i64);
+            let lo = self
+                .func
+                .builder
+                .ins()
+                .iconst(types::I64, value as u64 as i64);
             let hi = self
                 .func
                 .builder
@@ -838,7 +880,11 @@ impl<'a> CodegenCtx<'a> {
     /// Build an unsigned integer constant, handling 128-bit values.
     fn emit_uint_const(&mut self, ty: ir::Type, value: u128) -> ir::Value {
         if ty == types::I128 {
-            let lo = self.func.builder.ins().iconst(types::I64, value as u64 as i64);
+            let lo = self
+                .func
+                .builder
+                .ins()
+                .iconst(types::I64, value as u64 as i64);
             let hi = self
                 .func
                 .builder
@@ -906,15 +952,31 @@ impl<'a> CodegenCtx<'a> {
             .icmp(IntCC::SignedLessThan, divisor, zero);
         let neg_dividend = self.func.builder.ins().isub(zero, dividend);
         let neg_divisor = self.func.builder.ins().isub(zero, divisor);
-        let dividend_mag = self.func.builder.ins().select(dividend_neg, neg_dividend, dividend);
-        let divisor_mag = self.func.builder.ins().select(divisor_neg, neg_divisor, divisor);
+        let dividend_mag = self
+            .func
+            .builder
+            .ins()
+            .select(dividend_neg, neg_dividend, dividend);
+        let divisor_mag = self
+            .func
+            .builder
+            .ins()
+            .select(divisor_neg, neg_divisor, divisor);
 
         let (quotient_mag, remainder_mag) = self.emit_udiv_rem_loop(dividend_mag, divisor_mag, ty);
         let quotient_neg = self.func.builder.ins().bxor(dividend_neg, divisor_neg);
         let neg_quotient = self.func.builder.ins().isub(zero, quotient_mag);
-        let quotient = self.func.builder.ins().select(quotient_neg, neg_quotient, quotient_mag);
+        let quotient = self
+            .func
+            .builder
+            .ins()
+            .select(quotient_neg, neg_quotient, quotient_mag);
         let neg_remainder = self.func.builder.ins().isub(zero, remainder_mag);
-        let remainder = self.func.builder.ins().select(dividend_neg, neg_remainder, remainder_mag);
+        let remainder = self
+            .func
+            .builder
+            .ins()
+            .select(dividend_neg, neg_remainder, remainder_mag);
         (quotient, remainder)
     }
 
@@ -976,15 +1038,23 @@ impl<'a> CodegenCtx<'a> {
         let next_remainder = self.func.builder.ins().bor(shifted_rem, msb);
         let next_shifter = self.func.builder.ins().ishl(body_shifter, one);
         let next_quotient = self.func.builder.ins().ishl(body_quotient, one);
-        let ge = self
+        let ge = self.func.builder.ins().icmp(
+            IntCC::UnsignedGreaterThanOrEqual,
+            next_remainder,
+            divisor,
+        );
+        let remainder_minus = self.func.builder.ins().isub(next_remainder, divisor);
+        let final_remainder = self
             .func
             .builder
             .ins()
-            .icmp(IntCC::UnsignedGreaterThanOrEqual, next_remainder, divisor);
-        let remainder_minus = self.func.builder.ins().isub(next_remainder, divisor);
-        let final_remainder = self.func.builder.ins().select(ge, remainder_minus, next_remainder);
+            .select(ge, remainder_minus, next_remainder);
         let quotient_or_one = self.func.builder.ins().bor(next_quotient, one);
-        let final_quotient = self.func.builder.ins().select(ge, quotient_or_one, next_quotient);
+        let final_quotient = self
+            .func
+            .builder
+            .ins()
+            .select(ge, quotient_or_one, next_quotient);
         let next_counter = self.func.builder.ins().isub(body_counter, one);
         self.func.builder.ins().jump(
             header,
@@ -1005,7 +1075,12 @@ impl<'a> CodegenCtx<'a> {
         (done_quotient, done_remainder)
     }
 
-    fn compile_float_pow(&mut self, base_val: ir::Value, exp_val: ir::Value, ty: ir::Type) -> ir::Value {
+    fn compile_float_pow(
+        &mut self,
+        base_val: ir::Value,
+        exp_val: ir::Value,
+        ty: ir::Type,
+    ) -> ir::Value {
         let zero = self.float_const(ty, 0.0);
         let one = self.float_const(ty, 1.0);
         let exp_neg = self
@@ -1047,7 +1122,10 @@ impl<'a> CodegenCtx<'a> {
         let next_result = self.func.builder.ins().fmul(body_result, base_val);
         self.func.builder.ins().jump(
             header,
-            &[ir::BlockArg::from(next_counter), ir::BlockArg::from(next_result)],
+            &[
+                ir::BlockArg::from(next_counter),
+                ir::BlockArg::from(next_result),
+            ],
         );
         self.func.builder.seal_block(header);
         self.func.builder.seal_block(body);
@@ -1057,7 +1135,10 @@ impl<'a> CodegenCtx<'a> {
         self.func.builder.seal_block(done);
 
         let reciprocal = self.func.builder.ins().fdiv(one, done_result);
-        self.func.builder.ins().select(exp_neg, reciprocal, done_result)
+        self.func
+            .builder
+            .ins()
+            .select(exp_neg, reciprocal, done_result)
     }
 
     pub fn compile_expr_if(&mut self, if_expr: IfExprBundle) -> Result<ir::Value, CraneliftError> {
@@ -1278,14 +1359,15 @@ impl<'a> CodegenCtx<'a> {
         result_type: &Type,
     ) -> Result<ir::Value, CraneliftError> {
         let ptr_size = self.module.pointer_type.bytes();
-        let hir_enum = match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
-            Some(HirItemKind::Enum(e)) => e,
-            _ => {
-                return Err(CraneliftError::Msg(format!(
-                    "type `{type_name}` is not an enum"
-                )));
-            }
-        };
+        let hir_enum =
+            match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
+                Some(HirItemKind::Enum(e)) => e,
+                _ => {
+                    return Err(CraneliftError::Msg(format!(
+                        "type `{type_name}` is not an enum"
+                    )));
+                }
+            };
         // todo: niche/discriminant overlap optimization for Option-like enums
         let all_variant_data: Vec<Vec<Type>> = hir_enum
             .variants
@@ -1366,14 +1448,15 @@ impl<'a> CodegenCtx<'a> {
         result_type: &Type,
     ) -> Result<ir::Value, CraneliftError> {
         let ptr_size = self.module.pointer_type.bytes();
-        let hir_struct = match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
-            Some(HirItemKind::Struct(s)) => s,
-            _ => {
-                return Err(CraneliftError::Msg(format!(
-                    "type `{type_name}` is not a struct"
-                )));
-            }
-        };
+        let hir_struct =
+            match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
+                Some(HirItemKind::Struct(s)) => s,
+                _ => {
+                    return Err(CraneliftError::Msg(format!(
+                        "type `{type_name}` is not a struct"
+                    )));
+                }
+            };
         let field_types: Vec<(String, Type)> = hir_struct
             .fields
             .iter()
@@ -1520,7 +1603,12 @@ impl<'a> CodegenCtx<'a> {
         }
     }
 
-    pub(super) fn emit_memcmp_diff(&mut self, left: ir::Value, right: ir::Value, size: u32) -> ir::Value {
+    pub(super) fn emit_memcmp_diff(
+        &mut self,
+        left: ir::Value,
+        right: ir::Value,
+        size: u32,
+    ) -> ir::Value {
         let pointer_type = self.module.pointer_type;
         if size == 0 {
             return self.func.builder.ins().iconst(types::I8, 0);
@@ -1529,11 +1617,23 @@ impl<'a> CodegenCtx<'a> {
         let zero = self.func.builder.ins().iconst(types::I8, 0);
         let mut diff = zero;
         for byte_offset in 0..size {
-            let off_val = self.func.builder.ins().iconst(pointer_type, byte_offset as i64);
+            let off_val = self
+                .func
+                .builder
+                .ins()
+                .iconst(pointer_type, byte_offset as i64);
             let left_addr = self.func.builder.ins().iadd(left, off_val);
             let right_addr = self.func.builder.ins().iadd(right, off_val);
-            let left_byte = self.func.builder.ins().load(types::I8, mflags, left_addr, 0);
-            let right_byte = self.func.builder.ins().load(types::I8, mflags, right_addr, 0);
+            let left_byte = self
+                .func
+                .builder
+                .ins()
+                .load(types::I8, mflags, left_addr, 0);
+            let right_byte = self
+                .func
+                .builder
+                .ins()
+                .load(types::I8, mflags, right_addr, 0);
             let xored = self.func.builder.ins().bxor(left_byte, right_byte);
             diff = self.func.builder.ins().bor(diff, xored);
         }

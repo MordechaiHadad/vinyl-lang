@@ -93,31 +93,36 @@ pub(crate) fn word_before_colon(source: &str, offset: usize) -> Option<String> {
 
 pub(crate) fn module_ref_prefix(source: &str, offset: usize) -> Option<(String, String)> {
     let offset = offset.min(source.len());
-    let before = &source[..offset];
-    let bytes = source.as_bytes();
+    let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
+    let line = &source[line_start..];
+    let relative_offset = offset - line_start;
+    let before = &line[..relative_offset];
+    let colon_at = before.rfind("::").or_else(|| {
+        if relative_offset > 0
+            && line.as_bytes()[relative_offset - 1] == b':'
+            && line[relative_offset..].starts_with(':')
+        {
+            Some(relative_offset - 1)
+        } else {
+            line[relative_offset..]
+                .starts_with("::")
+                .then_some(relative_offset)
+        }
+    })?;
+    let symbol_start = colon_at + 2;
+    let symbol_end = line[symbol_start..]
+        .find(|character: char| !character.is_alphanumeric() && character != '_')
+        .map_or(line.len(), |index| symbol_start + index);
+    let symbol_name = &line[symbol_start..symbol_end];
+    if relative_offset < symbol_start
+        || !line[symbol_start..relative_offset]
+            .chars()
+            .all(|character| character.is_alphanumeric() || character == '_')
+    {
+        return None;
+    }
 
-    let colon_at = before
-        .rfind("::")
-        .or_else(|| {
-            if offset >= 1
-                && offset < source.len()
-                && bytes[offset - 1] == b':'
-                && bytes[offset] == b':'
-            {
-                Some(offset - 1)
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
-            if offset + 1 < source.len() && &source[offset..offset + 2] == "::" {
-                Some(offset)
-            } else {
-                None
-            }
-        })?;
-
-    let before_colon = &source[..colon_at];
+    let before_colon = &line[..colon_at];
     let module_name = before_colon
         .rsplit(|c: char| !c.is_alphanumeric() && c != '_')
         .next()
@@ -126,13 +131,7 @@ pub(crate) fn module_ref_prefix(source: &str, offset: usize) -> Option<(String, 
     if module_name.is_empty() {
         return None;
     }
-    let after_colon = &source[colon_at + 2..];
-    let partial = after_colon
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    Some((module_name, partial))
+    Some((module_name, symbol_name.to_string()))
 }
 
 pub(crate) fn extract_type_from_span(

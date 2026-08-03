@@ -65,9 +65,7 @@ impl Backend {
             let is_local = analysis
                 .as_ref()
                 .is_some_and(|a| a.result.definitions.keys().any(|k| k == &prefix));
-            if !is_local
-                && let Some(resolver) = &state.resolver
-            {
+            if !is_local && let Some(resolver) = &state.resolver {
                 let current_path = uri.to_file_path().ok();
                 let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
                 for info in resolver.all_modules().values() {
@@ -77,8 +75,7 @@ impl Backend {
                     {
                         continue;
                     }
-                    let cache_key =
-                        non_canonical_key(&info.file_path, resolver, workspace_root);
+                    let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
                     let Some(module_analysis) = state.cache.get(&cache_key) else {
                         continue;
                     };

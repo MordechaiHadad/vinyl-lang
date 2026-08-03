@@ -124,14 +124,16 @@ fn validate_type_aliases(state: &mut InferState) {
         .collect();
     for (span, name, target) in aliases {
         match validate_alias_target(&target, &state.types, &mut Vec::new()) {
-            Err(AliasTargetError::UnknownType(t)) => state.errors.push(state.source.error(
-                span,
-                TypeDiagnosticKind::UnknownType { name: t },
-            )),
-            Err(AliasTargetError::Recursive) => state.errors.push(state.source.error(
-                span,
-                TypeDiagnosticKind::RecursiveTypeAlias { name },
-            )),
+            Err(AliasTargetError::UnknownType(t)) => state.errors.push(
+                state
+                    .source
+                    .error(span, TypeDiagnosticKind::UnknownType { name: t }),
+            ),
+            Err(AliasTargetError::Recursive) => state.errors.push(
+                state
+                    .source
+                    .error(span, TypeDiagnosticKind::RecursiveTypeAlias { name }),
+            ),
             Ok(()) => {}
         }
     }
@@ -162,10 +164,7 @@ fn validate_alias_target(
     }
 }
 
-fn field_types_of<'a>(
-    types: &'a HashMap<String, HirItemKind>,
-    name: &str,
-) -> Vec<&'a Type> {
+fn field_types_of<'a>(types: &'a HashMap<String, HirItemKind>, name: &str) -> Vec<&'a Type> {
     match types.get(name) {
         Some(HirItemKind::Struct(s)) => s.fields.iter().map(|f| &f.type_).collect(),
         Some(HirItemKind::TupleStruct(t)) => t.types.iter().collect(),
@@ -226,7 +225,9 @@ fn contains_by_value_cycle(
 ) -> bool {
     for field_type in field_types_of(types, current) {
         for contained in by_value_named(field_type) {
-            let Type::Named(next) = contained else { continue };
+            let Type::Named(next) = contained else {
+                continue;
+            };
             let resolved = resolve_named_alias(next, types, alias_visited);
             if resolved == start {
                 return true;
@@ -261,13 +262,7 @@ fn validate_recursive_types(state: &mut InferState) {
     for (span, name) in named {
         let mut in_path = Vec::new();
         let mut alias_visited = Vec::new();
-        if contains_by_value_cycle(
-            &name,
-            &name,
-            &state.types,
-            &mut in_path,
-            &mut alias_visited,
-        ) {
+        if contains_by_value_cycle(&name, &name, &state.types, &mut in_path, &mut alias_visited) {
             state.errors.push(state.source.error(
                 span,
                 TypeDiagnosticKind::RecursiveType {

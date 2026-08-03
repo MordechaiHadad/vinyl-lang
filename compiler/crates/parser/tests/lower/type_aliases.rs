@@ -40,7 +40,10 @@ fn type_alias_primitive_target() {
     match &items[0] {
         Item::TypeAlias(a) => {
             assert_eq!(a.name, "Int");
-            assert_eq!(a.type_, Type::Primitive(vinyl_parser::ast::types::Primitive::Int32));
+            assert_eq!(
+                a.type_,
+                Type::Primitive(vinyl_parser::ast::types::Primitive::Int32)
+            );
         }
         other => panic!("expected type alias, got {other:?}"),
     }

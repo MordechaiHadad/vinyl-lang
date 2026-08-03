@@ -92,8 +92,7 @@ pub fn hir_sig_to_clif(
         match &func.return_type {
             Type::Primitive(Primitive::Unit) => {}
             other if crate::layout::is_aggregate(other) => {
-                let chunks =
-                    crate::layout::aggregate_register_count(other, types, ptr_size);
+                let chunks = crate::layout::aggregate_register_count(other, types, ptr_size);
                 for _ in 0..chunks {
                     sig.returns.push(AbiParam::new(types::I64));
                 }
@@ -116,6 +115,5 @@ pub fn is_large_aggregate(
     // Internal representation: aggregates larger than 8 bytes live in memory
     // (pointer); smaller ones are packed into a single 64-bit value. Scalars
     // (including 128-bit ints) are never memory-backed.
-    crate::layout::is_aggregate(t)
-        && crate::layout::size_of(t, types, pointer_size) > 8
+    crate::layout::is_aggregate(t) && crate::layout::size_of(t, types, pointer_size) > 8
 }

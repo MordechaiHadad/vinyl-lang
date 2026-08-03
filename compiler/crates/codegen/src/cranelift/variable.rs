@@ -88,9 +88,8 @@ impl<'a> CodegenCtx<'a> {
                     .ins()
                     .stack_addr(self.module.pointer_type, slot, 0);
                 let ptr_size = self.module.pointer_type.bytes();
-                let is_large =
-                    crate::layout::is_aggregate(&info.vinyl_type)
-                        && crate::layout::size_of(&info.vinyl_type, self.module.types, ptr_size) > 8;
+                let is_large = crate::layout::is_aggregate(&info.vinyl_type)
+                    && crate::layout::size_of(&info.vinyl_type, self.module.types, ptr_size) > 8;
                 if is_large {
                     return Ok(addr);
                 }

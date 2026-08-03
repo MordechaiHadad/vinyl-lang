@@ -60,9 +60,7 @@ fn main_returning_large_struct_is_error() {
 
 #[test]
 fn infinite_recursive_struct_is_rejected() {
-    assert!(
-        common::run("struct A { b: B } struct B { a: A } fn main(): int32 { 0 }").is_err()
-    );
+    assert!(common::run("struct A { b: B } struct B { a: A } fn main(): int32 { 0 }").is_err());
 }
 
 #[test]
@@ -113,9 +111,10 @@ fn two_chunk_struct_survives_function_return() {
 #[test]
 fn padded_tuple_equality_is_deterministic() {
     assert_eq!(
-        common::run("fn main(): int32 { let a = (1, 100); let b = (1, 100); if a == b { 1 } else { 0 } }")
-            .unwrap(),
+        common::run(
+            "fn main(): int32 { let a = (1, 100); let b = (1, 100); if a == b { 1 } else { 0 } }"
+        )
+        .unwrap(),
         1
     );
 }
-

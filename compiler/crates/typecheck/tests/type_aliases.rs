@@ -68,7 +68,8 @@ fn alias_chain_infinite_recursive_struct_fails() {
 
 #[test]
 fn alias_to_non_recursive_struct_is_ok() {
-    let source = "struct Inner { a: int32 } type X = Inner; struct Outer { f: X } fn main(): int32 { 0 }";
+    let source =
+        "struct Inner { a: int32 } type X = Inner; struct Outer { f: X } fn main(): int32 { 0 }";
     assert!(
         common::compile(source).is_ok(),
         "alias to a finite type must not be rejected"
