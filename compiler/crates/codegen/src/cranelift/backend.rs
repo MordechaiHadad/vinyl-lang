@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::mem;
 
-use cranelift_codegen::ir::{InstBuilder, StackSlotData, StackSlotKind, types};
+use cranelift_codegen::ir::{self, InstBuilder, StackSlotData, StackSlotKind, types};
 use cranelift_codegen::{Context, isa, settings};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
 use cranelift_jit::{JITBuilder, JITModule};
@@ -30,7 +30,10 @@ impl CraneliftBackend {
     pub fn new() -> Result<Self, CraneliftError> {
         let isa_builder = isa::lookup(Triple::host())
             .map_err(|e| CraneliftError::Msg(format!("isa lookup: {e}")))?;
-        let flags = settings::Flags::new(settings::builder());
+        use cranelift_codegen::settings::Configurable;
+        let mut flag_builder = settings::builder();
+        flag_builder.enable("enable_llvm_abi_extensions").unwrap();
+        let flags = settings::Flags::new(flag_builder);
         let isa = isa_builder
             .finish(flags)
             .map_err(|e| CraneliftError::Msg(format!("isa finish: {e}")))?;
@@ -57,6 +60,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                 HirItemKind::Struct(s) => Some(s.name.clone()),
                 HirItemKind::TupleStruct(t) => Some(t.name.clone()),
                 HirItemKind::Enum(e) => Some(e.name.clone()),
+                HirItemKind::TypeAlias(a) => Some(a.name.clone()),
                 _ => None,
             };
             if let Some(name) = name {
@@ -105,62 +109,118 @@ impl crate::CodegenBackend for CraneliftBackend {
                 let ref_vars = prescan_function_body(&func.body);
                 let mut vars = HashMap::new();
 
-                // Skip sret param slot if present
-                // todo: baseline sret, multi-register return replaces this
-                let needs_sret = match &func.return_type {
-                    Type::Primitive(Primitive::Unit) => false,
-                    other => crate::layout::size_of(other, &self.types, pointer_type.bytes()) > 8,
-                };
-                if needs_sret {
-                    builder.append_block_param(entry, pointer_type);
+                let ptr_size = pointer_type.bytes();
+                let needs_sret = crate::layout::is_aggregate(&func.return_type)
+                    && crate::layout::aggregate_register_count(
+                        &func.return_type,
+                        &self.types,
+                        ptr_size,
+                    ) == 0;
+                if func.name == "main"
+                    && (crate::layout::size_of(&func.return_type, &self.types, ptr_size) > 8
+                        || matches!(
+                            func.return_type,
+                            Type::Primitive(Primitive::Float32 | Primitive::Float64)
+                        ))
+                {
+                    return Err(CraneliftError::Msg(
+                        "main return type must fit in a 64-bit register (JIT entry limitation)"
+                            .to_string(),
+                    ));
                 }
-                let entry_values = params
-                    .iter()
-                    .map(|param| {
-                        let ptr_size = pointer_type.bytes();
-                        let param_size =
-                            crate::layout::size_of(&param.type_, &self.types, ptr_size);
-                        let param_type = if param_size > 8 {
-                            pointer_type
-                        } else {
-                            param_type_to_clif(&param.type_, pointer_type)
-                        };
-                        builder.append_block_param(entry, param_type)
-                    })
-                    .collect::<Vec<_>>();
+                let sret_ptr = if needs_sret {
+                    let param = builder.append_block_param(entry, pointer_type);
+                    Some(param)
+                } else {
+                    None
+                };
 
-                for (param, val) in params.iter().zip(entry_values) {
-                    let ptr_size = pointer_type.bytes();
-                    let param_size = crate::layout::size_of(&param.type_, &self.types, ptr_size);
-                    if param_size > 8 {
-                        // todo: baseline by-ref, multi-register decomposition replaces this
+                // Append every entry block parameter before emitting any instruction.
+                let mut param_values: Vec<(Vec<ir::Value>, Type)> = Vec::new();
+                for param in params {
+                    let values = if crate::layout::is_aggregate(&param.type_) {
+                        let chunks = crate::layout::aggregate_register_count(
+                            &param.type_,
+                            &self.types,
+                            ptr_size,
+                        );
+                        if chunks == 0 {
+                            // >16 bytes: passed by reference
+                            vec![builder.append_block_param(entry, pointer_type)]
+                        } else {
+                            (0..chunks)
+                                .map(|_| builder.append_block_param(entry, types::I64))
+                                .collect()
+                        }
+                    } else {
+                        let ty = param_type_to_clif(&param.type_, pointer_type);
+                        vec![builder.append_block_param(entry, ty)]
+                    };
+                    param_values.push((values, param.type_.clone()));
+                }
+
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                for (param, (values, param_type)) in params.iter().zip(param_values) {
+                    if crate::layout::is_aggregate(&param.type_) {
+                        let chunks = crate::layout::aggregate_register_count(
+                            &param.type_,
+                            &self.types,
+                            ptr_size,
+                        );
                         let slot = builder.create_sized_stack_slot(StackSlotData::new(
                             StackSlotKind::ExplicitSlot,
-                            param_size,
+                            if chunks == 0 {
+                                crate::layout::size_of(&param.type_, &self.types, ptr_size)
+                            } else {
+                                crate::layout::aggregate_slot_size(
+                                    &param.type_,
+                                    &self.types,
+                                    ptr_size,
+                                )
+                            },
                             0,
                         ));
                         let dest = builder.ins().stack_addr(pointer_type, slot, 0);
-                        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-                        // Inline byte-by-byte copy from ptr to slot
-                        for byte_offset in 0..param_size {
-                            let off = builder.ins().iconst(pointer_type, byte_offset as i64);
-                            let src = builder.ins().iadd(val, off);
-                            let b = builder.ins().load(types::I8, mflags, src, 0);
-                            let dst = builder.ins().iadd(dest, off);
-                            builder.ins().store(mflags, b, dst, 0);
+                        if chunks == 0 {
+                            let copy_size = crate::layout::aggregate_copy_size(
+                                &param.type_,
+                                &self.types,
+                                ptr_size,
+                            );
+                            for byte_offset in 0..copy_size {
+                                let off =
+                                    builder.ins().iconst(pointer_type, byte_offset as i64);
+                                let src_addr = builder.ins().iadd(values[0], off);
+                                let b = builder.ins().load(types::I8, mflags, src_addr, 0);
+                                let dst_addr = builder.ins().iadd(dest, off);
+                                builder.ins().store(mflags, b, dst_addr, 0);
+                            }
+                        } else {
+                            for (i, chunk) in values.iter().enumerate() {
+                                let off =
+                                    builder.ins().iconst(pointer_type, (i as i64) * 8);
+                                let addr = builder.ins().iadd(dest, off);
+                                builder.ins().store(mflags, *chunk, addr, 0);
+                            }
                         }
                         vars.insert(
                             param.name.clone(),
                             VarInfo {
                                 slot: VarSlot::StackSlot(slot, pointer_type),
-                                vinyl_type: param.type_.clone(),
+                                vinyl_type: param_type,
                             },
                         );
                     } else {
                         let ty = param_type_to_clif(&param.type_, pointer_type);
                         let mode = var_mode(&param.name, param.mutable, &ref_vars);
-                        let (slot, _) =
-                            build_var_info(&mut builder, &param.type_, ty, val, mode, pointer_type);
+                        let (slot, _) = build_var_info(
+                            &mut builder,
+                            &param.type_,
+                            ty,
+                            values[0],
+                            mode,
+                            pointer_type,
+                        );
                         vars.insert(
                             param.name.clone(),
                             VarInfo {
@@ -184,6 +244,8 @@ impl crate::CodegenBackend for CraneliftBackend {
                         ref_vars: &ref_vars,
                         break_target: None,
                         continue_target: None,
+                        return_type: func.return_type.clone(),
+                        sret_ptr,
                     },
                 };
 

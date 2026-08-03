@@ -41,14 +41,14 @@ pub(crate) fn detect_import_prefix(source: &str, offset: usize) -> Option<(usize
     let before = &source[..offset.min(source.len())];
     let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
     let line_prefix = &before[line_start..];
-    let after_import = line_prefix.strip_prefix("import ").unwrap_or(line_prefix);
+    let after_import = line_prefix.trim_start().strip_prefix("import ")?;
 
     let segments: Vec<&str> = after_import.split("::").collect();
 
     let mut prefix_count = 0;
     for segment in &segments {
         match *segment {
-            "parent" | "self" => prefix_count += 1,
+            "parent" | "self" | "package" => prefix_count += 1,
             _ => break,
         }
     }

@@ -99,6 +99,7 @@ fn prescan_expr(expr: &HirExpression, refed: &mut HashSet<String>) {
             prescan_expr(object, refed);
         }
         HirExpressionKind::Int(..)
+        | HirExpressionKind::UInt(..)
         | HirExpressionKind::Float(..)
         | HirExpressionKind::String(..)
         | HirExpressionKind::Bool(..)

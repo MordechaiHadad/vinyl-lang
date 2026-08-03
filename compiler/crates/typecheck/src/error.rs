@@ -22,6 +22,14 @@ pub enum TypeDiagnosticKind {
     #[diagnostic(code(typeck::undefined_name))]
     UndefinedName { name: String },
 
+    #[error("unknown type `{name}`")]
+    #[diagnostic(code(typeck::unknown_type))]
+    UnknownType { name: String },
+
+    #[error("recursive type alias `{name}`")]
+    #[diagnostic(code(typeck::recursive_type_alias))]
+    RecursiveTypeAlias { name: String },
+
     #[error("type mismatch: expected `{expected}`, found `{found}`")]
     #[diagnostic(code(typeck::mismatch))]
     Mismatch {
@@ -56,6 +64,14 @@ pub enum TypeDiagnosticKind {
     #[error("cannot infer call target type")]
     #[diagnostic(code(typeck::cannot_infer_call_target))]
     CannotInferCallTarget,
+
+    #[error("missing import for `{module}::{name}`; add `import {import_path};`")]
+    #[diagnostic(code(typeck::missing_import))]
+    MissingImport {
+        module: String,
+        name: String,
+        import_path: String,
+    },
 
     #[error("break outside of loop")]
     #[diagnostic(code(typeck::break_outside_loop))]
@@ -139,8 +155,16 @@ pub enum TypeDiagnosticKind {
 
     #[error("float literal `{value}` is out of range for type `{found}`")]
     #[diagnostic(code(typeck::float_literal_out_of_range))]
-    FloatLiteralOutOfRange {
-        value: f64,
+    FloatLiteralOutOfRange { value: f64, found: crate::hir::Type },
+
+    #[error("uint literal must be an unsigned integer type, found `{found}`")]
+    #[diagnostic(code(typeck::uint_literal_mismatch))]
+    UIntLiteralMismatch { found: crate::hir::Type },
+
+    #[error("uint literal `{value}` is out of range for type `{found}`")]
+    #[diagnostic(code(typeck::uint_literal_out_of_range))]
+    UIntLiteralOutOfRange {
+        value: u128,
         found: crate::hir::Type,
     },
 

@@ -58,6 +58,7 @@ impl<'a> Lowerer<'a> {
                                     t.attrs = std::mem::take(&mut pending_attrs);
                                 }
                                 Item::Enum(e) => e.attrs = std::mem::take(&mut pending_attrs),
+                                Item::TypeAlias(a) => a.attrs = std::mem::take(&mut pending_attrs),
                                 Item::Import(_) => {}
                             }
                         }

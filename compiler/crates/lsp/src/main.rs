@@ -5,6 +5,7 @@ mod text;
 mod utils;
 mod vfs;
 
+use std::path::Path;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -18,6 +19,7 @@ use tracing::info;
 
 use crate::backend::state::{Backend, State};
 use crate::backend::update::perform_update;
+use crate::backend::workspace::load_imported_modules;
 use crate::position::offset_at;
 use crate::utils::{Cli, init_tracing};
 
@@ -133,11 +135,15 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         if let Ok(path) = params.text_document.uri.to_file_path() {
-            self.state
-                .write()
-                .await
-                .vfs
-                .set(path, params.text_document.text);
+            let mut state = self.state.write().await;
+            state.vfs.set(path.clone(), params.text_document.text);
+            if let Some(root) = state
+                .workspace_root
+                .clone()
+                .or_else(|| path.parent().map(Path::to_path_buf))
+            {
+                load_imported_modules(&mut state.vfs, &root, &path);
+            }
         }
         self.schedule_update(&params.text_document.uri).await;
     }
@@ -162,7 +168,14 @@ impl LanguageServer for Backend {
                     source = change.text;
                 }
             }
-            state.vfs.set(path, source);
+            state.vfs.set(path.clone(), source);
+            if let Some(root) = state
+                .workspace_root
+                .clone()
+                .or_else(|| path.parent().map(Path::to_path_buf))
+            {
+                load_imported_modules(&mut state.vfs, &root, &path);
+            }
         }
         self.schedule_update(&params.text_document.uri).await;
     }

@@ -23,5 +23,7 @@ mod statements;
 mod structs;
 #[path = "lower/tuples.rs"]
 mod tuples;
+#[path = "lower/type_aliases.rs"]
+mod type_aliases;
 #[path = "lower/types.rs"]
 mod types;

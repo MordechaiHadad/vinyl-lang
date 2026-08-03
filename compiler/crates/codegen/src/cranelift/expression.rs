@@ -11,8 +11,22 @@ use vinyl_typecheck::hir::{
 };
 
 use super::state::CodegenCtx;
-use super::types::{element_byte_size, ir_type_from_primitive, is_large_aggregate};
+use super::types::{ir_type_from_primitive, is_large_aggregate};
 use crate::CraneliftError;
+
+fn is_unsigned_type(t: &Type) -> bool {
+    matches!(
+        t,
+        Type::Primitive(
+            Primitive::UInt8
+                | Primitive::UInt16
+                | Primitive::UInt32
+                | Primitive::UInt64
+                | Primitive::UInt128
+                | Primitive::USize
+        )
+    )
+}
 
 pub struct IfExprBundle<'a> {
     pub condition: &'a HirExpression,
@@ -32,9 +46,26 @@ impl<'a> CodegenCtx<'a> {
         match &expr.kind {
             HirExpressionKind::Int(v, _) => {
                 let ty = ir_type_from_primitive(&expr.type_, self.module.pointer_type);
-                Ok(self.func.builder.ins().iconst(ty, *v as i64))
+                if ty == types::F32 {
+                    Ok(self.func.builder.ins().f32const(*v as f32))
+                } else if ty == types::F64 {
+                    Ok(self.func.builder.ins().f64const(*v as f64))
+                } else {
+                    Ok(self.emit_iconst(ty, *v))
+                }
             }
-            HirExpressionKind::Float(v, _) => Ok(self.func.builder.ins().f64const(*v)),
+            HirExpressionKind::UInt(v, _) => {
+                let ty = ir_type_from_primitive(&expr.type_, self.module.pointer_type);
+                Ok(self.emit_uint_const(ty, *v))
+            }
+            HirExpressionKind::Float(v, _) => {
+                let ty = ir_type_from_primitive(&expr.type_, self.module.pointer_type);
+                if ty == types::F32 {
+                    Ok(self.func.builder.ins().f32const(*v as f32))
+                } else {
+                    Ok(self.func.builder.ins().f64const(*v))
+                }
+            }
             HirExpressionKind::Unit(_) => Ok(self.func.builder.ins().iconst(types::I8, 0)),
             HirExpressionKind::Bool(b, _) => {
                 Ok(self.func.builder.ins().iconst(types::I8, *b as i64))
@@ -49,47 +80,142 @@ impl<'a> CodegenCtx<'a> {
             HirExpressionKind::Binary {
                 left, op, right, ..
             } => {
+                let ptr_size = self.module.pointer_type.bytes();
                 let left_val = self.compile_expr(left)?;
                 let right_val = self.compile_expr(right)?;
+                let is_float = matches!(
+                    left.type_,
+                    Type::Primitive(Primitive::Float32 | Primitive::Float64)
+                );
                 Ok(match op {
-                    BinaryOp::Add => self.func.builder.ins().iadd(left_val, right_val),
-                    BinaryOp::Sub => self.func.builder.ins().isub(left_val, right_val),
-                    BinaryOp::Mul => self.func.builder.ins().imul(left_val, right_val),
-                    BinaryOp::Div => self.func.builder.ins().sdiv(left_val, right_val),
-                    BinaryOp::Rem => self.func.builder.ins().srem(left_val, right_val),
-                    BinaryOp::Eq => self
-                        .func
-                        .builder
-                        .ins()
-                        .icmp(IntCC::Equal, left_val, right_val),
+                    BinaryOp::Add => {
+                        if is_float {
+                            self.func.builder.ins().fadd(left_val, right_val)
+                        } else {
+                            self.func.builder.ins().iadd(left_val, right_val)
+                        }
+                    }
+                    BinaryOp::Sub => {
+                        if is_float {
+                            self.func.builder.ins().fsub(left_val, right_val)
+                        } else {
+                            self.func.builder.ins().isub(left_val, right_val)
+                        }
+                    }
+                    BinaryOp::Mul => {
+                        if is_float {
+                            self.func.builder.ins().fmul(left_val, right_val)
+                        } else {
+                            self.func.builder.ins().imul(left_val, right_val)
+                        }
+                    }
+                    BinaryOp::Div => {
+                        if is_float {
+                            self.func.builder.ins().fdiv(left_val, right_val)
+                        } else {
+                            let ty = self.func.builder.func.dfg.value_type(left_val);
+                            self.emit_div_rem(left_val, right_val, ty, !is_unsigned_type(&left.type_))
+                                .0
+                        }
+                    }
+                    BinaryOp::Rem => {
+                        if is_float {
+                            self.func.builder.ins().srem(left_val, right_val)
+                        } else {
+                            let ty = self.func.builder.func.dfg.value_type(left_val);
+                            self.emit_div_rem(left_val, right_val, ty, !is_unsigned_type(&left.type_))
+                                .1
+                        }
+                    }
+                    BinaryOp::Eq => {
+                        if is_float {
+                            self.func
+                                .builder
+                                .ins()
+                                .fcmp(FloatCC::Equal, left_val, right_val)
+                        } else if is_large_aggregate(&left.type_, self.module.types, ptr_size) {
+                            let size = crate::layout::size_of(&left.type_, self.module.types, ptr_size);
+                            let diff = self.emit_memcmp_diff(left_val, right_val, size);
+                            let zero = self.func.builder.ins().iconst(types::I8, 0);
+                            self.func.builder.ins().icmp(IntCC::Equal, diff, zero)
+                        } else {
+                            self.func.builder.ins().icmp(IntCC::Equal, left_val, right_val)
+                        }
+                    }
                     BinaryOp::Ne => {
-                        self.func
-                            .builder
-                            .ins()
-                            .icmp(IntCC::NotEqual, left_val, right_val)
+                        if is_float {
+                            self.func
+                                .builder
+                                .ins()
+                                .fcmp(FloatCC::NotEqual, left_val, right_val)
+                        } else if is_large_aggregate(&left.type_, self.module.types, ptr_size) {
+                            let size = crate::layout::size_of(&left.type_, self.module.types, ptr_size);
+                            let diff = self.emit_memcmp_diff(left_val, right_val, size);
+                            let zero = self.func.builder.ins().iconst(types::I8, 0);
+                            self.func.builder.ins().icmp(IntCC::NotEqual, diff, zero)
+                        } else {
+                            self.func
+                                .builder
+                                .ins()
+                                .icmp(IntCC::NotEqual, left_val, right_val)
+                        }
                     }
                     BinaryOp::Lt => {
-                        self.func
-                            .builder
-                            .ins()
-                            .icmp(IntCC::SignedLessThan, left_val, right_val)
+                        if is_float {
+                            self.func
+                                .builder
+                                .ins()
+                                .fcmp(FloatCC::LessThan, left_val, right_val)
+                        } else {
+                            self.func
+                                .builder
+                                .ins()
+                                .icmp(IntCC::SignedLessThan, left_val, right_val)
+                        }
                     }
                     BinaryOp::Gt => {
-                        self.func
-                            .builder
-                            .ins()
-                            .icmp(IntCC::SignedGreaterThan, left_val, right_val)
+                        if is_float {
+                            self.func
+                                .builder
+                                .ins()
+                                .fcmp(FloatCC::GreaterThan, left_val, right_val)
+                        } else {
+                            self.func
+                                .builder
+                                .ins()
+                                .icmp(IntCC::SignedGreaterThan, left_val, right_val)
+                        }
                     }
-                    BinaryOp::Le => self.func.builder.ins().icmp(
-                        IntCC::SignedLessThanOrEqual,
-                        left_val,
-                        right_val,
-                    ),
-                    BinaryOp::Ge => self.func.builder.ins().icmp(
-                        IntCC::SignedGreaterThanOrEqual,
-                        left_val,
-                        right_val,
-                    ),
+                    BinaryOp::Le => {
+                        if is_float {
+                            self.func.builder.ins().fcmp(
+                                FloatCC::LessThanOrEqual,
+                                left_val,
+                                right_val,
+                            )
+                        } else {
+                            self.func.builder.ins().icmp(
+                                IntCC::SignedLessThanOrEqual,
+                                left_val,
+                                right_val,
+                            )
+                        }
+                    }
+                    BinaryOp::Ge => {
+                        if is_float {
+                            self.func.builder.ins().fcmp(
+                                FloatCC::GreaterThanOrEqual,
+                                left_val,
+                                right_val,
+                            )
+                        } else {
+                            self.func.builder.ins().icmp(
+                                IntCC::SignedGreaterThanOrEqual,
+                                left_val,
+                                right_val,
+                            )
+                        }
+                    }
                     BinaryOp::And => {
                         let zero = self.func.builder.ins().iconst(types::I8, 0);
                         let l = self
@@ -122,23 +248,33 @@ impl<'a> CodegenCtx<'a> {
                     BinaryOp::BitOr => self.func.builder.ins().bor(left_val, right_val),
                     BinaryOp::BitXor => self.func.builder.ins().bxor(left_val, right_val),
                     BinaryOp::Shl => self.func.builder.ins().ishl(left_val, right_val),
-                    BinaryOp::Shr => self.func.builder.ins().sshr(left_val, right_val),
+                    BinaryOp::Shr => {
+                        if is_unsigned_type(&left.type_) {
+                            self.func.builder.ins().ushr(left_val, right_val)
+                        } else {
+                            self.func.builder.ins().sshr(left_val, right_val)
+                        }
+                    }
                     BinaryOp::FloorDiv => {
                         let ty = self.func.builder.func.dfg.value_type(left_val);
-                        let zero = self.func.builder.ins().iconst(ty, 0);
-                        let one = self.func.builder.ins().iconst(ty, 1);
-                        let q = self.func.builder.ins().sdiv(left_val, right_val);
-                        let r = self.func.builder.ins().srem(left_val, right_val);
-                        let r_ne_zero = self.func.builder.ins().icmp(IntCC::NotEqual, r, zero);
-                        let sign_xor = self.func.builder.ins().bxor(left_val, right_val);
-                        let signs_differ =
-                            self.func
+                        let signed = !is_unsigned_type(&left.type_);
+                        let (q, r) = self.emit_div_rem(left_val, right_val, ty, signed);
+                        if !signed {
+                            q
+                        } else {
+                            let zero = self.emit_iconst(ty, 0);
+                            let one = self.emit_iconst(ty, 1);
+                            let r_ne_zero = self.func.builder.ins().icmp(IntCC::NotEqual, r, zero);
+                            let sign_xor = self.func.builder.ins().bxor(left_val, right_val);
+                            let signs_differ = self
+                                .func
                                 .builder
                                 .ins()
                                 .icmp(IntCC::SignedLessThan, sign_xor, zero);
-                        let adjust = self.func.builder.ins().band(r_ne_zero, signs_differ);
-                        let q_minus_1 = self.func.builder.ins().isub(q, one);
-                        self.func.builder.ins().select(adjust, q_minus_1, q)
+                            let adjust = self.func.builder.ins().band(r_ne_zero, signs_differ);
+                            let q_minus_1 = self.func.builder.ins().isub(q, one);
+                            self.func.builder.ins().select(adjust, q_minus_1, q)
+                        }
                     }
                     BinaryOp::Pow => self.compile_pow(left_val, right_val, right)?,
                     BinaryOp::Range | BinaryOp::RangeInclusive => {
@@ -153,12 +289,12 @@ impl<'a> CodegenCtx<'a> {
                 Ok(match op {
                     UnaryOp::Neg => {
                         let ty = self.func.builder.func.dfg.value_type(val);
-                        let zero = self.func.builder.ins().iconst(ty, 0);
+                        let zero = self.emit_iconst(ty, 0);
                         self.func.builder.ins().isub(zero, val)
                     }
                     UnaryOp::Not => {
                         let ty = self.func.builder.func.dfg.value_type(val);
-                        let one = self.func.builder.ins().iconst(ty, 1);
+                        let one = self.emit_iconst(ty, 1);
                         self.func.builder.ins().bxor(val, one)
                     }
                     UnaryOp::Ref => {
@@ -177,22 +313,25 @@ impl<'a> CodegenCtx<'a> {
                     if let Some((_, callee_id, callee_params, callee_ret_type)) = callee_info {
                         let ptr_size = self.module.pointer_type.bytes();
                         let mut call_args = Vec::new();
-                        let ret_size =
-                            crate::layout::size_of(callee_ret_type, self.module.types, ptr_size);
-                        let needs_sret =
-                            !matches!(callee_ret_type, Type::Primitive(Primitive::Unit))
-                                && ret_size > 8;
-                        // SRet: allocate return slot, push its address first
-                        // todo: baseline sret, multi-register return replaces this
+                        let needs_sret = crate::layout::is_aggregate(callee_ret_type)
+                            && crate::layout::aggregate_register_count(
+                                callee_ret_type,
+                                self.module.types,
+                                ptr_size,
+                            ) == 0;
                         let sret_slot = if needs_sret {
-                            let slot =
-                                self.func
-                                    .builder
-                                    .create_sized_stack_slot(StackSlotData::new(
-                                        StackSlotKind::ExplicitSlot,
-                                        ret_size,
-                                        0,
-                                    ));
+                            let slot = self
+                                .func
+                                .builder
+                                .create_sized_stack_slot(StackSlotData::new(
+                                    StackSlotKind::ExplicitSlot,
+                                    crate::layout::size_of(
+                                        callee_ret_type,
+                                        self.module.types,
+                                        ptr_size,
+                                    ),
+                                    0,
+                                ));
                             let addr = self.func.builder.ins().stack_addr(
                                 self.module.pointer_type,
                                 slot,
@@ -203,16 +342,43 @@ impl<'a> CodegenCtx<'a> {
                         } else {
                             None
                         };
+                        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                         for (i, arg) in args.iter().enumerate() {
                             let param_type = &callee_params[i].type_;
-                            let param_size =
-                                crate::layout::size_of(param_type, self.module.types, ptr_size);
-                            if param_size > 8 {
-                                let val = self.compile_expr(arg)?;
-                                // todo: baseline by-ref, multi-register decomposition replaces this
-                                call_args.push(val);
+                            let val = self.compile_expr(arg)?;
+                            if crate::layout::is_aggregate(param_type) {
+                                match crate::layout::aggregate_register_count(
+                                    param_type,
+                                    self.module.types,
+                                    ptr_size,
+                                ) {
+                                    2 => {
+                                        let chunk0 = self.func.builder.ins().load(
+                                            types::I64,
+                                            mflags,
+                                            val,
+                                            0,
+                                        );
+                                        let addr1 = {
+                                            let off = self.func.builder.ins().iconst(
+                                                self.module.pointer_type,
+                                                8,
+                                            );
+                                            self.func.builder.ins().iadd(val, off)
+                                        };
+                                        let chunk1 = self.func.builder.ins().load(
+                                            types::I64,
+                                            mflags,
+                                            addr1,
+                                            0,
+                                        );
+                                        call_args.push(chunk0);
+                                        call_args.push(chunk1);
+                                    }
+                                    0 => call_args.push(val),
+                                    _ => call_args.push(val),
+                                }
                             } else {
-                                let val = self.compile_expr(arg)?;
                                 call_args.push(val);
                             }
                         }
@@ -221,13 +387,56 @@ impl<'a> CodegenCtx<'a> {
                             .module
                             .declare_func_in_func(*callee_id, self.func.builder.func);
                         let inst = self.func.builder.ins().call(sig, &call_args);
-                        let results = self.func.builder.inst_results(inst);
+                        let result_values: Vec<ir::Value> =
+                            self.func.builder.inst_results(inst).to_vec();
                         if let Some((_slot, addr)) = sret_slot {
                             Ok(addr)
-                        } else if results.is_empty() {
+                        } else if crate::layout::is_aggregate(callee_ret_type)
+                            && crate::layout::aggregate_register_count(
+                                callee_ret_type,
+                                self.module.types,
+                                ptr_size,
+                            )
+                                == 2
+                        {
+                            let slot = self
+                                .func
+                                .builder
+                                .create_sized_stack_slot(StackSlotData::new(
+                                    StackSlotKind::ExplicitSlot,
+                                    crate::layout::aggregate_slot_size(
+                                        callee_ret_type,
+                                        self.module.types,
+                                        ptr_size,
+                                    ),
+                                    0,
+                                ));
+                            let addr = self.func.builder.ins().stack_addr(
+                                self.module.pointer_type,
+                                slot,
+                                0,
+                            );
+                            self.func
+                                .builder
+                                .ins()
+                                .store(mflags, result_values[0], addr, 0);
+                            let addr1 = {
+                                let off = self
+                                    .func
+                                    .builder
+                                    .ins()
+                                    .iconst(self.module.pointer_type, 8);
+                                self.func.builder.ins().iadd(addr, off)
+                            };
+                            self.func
+                                .builder
+                                .ins()
+                                .store(mflags, result_values[1], addr1, 0);
+                            Ok(addr)
+                        } else if result_values.is_empty() {
                             Ok(self.func.builder.ins().iconst(types::I32, 0))
                         } else {
-                            Ok(results[0])
+                            Ok(result_values[0])
                         }
                     } else {
                         Err(CraneliftError::Msg(format!("undefined function `{name}`")))
@@ -251,14 +460,14 @@ impl<'a> CodegenCtx<'a> {
                     Type::Array { element, .. } => element.as_ref(),
                     _ => &Type::Primitive(Primitive::Int32),
                 };
-                let elem_size = element_byte_size(element_type, self.module.pointer_type);
-                let num_elements = elements.len() as u32;
+                let elem_size =
+                    crate::layout::array_element_stride(element_type, self.module.types, self.module.pointer_type.bytes());
                 let slot = self
                     .func
                     .builder
                     .create_sized_stack_slot(StackSlotData::new(
                         StackSlotKind::ExplicitSlot,
-                        elem_size * num_elements,
+                        crate::layout::size_of(&expr.type_, self.module.types, self.module.pointer_type.bytes()),
                         0,
                     ));
                 let base = self
@@ -266,6 +475,10 @@ impl<'a> CodegenCtx<'a> {
                     .builder
                     .ins()
                     .stack_addr(self.module.pointer_type, slot, 0);
+                self.zero_slot(
+                    base,
+                    crate::layout::size_of(&expr.type_, self.module.types, self.module.pointer_type.bytes()),
+                );
                 for (i, element) in elements.iter().enumerate() {
                     let val = self.compile_expr(element)?;
                     let offset = self
@@ -274,8 +487,7 @@ impl<'a> CodegenCtx<'a> {
                         .ins()
                         .iconst(self.module.pointer_type, (i as i64) * (elem_size as i64));
                     let addr = self.func.builder.ins().iadd(base, offset);
-                    let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-                    self.func.builder.ins().store(mflags, val, addr, 0);
+                    self.store_by_value(element_type, val, addr)?;
                 }
                 Ok(base)
             }
@@ -291,7 +503,8 @@ impl<'a> CodegenCtx<'a> {
                 } else {
                     index_val
                 };
-                let elem_size = element_byte_size(&expr.type_, self.module.pointer_type);
+                let elem_size =
+                    crate::layout::array_element_stride(&expr.type_, self.module.types, self.module.pointer_type.bytes());
                 let size_val = self
                     .func
                     .builder
@@ -299,6 +512,19 @@ impl<'a> CodegenCtx<'a> {
                     .iconst(self.module.pointer_type, elem_size as i64);
                 let offset = self.func.builder.ins().imul(index_wide, size_val);
                 let addr = self.func.builder.ins().iadd(array_ptr, offset);
+                if crate::layout::is_aggregate(&expr.type_) {
+                    let chunks = crate::layout::aggregate_register_count(
+                        &expr.type_,
+                        self.module.types,
+                        self.module.pointer_type.bytes(),
+                    );
+                    if chunks != 1 {
+                        // 9+ bytes: value lives in memory, hand back the element address
+                        return Ok(addr);
+                    }
+                    let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                    return Ok(self.func.builder.ins().load(types::I64, mflags, addr, 0));
+                }
                 let result_ty = ir_type_from_primitive(&expr.type_, self.module.pointer_type);
                 let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                 Ok(self.func.builder.ins().load(result_ty, mflags, addr, 0))
@@ -369,7 +595,7 @@ impl<'a> CodegenCtx<'a> {
                             ptr_size,
                         )
                     }
-                    Type::Named(type_name) => match self.module.types.get(type_name) {
+                    Type::Named(type_name) => match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
                         Some(HirItemKind::Struct(s)) => {
                             let field_types: Vec<(String, Type)> = s
                                 .fields
@@ -417,7 +643,6 @@ impl<'a> CodegenCtx<'a> {
                         )));
                     }
                 };
-                let field_clif = ir_type_from_primitive(&expr.type_, self.module.pointer_type);
                 let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
                 let obj_is_ptr = is_large_aggregate(&object.type_, self.module.types, ptr_size);
                 if obj_is_ptr {
@@ -431,7 +656,7 @@ impl<'a> CodegenCtx<'a> {
                             .iconst(self.module.pointer_type, offset as i64);
                         self.func.builder.ins().iadd(obj, off_val)
                     };
-                    Ok(self.func.builder.ins().load(field_clif, mflags, addr, 0))
+                    self.load_field_value(addr, &expr.type_)
                 } else {
                     // Small aggregate packed as i64: materialize on stack to extract fields
                     // todo: avoid temp stack slot, use bit extraction for small offsets
@@ -459,10 +684,34 @@ impl<'a> CodegenCtx<'a> {
                             .iconst(self.module.pointer_type, offset as i64);
                         self.func.builder.ins().iadd(base, off_val)
                     };
-                    Ok(self.func.builder.ins().load(field_clif, mflags, addr, 0))
+                    self.load_field_value(addr, &expr.type_)
                 }
             }
         }
+    }
+
+    /// Load a field value given its address. Primitive fields load their CLIF
+    /// type; aggregates <=8 bytes load the packed i64; larger aggregates stay
+    /// in memory and hand back their address.
+    fn load_field_value(
+        &mut self,
+        addr: ir::Value,
+        field_type: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        if crate::layout::is_aggregate(field_type) {
+            let chunks = crate::layout::aggregate_register_count(
+                field_type,
+                self.module.types,
+                self.module.pointer_type.bytes(),
+            );
+            if chunks == 1 {
+                return Ok(self.func.builder.ins().load(types::I64, mflags, addr, 0));
+            }
+            return Ok(addr);
+        }
+        let field_clif = ir_type_from_primitive(field_type, self.module.pointer_type);
+        Ok(self.func.builder.ins().load(field_clif, mflags, addr, 0))
     }
 
     pub(super) fn compile_pow(
@@ -472,8 +721,8 @@ impl<'a> CodegenCtx<'a> {
         exp_expr: &HirExpression,
     ) -> Result<ir::Value, CraneliftError> {
         let ty = self.func.builder.func.dfg.value_type(base_val);
-        if ty == types::F64 {
-            return Ok(self.compile_float_pow(base_val, exp_val));
+        if ty == types::F32 || ty == types::F64 {
+            return Ok(self.compile_float_pow(base_val, exp_val, ty));
         }
         if let HirExpressionKind::Int(value, _) = &exp_expr.kind {
             if *value < 0 {
@@ -481,7 +730,7 @@ impl<'a> CodegenCtx<'a> {
                     "integer power with negative exponent `{value}` is not defined"
                 )));
             }
-        let one = self.func.builder.ins().iconst(ty, 1);
+        let one = self.emit_iconst(ty, 1);
         if *value == 0 {
             return Ok(one);
         }
@@ -500,8 +749,8 @@ impl<'a> CodegenCtx<'a> {
     }
 
     fn compile_int_pow_loop(&mut self, base_val: ir::Value, exp_val: ir::Value, ty: ir::Type) -> ir::Value {
-        let zero = self.func.builder.ins().iconst(ty, 0);
-        let one = self.func.builder.ins().iconst(ty, 1);
+        let zero = self.emit_iconst(ty, 0);
+        let one = self.emit_iconst(ty, 1);
 
         let header = self.func.builder.create_block();
         let body = self.func.builder.create_block();
@@ -562,9 +811,203 @@ impl<'a> CodegenCtx<'a> {
         done_result
     }
 
-    fn compile_float_pow(&mut self, base_val: ir::Value, exp_val: ir::Value) -> ir::Value {
-        let zero = self.func.builder.ins().f64const(0.0);
-        let one = self.func.builder.ins().f64const(1.0);
+    fn float_const(&mut self, ty: ir::Type, value: f64) -> ir::Value {
+        if ty == types::F32 {
+            self.func.builder.ins().f32const(value as f32)
+        } else {
+            self.func.builder.ins().f64const(value)
+        }
+    }
+
+    /// Build an integer constant, handling 128-bit values (which have no
+    /// single-immediate form) via `iconcat` of two 64-bit halves.
+    fn emit_iconst(&mut self, ty: ir::Type, value: i128) -> ir::Value {
+        if ty == types::I128 {
+            let lo = self.func.builder.ins().iconst(types::I64, value as u64 as i64);
+            let hi = self
+                .func
+                .builder
+                .ins()
+                .iconst(types::I64, (value >> 64) as u64 as i64);
+            self.func.builder.ins().iconcat(lo, hi)
+        } else {
+            self.func.builder.ins().iconst(ty, value as i64)
+        }
+    }
+
+    /// Build an unsigned integer constant, handling 128-bit values.
+    fn emit_uint_const(&mut self, ty: ir::Type, value: u128) -> ir::Value {
+        if ty == types::I128 {
+            let lo = self.func.builder.ins().iconst(types::I64, value as u64 as i64);
+            let hi = self
+                .func
+                .builder
+                .ins()
+                .iconst(types::I64, (value >> 64) as u64 as i64);
+            self.func.builder.ins().iconcat(lo, hi)
+        } else {
+            self.func.builder.ins().iconst(ty, value as i64)
+        }
+    }
+
+    /// Divide and remainder. 128-bit division has no cranelift lowering, so it
+    /// uses a shift-subtract long-division loop with the same trap semantics as
+    /// the native 64-bit instructions: div-by-zero and signed MIN / -1 overflow.
+    pub(super) fn emit_div_rem(
+        &mut self,
+        dividend: ir::Value,
+        divisor: ir::Value,
+        ty: ir::Type,
+        signed: bool,
+    ) -> (ir::Value, ir::Value) {
+        if ty != types::I128 {
+            if signed {
+                return (
+                    self.func.builder.ins().sdiv(dividend, divisor),
+                    self.func.builder.ins().srem(dividend, divisor),
+                );
+            }
+            return (
+                self.func.builder.ins().udiv(dividend, divisor),
+                self.func.builder.ins().urem(dividend, divisor),
+            );
+        }
+
+        let zero = self.emit_iconst(ty, 0);
+        let is_zero = self.func.builder.ins().icmp(IntCC::Equal, divisor, zero);
+        self.func
+            .builder
+            .ins()
+            .trapnz(is_zero, ir::TrapCode::INTEGER_DIVISION_BY_ZERO);
+
+        if !signed {
+            return self.emit_udiv_rem_loop(dividend, divisor, ty);
+        }
+
+        let min = self.emit_iconst(ty, i128::MIN);
+        let neg_one = self.emit_iconst(ty, -1);
+        let is_min = self.func.builder.ins().icmp(IntCC::Equal, dividend, min);
+        let is_neg_one = self.func.builder.ins().icmp(IntCC::Equal, divisor, neg_one);
+        let overflows = self.func.builder.ins().band(is_min, is_neg_one);
+        self.func
+            .builder
+            .ins()
+            .trapnz(overflows, ir::TrapCode::INTEGER_OVERFLOW);
+
+        let dividend_neg = self
+            .func
+            .builder
+            .ins()
+            .icmp(IntCC::SignedLessThan, dividend, zero);
+        let divisor_neg = self
+            .func
+            .builder
+            .ins()
+            .icmp(IntCC::SignedLessThan, divisor, zero);
+        let neg_dividend = self.func.builder.ins().isub(zero, dividend);
+        let neg_divisor = self.func.builder.ins().isub(zero, divisor);
+        let dividend_mag = self.func.builder.ins().select(dividend_neg, neg_dividend, dividend);
+        let divisor_mag = self.func.builder.ins().select(divisor_neg, neg_divisor, divisor);
+
+        let (quotient_mag, remainder_mag) = self.emit_udiv_rem_loop(dividend_mag, divisor_mag, ty);
+        let quotient_neg = self.func.builder.ins().bxor(dividend_neg, divisor_neg);
+        let neg_quotient = self.func.builder.ins().isub(zero, quotient_mag);
+        let quotient = self.func.builder.ins().select(quotient_neg, neg_quotient, quotient_mag);
+        let neg_remainder = self.func.builder.ins().isub(zero, remainder_mag);
+        let remainder = self.func.builder.ins().select(dividend_neg, neg_remainder, remainder_mag);
+        (quotient, remainder)
+    }
+
+    /// Unsigned 128-bit long division: 128 iterations of shift-subtract. All
+    /// operations (shift, and, or, compare, subtract, select) are natively
+    /// lowered for I128.
+    fn emit_udiv_rem_loop(
+        &mut self,
+        dividend: ir::Value,
+        divisor: ir::Value,
+        ty: ir::Type,
+    ) -> (ir::Value, ir::Value) {
+        let zero = self.emit_iconst(ty, 0);
+        let one = self.emit_iconst(ty, 1);
+        let bit_127 = self.emit_iconst(ty, 127);
+        let iterations = self.emit_iconst(ty, 128);
+
+        let header = self.func.builder.create_block();
+        let body = self.func.builder.create_block();
+        let done = self.func.builder.create_block();
+
+        self.func.builder.ins().jump(
+            header,
+            &[
+                ir::BlockArg::from(iterations),
+                ir::BlockArg::from(dividend),
+                ir::BlockArg::from(zero),
+                ir::BlockArg::from(zero),
+            ],
+        );
+        self.func.builder.switch_to_block(header);
+        let counter = self.func.builder.append_block_param(header, ty);
+        let shifter = self.func.builder.append_block_param(header, ty);
+        let remainder = self.func.builder.append_block_param(header, ty);
+        let quotient = self.func.builder.append_block_param(header, ty);
+        let done_cond = self.func.builder.ins().icmp(IntCC::Equal, counter, zero);
+        self.func.builder.ins().brif(
+            done_cond,
+            done,
+            &[ir::BlockArg::from(quotient), ir::BlockArg::from(remainder)],
+            body,
+            &[
+                ir::BlockArg::from(counter),
+                ir::BlockArg::from(shifter),
+                ir::BlockArg::from(remainder),
+                ir::BlockArg::from(quotient),
+            ],
+        );
+
+        self.func.builder.switch_to_block(body);
+        let body_counter = self.func.builder.append_block_param(body, ty);
+        let body_shifter = self.func.builder.append_block_param(body, ty);
+        let body_remainder = self.func.builder.append_block_param(body, ty);
+        let body_quotient = self.func.builder.append_block_param(body, ty);
+
+        let shifted = self.func.builder.ins().ushr(body_shifter, bit_127);
+        let msb = self.func.builder.ins().band(shifted, one);
+        let shifted_rem = self.func.builder.ins().ishl(body_remainder, one);
+        let next_remainder = self.func.builder.ins().bor(shifted_rem, msb);
+        let next_shifter = self.func.builder.ins().ishl(body_shifter, one);
+        let next_quotient = self.func.builder.ins().ishl(body_quotient, one);
+        let ge = self
+            .func
+            .builder
+            .ins()
+            .icmp(IntCC::UnsignedGreaterThanOrEqual, next_remainder, divisor);
+        let remainder_minus = self.func.builder.ins().isub(next_remainder, divisor);
+        let final_remainder = self.func.builder.ins().select(ge, remainder_minus, next_remainder);
+        let quotient_or_one = self.func.builder.ins().bor(next_quotient, one);
+        let final_quotient = self.func.builder.ins().select(ge, quotient_or_one, next_quotient);
+        let next_counter = self.func.builder.ins().isub(body_counter, one);
+        self.func.builder.ins().jump(
+            header,
+            &[
+                ir::BlockArg::from(next_counter),
+                ir::BlockArg::from(next_shifter),
+                ir::BlockArg::from(final_remainder),
+                ir::BlockArg::from(final_quotient),
+            ],
+        );
+        self.func.builder.seal_block(header);
+        self.func.builder.seal_block(body);
+
+        self.func.builder.switch_to_block(done);
+        let done_quotient = self.func.builder.append_block_param(done, ty);
+        let done_remainder = self.func.builder.append_block_param(done, ty);
+        self.func.builder.seal_block(done);
+        (done_quotient, done_remainder)
+    }
+
+    fn compile_float_pow(&mut self, base_val: ir::Value, exp_val: ir::Value, ty: ir::Type) -> ir::Value {
+        let zero = self.float_const(ty, 0.0);
+        let one = self.float_const(ty, 1.0);
         let exp_neg = self
             .func
             .builder
@@ -582,8 +1025,8 @@ impl<'a> CodegenCtx<'a> {
             .ins()
             .jump(header, &[ir::BlockArg::from(work), ir::BlockArg::from(one)]);
         self.func.builder.switch_to_block(header);
-        let counter = self.func.builder.append_block_param(header, types::F64);
-        let result = self.func.builder.append_block_param(header, types::F64);
+        let counter = self.func.builder.append_block_param(header, ty);
+        let result = self.func.builder.append_block_param(header, ty);
         let cond = self
             .func
             .builder
@@ -598,8 +1041,8 @@ impl<'a> CodegenCtx<'a> {
         );
 
         self.func.builder.switch_to_block(body);
-        let body_counter = self.func.builder.append_block_param(body, types::F64);
-        let body_result = self.func.builder.append_block_param(body, types::F64);
+        let body_counter = self.func.builder.append_block_param(body, ty);
+        let body_result = self.func.builder.append_block_param(body, ty);
         let next_counter = self.func.builder.ins().fsub(body_counter, one);
         let next_result = self.func.builder.ins().fmul(body_result, base_val);
         self.func.builder.ins().jump(
@@ -610,7 +1053,7 @@ impl<'a> CodegenCtx<'a> {
         self.func.builder.seal_block(body);
 
         self.func.builder.switch_to_block(done);
-        let done_result = self.func.builder.append_block_param(done, types::F64);
+        let done_result = self.func.builder.append_block_param(done, ty);
         self.func.builder.seal_block(done);
 
         let reciprocal = self.func.builder.ins().fdiv(one, done_result);
@@ -779,14 +1222,13 @@ impl<'a> CodegenCtx<'a> {
         result_type: &Type,
     ) -> Result<ir::Value, CraneliftError> {
         let ptr_size = self.module.pointer_type.bytes();
-        let total_size = crate::layout::size_of(result_type, self.module.types, ptr_size);
         let is_large = is_large_aggregate(result_type, self.module.types, ptr_size);
         let slot = self
             .func
             .builder
             .create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
-                if is_large { total_size } else { 8 },
+                crate::layout::aggregate_slot_size(result_type, self.module.types, ptr_size),
                 0,
             ));
         let base = self
@@ -795,11 +1237,10 @@ impl<'a> CodegenCtx<'a> {
             .ins()
             .stack_addr(self.module.pointer_type, slot, 0);
         if let Type::Tuple(element_types) = result_type {
-            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-            if !is_large {
-                let zero = self.func.builder.ins().iconst(types::I64, 0);
-                self.func.builder.ins().store(mflags, zero, base, 0);
-            }
+            self.zero_slot(
+                base,
+                crate::layout::size_of(result_type, self.module.types, ptr_size),
+            );
             for (i, element) in elements.iter().enumerate() {
                 let val = self.compile_expr(element)?;
                 let offset = crate::layout::tuple_field_offset(
@@ -818,7 +1259,7 @@ impl<'a> CodegenCtx<'a> {
                         .iconst(self.module.pointer_type, offset as i64);
                     self.func.builder.ins().iadd(base, off_val)
                 };
-                self.func.builder.ins().store(mflags, val, addr, 0);
+                self.store_by_value(&element_types[i], val, addr)?;
             }
         }
         if is_large {
@@ -837,7 +1278,7 @@ impl<'a> CodegenCtx<'a> {
         result_type: &Type,
     ) -> Result<ir::Value, CraneliftError> {
         let ptr_size = self.module.pointer_type.bytes();
-        let hir_enum = match self.module.types.get(type_name) {
+        let hir_enum = match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
             Some(HirItemKind::Enum(e)) => e,
             _ => {
                 return Err(CraneliftError::Msg(format!(
@@ -857,7 +1298,7 @@ impl<'a> CodegenCtx<'a> {
                 None => Vec::new(),
             })
             .collect();
-        let (enum_total_size, data_offset, _disc_size) =
+        let (_, data_offset, _disc_size) =
             crate::layout::enum_layout(&all_variant_data, self.module.types, ptr_size);
         let is_large = is_large_aggregate(result_type, self.module.types, ptr_size);
         let slot = self
@@ -865,7 +1306,7 @@ impl<'a> CodegenCtx<'a> {
             .builder
             .create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
-                if is_large { enum_total_size } else { 8 },
+                crate::layout::aggregate_slot_size(result_type, self.module.types, ptr_size),
                 0,
             ));
         let base = self
@@ -874,10 +1315,10 @@ impl<'a> CodegenCtx<'a> {
             .ins()
             .stack_addr(self.module.pointer_type, slot, 0);
         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-        if !is_large {
-            let zero = self.func.builder.ins().iconst(types::I64, 0);
-            self.func.builder.ins().store(mflags, zero, base, 0);
-        }
+        self.zero_slot(
+            base,
+            crate::layout::size_of(result_type, self.module.types, ptr_size),
+        );
         let disc_val = self
             .func
             .builder
@@ -907,7 +1348,7 @@ impl<'a> CodegenCtx<'a> {
                 );
                 self.func.builder.ins().iadd(base, off)
             };
-            self.func.builder.ins().store(mflags, val, field_addr, 0);
+            self.store_by_value(&payload_types[i], val, field_addr)?;
             data_offset_acc +=
                 crate::layout::size_of(&payload_types[i], self.module.types, ptr_size);
         }
@@ -925,7 +1366,7 @@ impl<'a> CodegenCtx<'a> {
         result_type: &Type,
     ) -> Result<ir::Value, CraneliftError> {
         let ptr_size = self.module.pointer_type.bytes();
-        let hir_struct = match self.module.types.get(type_name) {
+        let hir_struct = match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new()) {
             Some(HirItemKind::Struct(s)) => s,
             _ => {
                 return Err(CraneliftError::Msg(format!(
@@ -938,7 +1379,7 @@ impl<'a> CodegenCtx<'a> {
             .iter()
             .map(|f| (f.name.clone(), f.type_.clone()))
             .collect();
-        let (total_size, field_layouts) = crate::layout::struct_layout(
+        let (_, field_layouts) = crate::layout::struct_layout(
             &field_types,
             hir_struct.repr_c,
             self.module.types,
@@ -950,7 +1391,7 @@ impl<'a> CodegenCtx<'a> {
             .builder
             .create_sized_stack_slot(StackSlotData::new(
                 StackSlotKind::ExplicitSlot,
-                if is_large { total_size } else { 8 },
+                crate::layout::aggregate_slot_size(result_type, self.module.types, ptr_size),
                 0,
             ));
         let base = self
@@ -959,11 +1400,10 @@ impl<'a> CodegenCtx<'a> {
             .ins()
             .stack_addr(self.module.pointer_type, slot, 0);
         // todo: double-copy for large aggregates, use destination-passing to avoid temp alloc
-        if !is_large {
-            let zero = self.func.builder.ins().iconst(types::I64, 0);
-            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-            self.func.builder.ins().store(mflags, zero, base, 0);
-        }
+        self.zero_slot(
+            base,
+            crate::layout::size_of(result_type, self.module.types, ptr_size),
+        );
         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
         for (name, expr) in fields {
             let val = self.compile_expr(expr)?;
@@ -985,7 +1425,8 @@ impl<'a> CodegenCtx<'a> {
                     .iconst(self.module.pointer_type, offset as i64);
                 self.func.builder.ins().iadd(base, off_val)
             };
-            self.func.builder.ins().store(mflags, val, addr, 0);
+            let field_type = &field_types[field_idx].1;
+            self.store_by_value(field_type, val, addr)?;
         }
         if is_large {
             // todo: main return capped at 64-bit, trampoline shim for larger
@@ -1019,5 +1460,83 @@ impl<'a> CodegenCtx<'a> {
             self.func.builder.ins().store(mflags, val, dest_addr, 0);
         }
         Ok(())
+    }
+
+    /// Zero the first `size` bytes at `base` so padding bytes in aggregate
+    /// literal slots are deterministic (equality memcmp and slot copies rely
+    /// on them being stable).
+    pub(super) fn zero_slot(&mut self, base: ir::Value, size: u32) {
+        let pointer_type = self.module.pointer_type;
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        let mut offset = 0u32;
+        while offset + 8 <= size {
+            let addr = if offset == 0 {
+                base
+            } else {
+                let off_val = self.func.builder.ins().iconst(pointer_type, offset as i64);
+                self.func.builder.ins().iadd(base, off_val)
+            };
+            let zero = self.func.builder.ins().iconst(types::I64, 0);
+            self.func.builder.ins().store(mflags, zero, addr, 0);
+            offset += 8;
+        }
+        if offset < size {
+            let addr = if offset == 0 {
+                base
+            } else {
+                let off_val = self.func.builder.ins().iconst(pointer_type, offset as i64);
+                self.func.builder.ins().iadd(base, off_val)
+            };
+            let zero = self.func.builder.ins().iconst(types::I8, 0);
+            self.func.builder.ins().store(mflags, zero, addr, 0);
+        }
+    }
+
+    /// Store a value into memory, copying by-value when the type is an
+    /// aggregate larger than a single register chunk (value is a pointer).
+    pub(super) fn store_by_value(
+        &mut self,
+        ty: &Type,
+        val: ir::Value,
+        addr: ir::Value,
+    ) -> Result<(), CraneliftError> {
+        if crate::layout::is_aggregate(ty)
+            && crate::layout::aggregate_register_count(
+                ty,
+                self.module.types,
+                self.module.pointer_type.bytes(),
+            ) != 1
+        {
+            let ptr_size = self.module.pointer_type.bytes();
+            self.emit_memcpy(
+                addr,
+                val,
+                crate::layout::aggregate_copy_size(ty, self.module.types, ptr_size),
+            )
+        } else {
+            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+            self.func.builder.ins().store(mflags, val, addr, 0);
+            Ok(())
+        }
+    }
+
+    pub(super) fn emit_memcmp_diff(&mut self, left: ir::Value, right: ir::Value, size: u32) -> ir::Value {
+        let pointer_type = self.module.pointer_type;
+        if size == 0 {
+            return self.func.builder.ins().iconst(types::I8, 0);
+        }
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        let zero = self.func.builder.ins().iconst(types::I8, 0);
+        let mut diff = zero;
+        for byte_offset in 0..size {
+            let off_val = self.func.builder.ins().iconst(pointer_type, byte_offset as i64);
+            let left_addr = self.func.builder.ins().iadd(left, off_val);
+            let right_addr = self.func.builder.ins().iadd(right, off_val);
+            let left_byte = self.func.builder.ins().load(types::I8, mflags, left_addr, 0);
+            let right_byte = self.func.builder.ins().load(types::I8, mflags, right_addr, 0);
+            let xored = self.func.builder.ins().bxor(left_byte, right_byte);
+            diff = self.func.builder.ins().bor(diff, xored);
+        }
+        diff
     }
 }

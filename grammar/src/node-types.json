@@ -2704,14 +2704,13 @@
         {
           "type": "tuple_definition",
           "named": true
+        },
+        {
+          "type": "type_alias_definition",
+          "named": true
         }
       ]
     }
-  },
-  {
-    "type": "string_literal",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "struct_definition",
@@ -3090,6 +3089,48 @@
     }
   },
   {
+    "type": "type_alias_definition",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type_identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_type",
+            "named": true
+          },
+          {
+            "type": "generic_type",
+            "named": true
+          },
+          {
+            "type": "reference_type",
+            "named": true
+          },
+          {
+            "type": "simple_type",
+            "named": true
+          },
+          {
+            "type": "tuple_type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "type_annotation",
     "named": true,
     "fields": {},
@@ -3363,10 +3404,6 @@
     "named": false
   },
   {
-    "type": "\"",
-    "named": false
-  },
-  {
     "type": "%",
     "named": false
   },
@@ -3568,10 +3605,6 @@
     "named": false
   },
   {
-    "type": "f",
-    "named": false
-  },
-  {
     "type": "false",
     "named": false
   },
@@ -3688,6 +3721,10 @@
     "named": false
   },
   {
+    "type": "string_literal",
+    "named": true
+  },
+  {
     "type": "struct",
     "named": false
   },
@@ -3697,6 +3734,10 @@
   },
   {
     "type": "tuple",
+    "named": false
+  },
+  {
+    "type": "type",
     "named": false
   },
   {
