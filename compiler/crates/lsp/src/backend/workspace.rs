@@ -255,8 +255,8 @@ pub(crate) fn analyze_workspace(
     }
     let modules = resolver
         .all_modules()
-        .iter()
-        .map(|(_, info)| (info.import_name.clone(), info.file_path.clone()))
+        .values()
+        .map(|info| (info.import_name.clone(), info.file_path.clone()))
         .collect();
     Ok((
         analyses,

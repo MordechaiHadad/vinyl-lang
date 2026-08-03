@@ -11,11 +11,11 @@ use crate::text::name_range;
 
 #[derive(Debug)]
 pub(crate) enum SymbolRef {
-    IdentRef { name: String, span: SourceSpan },
-    TypeRef { name: String },
-    FieldRef { name: String, object_type: Type },
-    VariantRef { type_name: String, name: String },
-    ModuleRef { name: String },
+    Ident { name: String, span: SourceSpan },
+    Type { name: String },
+    Field { name: String, object_type: Type },
+    Variant { type_name: String, name: String },
+    Module { name: String },
 }
 
 fn span_contains(span: (usize, usize), offset: usize) -> bool {
@@ -70,7 +70,7 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                     offset,
                 )
         }) {
-            return Some(SymbolRef::IdentRef {
+            return Some(SymbolRef::Ident {
                 name: definition.name.clone(),
                 span: definition.span,
             });
@@ -96,15 +96,15 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                 if let Some((colon, module, item)) = split_segments(source, *span) {
                     let module_end = span.offset() + colon;
                     if offset < module_end {
-                        Some(SymbolRef::ModuleRef { name: module })
+                        Some(SymbolRef::Module { name: module })
                     } else {
-                        Some(SymbolRef::IdentRef {
+                        Some(SymbolRef::Ident {
                             name: format!("{module}::{item}"),
                             span: *span,
                         })
                     }
                 } else {
-                    Some(SymbolRef::IdentRef {
+                    Some(SymbolRef::Ident {
                         name: name.clone(),
                         span: *span,
                     })
@@ -114,12 +114,12 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                 if let Some((colon, type_part, variant)) = split_segments(source, *span) {
                     let type_end = span.offset() + colon;
                     if offset >= type_end {
-                        Some(SymbolRef::VariantRef {
+                        Some(SymbolRef::Variant {
                             type_name: type_part,
                             name: variant,
                         })
                     } else {
-                        Some(SymbolRef::TypeRef { name: type_part })
+                        Some(SymbolRef::Type { name: type_part })
                     }
                 } else {
                     None
@@ -130,7 +130,7 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
             } => {
                 let type_end = span.offset() + type_name.len();
                 if offset < type_end {
-                    Some(SymbolRef::TypeRef {
+                    Some(SymbolRef::Type {
                         name: type_name.clone(),
                     })
                 } else {
@@ -150,7 +150,7 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                 && offset >= **reference_offset
                 && offset < **reference_offset + definition.name.len()
         })?;
-    Some(SymbolRef::IdentRef {
+    Some(SymbolRef::Ident {
         name: definition.name.clone(),
         span: definition.span,
     })
@@ -160,14 +160,14 @@ fn resolve_type_position(analysis: &Analysis, offset: usize) -> Option<SymbolRef
     for (type_offset, name) in &analysis.result.type_positions {
         let span = (*type_offset, type_offset + name.len());
         if span_contains(span, offset) {
-            return Some(SymbolRef::TypeRef { name: name.clone() });
+            return Some(SymbolRef::Type { name: name.clone() });
         }
     }
     None
 }
 
 fn resolve_field_access(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
-    for (_, access) in &analysis.result.field_accesses {
+    for access in analysis.result.field_accesses.values() {
         let name_start = access.span.offset() + access.span.len() - access.name.len();
         if offset >= name_start
             && span_contains(
@@ -178,7 +178,7 @@ fn resolve_field_access(analysis: &Analysis, offset: usize) -> Option<SymbolRef>
                 offset,
             )
         {
-            return Some(SymbolRef::FieldRef {
+            return Some(SymbolRef::Field {
                 name: access.name.clone(),
                 object_type: access.object_type.clone(),
             });
@@ -189,7 +189,7 @@ fn resolve_field_access(analysis: &Analysis, offset: usize) -> Option<SymbolRef>
 
 pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Option<Definition> {
     match target {
-        SymbolRef::IdentRef { name, span } => analysis
+        SymbolRef::Ident { name, span } => analysis
             .result
             .references
             .get(&span.offset())
@@ -203,8 +203,8 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                     .find(|definition| definition.span == *span)
                     .cloned()
             }),
-        SymbolRef::TypeRef { name, .. } => find_type_definition(analysis, name),
-        SymbolRef::FieldRef {
+        SymbolRef::Type { name, .. } => find_type_definition(analysis, name),
+        SymbolRef::Field {
             object_type, name, ..
         } => {
             let type_name = type_name(object_type)?;
@@ -228,7 +228,7 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                     _ => None,
                 })
         }
-        SymbolRef::VariantRef {
+        SymbolRef::Variant {
             type_name, name, ..
         } => analysis
             .result
@@ -249,7 +249,7 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                     }),
                 _ => None,
             }),
-        SymbolRef::ModuleRef { name } => Some(Definition {
+        SymbolRef::Module { name } => Some(Definition {
             id: 0,
             name: name.clone(),
             kind: DefinitionKind::Struct,
@@ -282,7 +282,7 @@ impl Backend {
         analysis: &Analysis,
     ) -> Option<Location> {
         match target {
-            SymbolRef::IdentRef { name, .. } => {
+            SymbolRef::Ident { name, .. } => {
                 if let Some((module, item)) = name.split_once("::") {
                     self.module_item_location(module, item).await
                 } else {
@@ -290,20 +290,20 @@ impl Backend {
                     self.location_for_definition(&definition).await
                 }
             }
-            SymbolRef::TypeRef { name, .. } => {
+            SymbolRef::Type { name, .. } => {
                 let definition = find_type_definition(analysis, name)?;
                 self.location_for_definition(&definition).await
             }
-            SymbolRef::FieldRef {
+            SymbolRef::Field {
                 object_type, name, ..
             } => {
                 let type_name = type_name(object_type)?;
                 self.field_location(analysis, type_name, name).await
             }
-            SymbolRef::VariantRef {
+            SymbolRef::Variant {
                 type_name, name, ..
             } => self.variant_location(analysis, type_name, name).await,
-            SymbolRef::ModuleRef { name, .. } => {
+            SymbolRef::Module { name, .. } => {
                 let path = self.state.read().await.modules.get(name)?.clone();
                 Some(Location::new(
                     Url::from_file_path(&path).ok()?,

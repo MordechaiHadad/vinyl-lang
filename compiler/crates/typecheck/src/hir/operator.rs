@@ -13,6 +13,7 @@ pub enum AssignOp {
     BitXorEq,
     ShlEq,
     ShrEq,
+    PowEq,
 }
 
 impl AssignOp {
@@ -29,6 +30,7 @@ impl AssignOp {
             ParserAssignOp::BitXorEq => AssignOp::BitXorEq,
             ParserAssignOp::ShlEq => AssignOp::ShlEq,
             ParserAssignOp::ShrEq => AssignOp::ShrEq,
+            ParserAssignOp::PowEq => AssignOp::PowEq,
         }
     }
 }

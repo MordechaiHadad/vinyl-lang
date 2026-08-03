@@ -130,6 +130,24 @@ pub enum TypeDiagnosticKind {
     #[diagnostic(code(typeck::float_literal_mismatch))]
     FloatLiteralMismatch { found: crate::hir::Type },
 
+    #[error("integer literal `{value}` is out of range for type `{found}`")]
+    #[diagnostic(code(typeck::int_literal_out_of_range))]
+    IntLiteralOutOfRange {
+        value: i128,
+        found: crate::hir::Type,
+    },
+
+    #[error("float literal `{value}` is out of range for type `{found}`")]
+    #[diagnostic(code(typeck::float_literal_out_of_range))]
+    FloatLiteralOutOfRange {
+        value: f64,
+        found: crate::hir::Type,
+    },
+
+    #[error("integer power with negative exponent `{value}` is not defined")]
+    #[diagnostic(code(typeck::pow_negative_exponent))]
+    PowNegativeExponent { value: i128 },
+
     #[error("recursive type: `{a}` contains `{b}`")]
     #[diagnostic(code(typeck::recursive_type))]
     RecursiveType {

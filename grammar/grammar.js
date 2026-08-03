@@ -189,7 +189,7 @@ export default grammar({
 
     assignment_statement: $ => seq(
       $._expression,
-      field("operator", choice("=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=")),
+      field("operator", choice("=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=", "**=")),
       $._expression,
       ";",
     ),

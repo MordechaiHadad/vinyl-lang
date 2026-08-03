@@ -234,6 +234,13 @@ impl crate::CodegenBackend for CraneliftBackend {
         }
 
         let main_ptr = self.module.get_finalized_function(*main_id);
+
+        if matches!(main_return, Type::Primitive(Primitive::Float64)) {
+            let main_fn: unsafe extern "C" fn() -> f64 = unsafe { mem::transmute(main_ptr) };
+            let result = unsafe { main_fn() };
+            return Ok(result.to_bits() as i64);
+        }
+
         let main_fn: unsafe extern "C" fn() -> i64 = unsafe { mem::transmute(main_ptr) };
         let result = unsafe { main_fn() };
         Ok(result)

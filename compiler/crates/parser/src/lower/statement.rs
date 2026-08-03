@@ -251,6 +251,7 @@ impl<'a> Lowerer<'a> {
             "^=" => AssignOp::BitXorEq,
             "<<=" => AssignOp::ShlEq,
             ">>=" => AssignOp::ShrEq,
+            "**=" => AssignOp::PowEq,
             other => {
                 return Err(
                     self.span_error(&op_node, &format!("unknown assignment operator `{other}`"))

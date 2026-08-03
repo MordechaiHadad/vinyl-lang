@@ -17,3 +17,9 @@ clippy-workspace:
 
 build-compiler:
     cd compiler && cargo build --release
+
+audit:
+    cd compiler && cargo audit
+
+audit-ci:
+    cd compiler && cargo audit --deny warnings

@@ -1,5 +1,5 @@
 use cranelift_codegen::ir::{
-    self, InstBuilder, StackSlotData, StackSlotKind, condcodes::IntCC, types,
+    self, InstBuilder, StackSlotData, StackSlotKind, condcodes::{FloatCC, IntCC}, types,
 };
 use cranelift_module::Module;
 
@@ -140,11 +140,7 @@ impl<'a> CodegenCtx<'a> {
                         let q_minus_1 = self.func.builder.ins().isub(q, one);
                         self.func.builder.ins().select(adjust, q_minus_1, q)
                     }
-                    BinaryOp::Pow => {
-                        return Err(CraneliftError::Msg(
-                            "power operator not supported in codegen yet".to_string(),
-                        ));
-                    }
+                    BinaryOp::Pow => self.compile_pow(left_val, right_val, right)?,
                     BinaryOp::Range | BinaryOp::RangeInclusive => {
                         return Err(CraneliftError::Msg(
                             "range operators not supported in codegen".to_string(),
@@ -467,6 +463,158 @@ impl<'a> CodegenCtx<'a> {
                 }
             }
         }
+    }
+
+    pub(super) fn compile_pow(
+        &mut self,
+        base_val: ir::Value,
+        exp_val: ir::Value,
+        exp_expr: &HirExpression,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ty = self.func.builder.func.dfg.value_type(base_val);
+        if ty == types::F64 {
+            return Ok(self.compile_float_pow(base_val, exp_val));
+        }
+        if let HirExpressionKind::Int(value, _) = &exp_expr.kind {
+            if *value < 0 {
+                return Err(CraneliftError::Msg(format!(
+                    "integer power with negative exponent `{value}` is not defined"
+                )));
+            }
+        let one = self.func.builder.ins().iconst(ty, 1);
+        if *value == 0 {
+            return Ok(one);
+        }
+        if *value == 1 {
+            return Ok(base_val);
+        }
+        if *value <= 3 {
+            let mut result = one;
+            for _ in 0..*value {
+                result = self.func.builder.ins().imul(result, base_val);
+            }
+            return Ok(result);
+        }
+        }
+        Ok(self.compile_int_pow_loop(base_val, exp_val, ty))
+    }
+
+    fn compile_int_pow_loop(&mut self, base_val: ir::Value, exp_val: ir::Value, ty: ir::Type) -> ir::Value {
+        let zero = self.func.builder.ins().iconst(ty, 0);
+        let one = self.func.builder.ins().iconst(ty, 1);
+
+        let header = self.func.builder.create_block();
+        let body = self.func.builder.create_block();
+        let done = self.func.builder.create_block();
+
+        self.func.builder.ins().jump(
+            header,
+            &[
+                ir::BlockArg::from(exp_val),
+                ir::BlockArg::from(base_val),
+                ir::BlockArg::from(one),
+            ],
+        );
+        self.func.builder.switch_to_block(header);
+        let exp = self.func.builder.append_block_param(header, ty);
+        let base = self.func.builder.append_block_param(header, ty);
+        let result = self.func.builder.append_block_param(header, ty);
+        let cond = self
+            .func
+            .builder
+            .ins()
+            .icmp(IntCC::SignedGreaterThan, exp, zero);
+        self.func.builder.ins().brif(
+            cond,
+            body,
+            &[
+                ir::BlockArg::from(exp),
+                ir::BlockArg::from(base),
+                ir::BlockArg::from(result),
+            ],
+            done,
+            &[ir::BlockArg::from(result)],
+        );
+
+        self.func.builder.switch_to_block(body);
+        let body_exp = self.func.builder.append_block_param(body, ty);
+        let body_base = self.func.builder.append_block_param(body, ty);
+        let body_result = self.func.builder.append_block_param(body, ty);
+        let odd = self.func.builder.ins().band(body_exp, one);
+        let product = self.func.builder.ins().imul(body_result, body_base);
+        let next_result = self.func.builder.ins().select(odd, product, body_result);
+        let next_base = self.func.builder.ins().imul(body_base, body_base);
+        let next_exp = self.func.builder.ins().ushr(body_exp, one);
+        self.func.builder.ins().jump(
+            header,
+            &[
+                ir::BlockArg::from(next_exp),
+                ir::BlockArg::from(next_base),
+                ir::BlockArg::from(next_result),
+            ],
+        );
+        self.func.builder.seal_block(header);
+        self.func.builder.seal_block(body);
+
+        self.func.builder.switch_to_block(done);
+        let done_result = self.func.builder.append_block_param(done, ty);
+        self.func.builder.seal_block(done);
+        done_result
+    }
+
+    fn compile_float_pow(&mut self, base_val: ir::Value, exp_val: ir::Value) -> ir::Value {
+        let zero = self.func.builder.ins().f64const(0.0);
+        let one = self.func.builder.ins().f64const(1.0);
+        let exp_neg = self
+            .func
+            .builder
+            .ins()
+            .fcmp(FloatCC::LessThan, exp_val, zero);
+        let negated = self.func.builder.ins().fsub(zero, exp_val);
+        let work = self.func.builder.ins().select(exp_neg, negated, exp_val);
+
+        let header = self.func.builder.create_block();
+        let body = self.func.builder.create_block();
+        let done = self.func.builder.create_block();
+
+        self.func
+            .builder
+            .ins()
+            .jump(header, &[ir::BlockArg::from(work), ir::BlockArg::from(one)]);
+        self.func.builder.switch_to_block(header);
+        let counter = self.func.builder.append_block_param(header, types::F64);
+        let result = self.func.builder.append_block_param(header, types::F64);
+        let cond = self
+            .func
+            .builder
+            .ins()
+            .fcmp(FloatCC::LessThanOrEqual, counter, zero);
+        self.func.builder.ins().brif(
+            cond,
+            done,
+            &[ir::BlockArg::from(result)],
+            body,
+            &[ir::BlockArg::from(counter), ir::BlockArg::from(result)],
+        );
+
+        self.func.builder.switch_to_block(body);
+        let body_counter = self.func.builder.append_block_param(body, types::F64);
+        let body_result = self.func.builder.append_block_param(body, types::F64);
+        let next_counter = self.func.builder.ins().fsub(body_counter, one);
+        let next_result = self.func.builder.ins().fmul(body_result, base_val);
+        self.func.builder.ins().jump(
+            header,
+            &[ir::BlockArg::from(next_counter), ir::BlockArg::from(next_result)],
+        );
+        self.func.builder.seal_block(header);
+        self.func.builder.seal_block(body);
+
+        self.func.builder.switch_to_block(done);
+        let done_result = self.func.builder.append_block_param(done, types::F64);
+        self.func.builder.seal_block(done);
+
+        let reciprocal = self.func.builder.ins().fdiv(one, done_result);
+        self.func.builder.ins().select(exp_neg, reciprocal, done_result)
     }
 
     pub fn compile_expr_if(&mut self, if_expr: IfExprBundle) -> Result<ir::Value, CraneliftError> {

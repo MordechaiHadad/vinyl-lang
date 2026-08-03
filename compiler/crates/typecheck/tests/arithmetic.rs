@@ -71,6 +71,62 @@ fn power() {
 }
 
 #[test]
+fn power_negative_exponent_int_literals() {
+    let source = "fn main(): int32 { 2 ** -1 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: int ** negative int");
+}
+
+#[test]
+fn power_negative_exponent_int_var() {
+    let source = "fn main() { let x = 10; x ** -1; }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: int var ** negative int");
+}
+
+#[test]
+fn power_negative_exponent_int_annotated() {
+    let source = "fn main(): int32 { let x: int32 = 10; x ** -1 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: int32 ** negative int");
+}
+
+#[test]
+fn power_negative_exponent_float_allowed() {
+    let source = "fn main(): float64 { 2.0 ** -1.0 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn power_negative_exponent_float_var_allowed() {
+    let source = "fn main(): float64 { let x = 10.0; x ** -1.0 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn power_negative_exponent_assign_int() {
+    let source = "fn main(): int32 { let mut x: int32 = 2; x **= -1; x }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: int **= negative int");
+}
+
+#[test]
+fn power_negative_exponent_assign_float_allowed() {
+    let source = "fn main(): float64 { let mut x = 2.0; x **= -1.0; x }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn power_eq() {
+    let source = "fn main(): int32 { let mut x = 2; x **= 3; x }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
 fn floor_div() {
     let source = "fn main(): int32 { 10 // 3 }";
     let items = common::compile(source);

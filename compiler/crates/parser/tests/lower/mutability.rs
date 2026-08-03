@@ -115,6 +115,7 @@ fn assign_op_equality() {
         ("x ^= 1", AssignOp::BitXorEq),
         ("x <<= 1", AssignOp::ShlEq),
         ("x >>= 1", AssignOp::ShrEq),
+        ("x **= 1", AssignOp::PowEq),
     ] {
         let items = common::do_lower(&format!("fn f() {{ let mut x = 0; {source}; }}"));
         let func = match &items[0] {

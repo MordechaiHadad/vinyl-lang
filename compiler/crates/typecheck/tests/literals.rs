@@ -117,6 +117,83 @@ fn float_literal_rejects_bool() {
 }
 
 #[test]
+fn int32_literal_at_max() {
+    let source = "fn main(): int32 { 2147483647 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn int32_literal_out_of_range_positive() {
+    let source = "fn main(): int32 { 2147483648 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: literal overflows int32");
+}
+
+#[test]
+fn int32_literal_out_of_range_negative() {
+    let source = "fn main(): int32 { -2147483649 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: literal underflows int32");
+}
+
+#[test]
+fn int64_literal_in_range() {
+    let source = "fn main(): int64 { 9223372036854775807 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn int8_literal_out_of_range() {
+    let source = "fn main(): int8 { 300 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: literal overflows int8");
+}
+
+#[test]
+fn uint32_literal_in_range() {
+    let source = "fn main(): uint32 { 4294967295 }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn uint32_literal_out_of_range() {
+    let source = "fn main(): uint32 { 4294967296 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: literal overflows uint32");
+}
+
+#[test]
+fn uint32_literal_rejects_negative() {
+    let source = "fn main(): uint32 { -5 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: negative literal into uint32");
+}
+
+#[test]
+fn untyped_int_literal_defaults_int64() {
+    let source = "fn main() { let x = 9223372036854775807; }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn float32_literal_out_of_range() {
+    let source = "fn main(): float32 { 400000000000000000000000000000000000000.0 }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: literal overflows float32");
+}
+
+#[test]
+fn float64_literal_non_finite() {
+    let source = format!("fn main(): float64 {{ {}.0 }}", "1".repeat(400));
+    let items = common::compile(&source);
+    assert!(items.is_err(), "typeck should fail: non-finite float literal");
+}
+
+#[test]
 fn char_literal() {
     let source = "fn main(): char { 'a' }";
     let items = common::compile(source);

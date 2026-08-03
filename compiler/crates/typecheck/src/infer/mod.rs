@@ -324,11 +324,9 @@ fn collect_statement_type_positions(
                 positions.insert(offset, type_.to_string());
             }
         }
-        Statement::Expression(expr) => {
-            if let Expression::Block(stmts, _) = expr {
-                for s in stmts {
-                    collect_statement_type_positions(s, source, positions);
-                }
+        Statement::Expression(Expression::Block(stmts, _)) => {
+            for s in stmts {
+                collect_statement_type_positions(s, source, positions);
             }
         }
         Statement::If {

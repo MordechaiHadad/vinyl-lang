@@ -174,7 +174,7 @@ impl<'a> CodegenCtx<'a> {
                 target, op, value, ..
             } => {
                 let val = self.compile_expr(value)?;
-                self.compile_assign_target(target, op, val)?;
+                self.compile_assign_target(target, op, val, value)?;
                 Ok(())
             }
         }
@@ -185,6 +185,7 @@ impl<'a> CodegenCtx<'a> {
         target: &HirAssignTarget,
         op: &AssignOp,
         value: ir::Value,
+        value_expr: &HirExpression,
     ) -> Result<(), CraneliftError> {
         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
         let is_compound = *op != AssignOp::Eq;
@@ -258,7 +259,7 @@ impl<'a> CodegenCtx<'a> {
                     }
                 }
             };
-            self.apply_compound_op(current, value, op)
+            self.apply_compound_op(current, value, op, value_expr)?
         } else {
             value
         };
@@ -540,8 +541,9 @@ impl<'a> CodegenCtx<'a> {
         current: ir::Value,
         value: ir::Value,
         op: &AssignOp,
-    ) -> ir::Value {
-        match op {
+        value_expr: &HirExpression,
+    ) -> Result<ir::Value, CraneliftError> {
+        Ok(match op {
             AssignOp::Eq => value,
             AssignOp::AddEq => self.func.builder.ins().iadd(current, value),
             AssignOp::SubEq => self.func.builder.ins().isub(current, value),
@@ -553,6 +555,7 @@ impl<'a> CodegenCtx<'a> {
             AssignOp::BitXorEq => self.func.builder.ins().bxor(current, value),
             AssignOp::ShlEq => self.func.builder.ins().ishl(current, value),
             AssignOp::ShrEq => self.func.builder.ins().sshr(current, value),
-        }
+            AssignOp::PowEq => self.compile_pow(current, value, value_expr)?,
+        })
     }
 }

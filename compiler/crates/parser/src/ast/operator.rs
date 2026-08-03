@@ -11,6 +11,7 @@ pub enum AssignOp {
     BitXorEq,
     ShlEq,
     ShrEq,
+    PowEq,
 }
 
 #[derive(Debug, Clone, PartialEq)]

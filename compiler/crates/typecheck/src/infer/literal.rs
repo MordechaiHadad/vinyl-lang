@@ -1,5 +1,8 @@
+use vinyl_parser::ast::operator::BinaryOp;
+use vinyl_parser::ast::types::Primitive;
+
 use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
-use crate::hir::{HirExpression, HirExpressionKind, HirStatement, HirStatementKind};
+use crate::hir::{AssignOp, HirExpression, HirExpressionKind, HirStatement, HirStatementKind, Type};
 use crate::infer::InferState;
 
 impl InferState {
@@ -21,31 +24,79 @@ impl InferState {
                 self.validate_literal_types(body, errors);
             }
             HirStatementKind::Break(_) | HirStatementKind::Continue(_) => {}
-            HirStatementKind::Assign { value, .. } => {
+            HirStatementKind::Assign { span, op, value, .. } => {
+                if *op == AssignOp::PowEq {
+                    self.check_pow_negative_exponent(&value.type_, value, *span, errors);
+                }
                 self.validate_literal_types_expr(value, errors);
             }
         }
     }
 
+    fn check_pow_negative_exponent(
+        &self,
+        base_type: &Type,
+        exponent: &HirExpression,
+        span: miette::SourceSpan,
+        errors: &mut Vec<TypeDiagnostic>,
+    ) {
+        if !base_type.is_float()
+            && let HirExpressionKind::Int(value, _) = &exponent.kind
+            && *value < 0
+        {
+            errors.push(self.source.error(
+                span,
+                TypeDiagnosticKind::PowNegativeExponent { value: *value },
+            ));
+        }
+    }
+
     fn validate_literal_types_expr(&self, expr: &HirExpression, errors: &mut Vec<TypeDiagnostic>) {
         match &expr.kind {
-            HirExpressionKind::Int(_, span) if !expr.type_.is_numeric() => {
-                errors.push(self.source.error(
-                    *span,
-                    TypeDiagnosticKind::IntLiteralMismatch {
-                        found: expr.type_.clone(),
-                    },
-                ));
+            HirExpressionKind::Int(value, span) => {
+                if !expr.type_.is_numeric() {
+                    errors.push(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::IntLiteralMismatch {
+                            found: expr.type_.clone(),
+                        },
+                    ));
+                } else if let Some((min, max)) = int_range(&expr.type_)
+                    && (*value < min || *value > max)
+                {
+                    errors.push(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::IntLiteralOutOfRange {
+                            value: *value,
+                            found: expr.type_.clone(),
+                        },
+                    ));
+                }
             }
-            HirExpressionKind::Float(_, span) if !expr.type_.is_float() => {
-                errors.push(self.source.error(
-                    *span,
-                    TypeDiagnosticKind::FloatLiteralMismatch {
-                        found: expr.type_.clone(),
-                    },
-                ));
+            HirExpressionKind::Float(value, span) => {
+                if !expr.type_.is_float() {
+                    errors.push(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::FloatLiteralMismatch {
+                            found: expr.type_.clone(),
+                        },
+                    ));
+                } else if !float_in_range(&expr.type_, *value) {
+                    errors.push(self.source.error(
+                        *span,
+                        TypeDiagnosticKind::FloatLiteralOutOfRange {
+                            value: *value,
+                            found: expr.type_.clone(),
+                        },
+                    ));
+                }
             }
-            HirExpressionKind::Binary { left, right, .. } => {
+            HirExpressionKind::Binary {
+                span, op, left, right, ..
+            } => {
+                if *op == BinaryOp::Pow {
+                    self.check_pow_negative_exponent(&left.type_, right, *span, errors);
+                }
                 self.validate_literal_types_expr(left, errors);
                 self.validate_literal_types_expr(right, errors);
             }
@@ -110,5 +161,34 @@ impl InferState {
         for stmt in stmts {
             self.validate_literal_types_stmt(stmt, errors);
         }
+    }
+}
+
+fn int_range(t: &Type) -> Option<(i128, i128)> {
+    let p = t.as_primitive()?;
+    Some(match p {
+        Primitive::Int8 => (i8::MIN as i128, i8::MAX as i128),
+        Primitive::Int16 => (i16::MIN as i128, i16::MAX as i128),
+        Primitive::Int32 => (i32::MIN as i128, i32::MAX as i128),
+        Primitive::Int64 => (i64::MIN as i128, i64::MAX as i128),
+        Primitive::Int128 => (i128::MIN, i128::MAX),
+        Primitive::ISize => (isize::MIN as i128, isize::MAX as i128),
+        Primitive::UInt8 => (0, u8::MAX as i128),
+        Primitive::UInt16 => (0, u16::MAX as i128),
+        Primitive::UInt32 => (0, u32::MAX as i128),
+        Primitive::UInt64 => (0, u64::MAX as i128),
+        Primitive::UInt128 => (0, i128::MAX),
+        Primitive::USize => (0, usize::MAX as i128),
+        _ => return None,
+    })
+}
+
+fn float_in_range(t: &Type, value: f64) -> bool {
+    if !value.is_finite() {
+        return false;
+    }
+    match t.as_primitive() {
+        Some(Primitive::Float32) => value.abs() <= f32::MAX as f64,
+        _ => true,
     }
 }
