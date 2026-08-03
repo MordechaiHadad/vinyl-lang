@@ -6,6 +6,7 @@ use eyre::{Result, eyre};
 use line_index::LineIndex;
 use vinyl_parser::ast::item::Item;
 use vinyl_resolver::resolver::{ImportPrefix, Resolver, ResolverMode};
+use vinyl_resolver::structs::DiskFileSystem;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
 use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
@@ -357,6 +358,56 @@ fn add_resolved_modules(
                 types,
             },
         );
+    }
+}
+
+pub(crate) fn load_imported_modules(vfs: &mut Vfs, root: &Path, opened_path: &Path) {
+    let mut resolver = match Resolver::detect_with(root, Box::new(DiskFileSystem)) {
+        Ok(resolver) => resolver,
+        Err(_) => return,
+    };
+    if !matches!(resolver.mode(), ResolverMode::Script) {
+        return;
+    }
+    let Ok((_, items)) = parse_file_with_diagnostics(vfs, opened_path) else {
+        return;
+    };
+    for import in items.iter().filter_map(|item| match item {
+        Item::Import(def) => Some(def),
+        _ => None,
+    }) {
+        let resolved = if import.prefix.is_empty() {
+            resolver.resolve_module_path(&import.path)
+        } else {
+            let package_count = import
+                .prefix
+                .iter()
+                .filter(|segment| segment.as_str() == "package")
+                .count();
+            let parent_count = import
+                .prefix
+                .iter()
+                .filter(|segment| segment.as_str() == "parent")
+                .count();
+            if import.prefix.len() != package_count + parent_count {
+                continue;
+            }
+            let import_prefix = if package_count > 0 {
+                ImportPrefix::Package
+            } else if parent_count == 1 {
+                ImportPrefix::Self_
+            } else {
+                ImportPrefix::Parent(parent_count - 1)
+            };
+            let path_strs: Vec<&str> = import.path.iter().map(|segment| segment.as_str()).collect();
+            resolver.resolve(&import_prefix, &path_strs, opened_path)
+        };
+        if let Ok(info) = resolved
+            && !vfs.files().contains_key(&info.file_path)
+            && let Ok(source) = std::fs::read_to_string(&info.file_path)
+        {
+            vfs.set(info.file_path, source);
+        }
     }
 }
 

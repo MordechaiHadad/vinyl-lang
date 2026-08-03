@@ -65,39 +65,39 @@ impl Backend {
             let is_local = analysis
                 .as_ref()
                 .is_some_and(|a| a.result.definitions.keys().any(|k| k == &prefix));
-            if !is_local {
-                if let Some(resolver) = &state.resolver {
-                    let current_path = uri.to_file_path().ok();
-                    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
-                    for info in resolver.all_modules().values() {
-                        if current_path
-                            .as_ref()
-                            .is_some_and(|p| same_file(p, &info.file_path))
-                        {
-                            continue;
-                        }
-                        let cache_key =
-                            non_canonical_key(&info.file_path, resolver, workspace_root);
-                        let Some(module_analysis) = state.cache.get(&cache_key) else {
-                            continue;
-                        };
-                        let import_path = current_path
-                            .as_ref()
-                            .map(|p| relative_import_path(p, &info.file_path, resolver))
-                            .unwrap_or_else(|| info.import_name.clone());
-                        if is_imported(&existing_imports, &info.import_name) {
-                            continue;
-                        }
-                        if module_analysis.result.definitions.contains_key(&prefix)
-                            && is_public_symbol(module_analysis, &prefix)
-                        {
-                            actions.push(add_import_action(
-                                &uri,
-                                &source,
-                                &format!("Add import `{import_path}`"),
-                                &import_path,
-                            ));
-                        }
+            if !is_local
+                && let Some(resolver) = &state.resolver
+            {
+                let current_path = uri.to_file_path().ok();
+                let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
+                for info in resolver.all_modules().values() {
+                    if current_path
+                        .as_ref()
+                        .is_some_and(|p| same_file(p, &info.file_path))
+                    {
+                        continue;
+                    }
+                    let cache_key =
+                        non_canonical_key(&info.file_path, resolver, workspace_root);
+                    let Some(module_analysis) = state.cache.get(&cache_key) else {
+                        continue;
+                    };
+                    let import_path = current_path
+                        .as_ref()
+                        .map(|p| relative_import_path(p, &info.file_path, resolver))
+                        .unwrap_or_else(|| info.import_name.clone());
+                    if is_imported(&existing_imports, &info.import_name) {
+                        continue;
+                    }
+                    if module_analysis.result.definitions.contains_key(&prefix)
+                        && is_public_symbol(module_analysis, &prefix)
+                    {
+                        actions.push(add_import_action(
+                            &uri,
+                            &source,
+                            &format!("Add import `{import_path}`"),
+                            &import_path,
+                        ));
                     }
                 }
             }

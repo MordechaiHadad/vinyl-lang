@@ -57,7 +57,6 @@ impl Backend {
 
         if let Some(resolver) = &state.resolver {
             let existing_imports = current_imports(&current_source);
-            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
 
             if is_colon_trigger && !in_import_context && module_ref_simple.is_none() {
                 let has_pending_module =
@@ -111,7 +110,6 @@ impl Backend {
                     partial,
                     &current_line_index,
                     offset,
-                    workspace_root,
                     (!imported).then_some((current_source.as_str(), import_path.as_str())),
                 ));
             } else {
@@ -180,9 +178,9 @@ fn module_ref_completions(
     partial: &str,
     current_line_index: &LineIndex,
     offset: usize,
-    workspace_root: &Path,
     auto_import: Option<(&str, &str)>,
 ) -> Vec<CompletionItem> {
+    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
     let mut items = Vec::new();
     for info in resolver.all_modules().values() {
         if info.import_name != module_name {
