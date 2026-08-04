@@ -68,9 +68,15 @@ impl<'a> Lowerer<'a> {
         node: &Node,
     ) -> Result<StructField, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
+        let public = has_public(node);
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let type_ = self.lower_type_annotation_child(node)?;
-        Ok(StructField { span, name, type_ })
+        Ok(StructField {
+            span,
+            public,
+            name,
+            type_,
+        })
     }
 
     pub(super) fn lower_tuple_definition(
@@ -153,7 +159,12 @@ impl<'a> Lowerer<'a> {
         } else {
             None
         };
-        Ok(EnumVariant { span, name, data })
+        Ok(EnumVariant {
+            span,
+            public: has_public(node),
+            name,
+            data,
+        })
     }
 
     pub(super) fn lower_function(
@@ -220,12 +231,32 @@ impl<'a> Lowerer<'a> {
 
         let path_node = self.child_by_field(&import_path_node, "path")?;
         let mut path = Vec::new();
+        let mut wildcard = false;
         for i in 0..path_node.named_child_count() {
             if let Some(child) = path_node.named_child(i as u32) {
-                path.push(node_text(&child, self.source));
+                if child.kind() == "import_wildcard" {
+                    wildcard = true;
+                } else {
+                    path.push(node_text(&child, self.source));
+                }
             }
         }
-        Ok(ImportDef { span, prefix, path })
+        let symbols = self
+            .child_by_field(&import_path_node, "symbols")
+            .map(|symbols_node| {
+                (0..symbols_node.named_child_count())
+                    .filter_map(|index| symbols_node.named_child(index as u32))
+                    .map(|child| node_text(&child, self.source))
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(ImportDef {
+            span,
+            prefix,
+            path,
+            symbols,
+            wildcard,
+        })
     }
 
     pub(super) fn lower_params(&self, node: &Node) -> Result<Vec<FunctionParam>, ParserDiagnostic> {
@@ -267,4 +298,8 @@ impl<'a> Lowerer<'a> {
         }
         Ok(Attribute { span, name, args })
     }
+}
+
+fn has_public(node: &Node) -> bool {
+    (0..node.child_count()).any(|i| node.child(i as u32).is_some_and(|c| c.kind() == "public"))
 }

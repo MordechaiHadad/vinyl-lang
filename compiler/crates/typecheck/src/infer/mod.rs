@@ -4,6 +4,7 @@ use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::expression::Expression;
 use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
 use vinyl_parser::ast::statement::Statement;
+use vinyl_parser::ast::types::Type as AstType;
 
 use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
@@ -75,10 +76,19 @@ struct InferState {
     loop_depth: usize,
     errors: Vec<TypeDiagnostic>,
     module_table: ModuleTable,
+    type_origins: HashMap<String, String>,
 }
 
 impl InferState {
     fn new(source: &str, source_name: &str, module_table: &ModuleTable) -> Self {
+        let mut type_origins = HashMap::new();
+        for (module, exports) in module_table {
+            if exports.imported {
+                for type_name in &exports.types {
+                    type_origins.insert(type_name.clone(), module.clone());
+                }
+            }
+        }
         InferState {
             source: SourceContext::new(source, source_name),
             scope: ScopeState::new(),
@@ -88,6 +98,138 @@ impl InferState {
             loop_depth: 0,
             errors: Vec::new(),
             module_table: module_table.clone(),
+            type_origins,
+        }
+    }
+
+    pub(super) fn canonicalize_scoped_name(
+        &mut self,
+        name: &str,
+        span: SourceSpan,
+    ) -> Result<String, Box<TypeDiagnostic>> {
+        let Some((module, type_name)) = name.split_once("::") else {
+            return Ok(name.to_string());
+        };
+        match self.module_table.get(module) {
+            Some(exports) if exports.imported && exports.types.iter().any(|t| t == type_name) => {
+                Ok(type_name.to_string())
+            }
+            Some(_) => Err(Box::new(self.source.error(
+                span,
+                TypeDiagnosticKind::PrivateAccess {
+                    module: module.to_string(),
+                    name: type_name.to_string(),
+                },
+            ))),
+            None => Err(Box::new(self.source.error(
+                span,
+                TypeDiagnosticKind::UnknownType {
+                    name: name.to_string(),
+                },
+            ))),
+        }
+    }
+
+    fn canonicalize_type(
+        &mut self,
+        type_: &AstType,
+        span: SourceSpan,
+    ) -> Result<AstType, Box<TypeDiagnostic>> {
+        match type_ {
+            AstType::Named(name) => Ok(AstType::Named(
+                self.canonicalize_scoped_name(name, span)?,
+            )),
+            AstType::Generic { name, args } => {
+                let args = args
+                    .iter()
+                    .map(|arg| self.canonicalize_type(arg, span))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(AstType::Generic {
+                    name: name.clone(),
+                    args,
+                })
+            }
+            AstType::Array { element, size } => Ok(AstType::Array {
+                element: Box::new(self.canonicalize_type(element, span)?),
+                size: *size,
+            }),
+            AstType::Ref(inner) => Ok(AstType::Ref(Box::new(
+                self.canonicalize_type(inner, span)?,
+            ))),
+            AstType::Tuple(elements) => Ok(AstType::Tuple(
+                elements
+                    .iter()
+                    .map(|element| self.canonicalize_type(element, span))
+                    .collect::<Result<Vec<_>, _>>()?,
+            )),
+            AstType::Primitive(_) | AstType::Var(_) => Ok(type_.clone()),
+        }
+    }
+
+    fn canonicalize_item_types(&mut self, item: &mut Item) {
+        let span = item.span();
+        match item {
+            Item::Struct(s) => {
+                for field in &mut s.fields {
+                    match self.canonicalize_type(&field.type_, span) {
+                        Ok(type_) => field.type_ = type_,
+                        Err(e) => self.errors.push(*e),
+                    }
+                }
+            }
+            Item::TupleStruct(t) => {
+                for type_ in &mut t.types {
+                    match self.canonicalize_type(type_, span) {
+                        Ok(canonical) => *type_ = canonical,
+                        Err(e) => self.errors.push(*e),
+                    }
+                }
+            }
+            Item::Enum(e) => {
+                for variant in &mut e.variants {
+                    if let Some(data) = &mut variant.data {
+                        match data {
+                            EnumVariantData::Tuple(types) => {
+                                for type_ in types {
+                                    match self.canonicalize_type(type_, span) {
+                                        Ok(canonical) => *type_ = canonical,
+                                        Err(e) => self.errors.push(*e),
+                                    }
+                                }
+                            }
+                            EnumVariantData::Struct(fields) => {
+                                for field in fields {
+                                    match self.canonicalize_type(&field.type_, span) {
+                                        Ok(type_) => field.type_ = type_,
+                                        Err(e) => self.errors.push(*e),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Item::TypeAlias(a) => {
+                match self.canonicalize_type(&a.type_, span) {
+                    Ok(type_) => a.type_ = type_,
+                    Err(e) => self.errors.push(*e),
+                }
+            }
+            Item::Function(f) => {
+                for param in &mut f.params {
+                    match self.canonicalize_type(&param.type_, span) {
+                        Ok(type_) => param.type_ = type_,
+                        Err(e) => self.errors.push(*e),
+                    }
+                }
+                if let Some(return_type) = &mut f.return_type {
+                    match self.canonicalize_type(return_type, span) {
+                        Ok(type_) => *return_type = type_,
+                        Err(e) => self.errors.push(*e),
+                    }
+                }
+            }
+            Item::Import(_) => {}
         }
     }
 }
@@ -290,7 +432,12 @@ pub fn typeck_with_modules(
 ) -> Result<(Vec<HirItem>, Vec<TypeDiagnostic>), Vec<TypeDiagnostic>> {
     let mut state = InferState::new(source, source_name, module_table);
 
-    let signatures: HashMap<&str, &FunctionDef> = items
+    let mut owned_items = items.to_vec();
+    for item in &mut owned_items {
+        state.canonicalize_item_types(item);
+    }
+
+    let signatures: HashMap<&str, &FunctionDef> = owned_items
         .iter()
         .filter_map(|item| {
             if let Item::Function(f) = item {
@@ -303,7 +450,7 @@ pub fn typeck_with_modules(
 
     let mut hir_items: Vec<HirItem> = Vec::new();
 
-    for item in items {
+    for item in &owned_items {
         let hir_item = match item {
             Item::Struct(s) => Some(HirItem {
                 span: s.span,
@@ -317,6 +464,7 @@ pub fn typeck_with_modules(
                         .iter()
                         .map(|f| HirField {
                             span: f.span,
+                            public: f.public,
                             name: f.name.clone(),
                             type_: f.type_.clone(),
                         })
@@ -343,6 +491,7 @@ pub fn typeck_with_modules(
                         .iter()
                         .map(|v| HirEnumVariant {
                             span: v.span,
+                            public: v.public,
                             name: v.name.clone(),
                             data: v.data.as_ref().map(|d| match d {
                                 EnumVariantData::Tuple(types) => {
@@ -353,6 +502,7 @@ pub fn typeck_with_modules(
                                         .iter()
                                         .map(|f| HirField {
                                             span: f.span,
+                                            public: f.public,
                                             name: f.name.clone(),
                                             type_: f.type_.clone(),
                                         })
@@ -388,10 +538,22 @@ pub fn typeck_with_modules(
         }
     }
 
+    for (module, exports) in state.module_table.clone() {
+        if !exports.imported {
+            continue;
+        }
+        for type_name in &exports.types {
+            let scoped_name = format!("{module}::{type_name}");
+            if let Some(kind) = state.types.get(&scoped_name).cloned() {
+                state.types.entry(type_name.clone()).or_insert(kind);
+            }
+        }
+    }
+
     validate_type_aliases(&mut state);
     validate_recursive_types(&mut state);
 
-    for item in items {
+    for item in &owned_items {
         if let Item::Function(f) = item {
             match state.infer_function(f, &signatures) {
                 Ok(hir) => hir_items.push(HirItem {

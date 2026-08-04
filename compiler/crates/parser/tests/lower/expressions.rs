@@ -94,6 +94,53 @@ fn module_function_call_is_not_enum_variant() {
 }
 
 #[test]
+fn module_qualified_enum_variant() {
+    let items = common::do_lower("fn f(): unit { math::Shape::Circle }");
+    let function = match &items[0] {
+        Item::Function(function) => function,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &function.body[0] {
+        Statement::Value(
+            Expression::EnumVariant {
+                type_name, variant_name, args, ..
+            },
+            _,
+        ) => {
+            assert_eq!(type_name, "math::Shape");
+            assert_eq!(variant_name, "Circle");
+            assert!(args.is_empty());
+        }
+        other => panic!("expected enum variant, got {other:?}"),
+    }
+}
+
+#[test]
+fn module_qualified_enum_variant_with_args() {
+    let items = common::do_lower("fn f(): unit { math::Shape::Square(2.0) }");
+    let function = match &items[0] {
+        Item::Function(function) => function,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &function.body[0] {
+        Statement::Value(
+            Expression::EnumVariant {
+                type_name,
+                variant_name,
+                args,
+                ..
+            },
+            _,
+        ) => {
+            assert_eq!(type_name, "math::Shape");
+            assert_eq!(variant_name, "Square");
+            assert!(matches!(args.as_slice(), [Expression::Float(2.0, _)]));
+        }
+        other => panic!("expected enum variant, got {other:?}"),
+    }
+}
+
+#[test]
 fn match_expression_lower() {
     let items = common::do_lower("fn f(x: int32): int32 { match x { 1 => 10, _ => 0 } }");
     let func = match &items[0] {

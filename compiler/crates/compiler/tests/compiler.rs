@@ -275,3 +275,214 @@ fn manifest_package_prefix() {
     let result = compile_entry(&root.join("src/main.vn"), Some(&root));
     assert!(result.is_ok(), "{result:?}");
 }
+
+#[test]
+fn symbol_import_function_bare_call() {
+    let root = project(
+        "symbol_import_function",
+        &[
+            (
+                "src/main.vn",
+                "import math::double; fn main(): int { double(21) }",
+            ),
+            ("src/math.vn", "public fn double(n: int): int { n * 2 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn symbol_import_private_errors() {
+    let root = project(
+        "symbol_import_private",
+        &[
+            (
+                "src/main.vn",
+                "import math::hidden; fn main(): int { hidden() }",
+            ),
+            ("src/math.vn", "fn hidden(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err(), "importing a private symbol should error");
+}
+
+#[test]
+fn wildcard_import_bare_call() {
+    let root = project(
+        "wildcard_import",
+        &[
+            (
+                "src/main.vn",
+                "import math::*; fn main(): int { answer() }",
+            ),
+            ("src/math.vn", "public fn answer(): int { 42 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn grouped_symbol_import_bare_calls() {
+    let root = project(
+        "grouped_symbol_import",
+        &[
+            (
+                "src/main.vn",
+                "import math::{double, triple}; fn main(): int { double(2) + triple(2) }",
+            ),
+            (
+                "src/math.vn",
+                "public fn double(n: int): int { n * 2 } public fn triple(n: int): int { n * 3 }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn symbol_import_conflict_errors() {
+    let root = project(
+        "symbol_import_conflict",
+        &[
+            (
+                "src/main.vn",
+                "import a::foo; import b::foo; fn main(): int { foo() }",
+            ),
+            ("src/a.vn", "public fn foo(): int { 1 }"),
+            ("src/b.vn", "public fn foo(): int { 2 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err(), "conflicting symbol imports should error");
+}
+
+#[test]
+fn scoped_type_public_field_access() {
+    let root = project(
+        "scoped_type_public_field",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn area(s: math::Shape): float64 { s.radius }",
+            ),
+            (
+                "src/math.vn",
+                "public struct Shape { public radius: float64 }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn scoped_type_private_field_errors() {
+    let root = project(
+        "scoped_type_private_field",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn area(s: math::Shape): float64 { s.radius }",
+            ),
+            ("src/math.vn", "public struct Shape { radius: float64 }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err(), "cross-module private field access should error");
+}
+
+#[test]
+fn scoped_private_type_errors() {
+    let root = project(
+        "scoped_private_type",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn f(s: math::Hidden): int32 { 0 }",
+            ),
+            ("src/math.vn", "struct Hidden {}"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(
+        result.is_err(),
+        "referencing a private type from another module should error"
+    );
+}
+
+#[test]
+fn module_qualified_enum_variant_construction() {
+    let root = project(
+        "module_qualified_variant",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): unit { let s = math::Shape::Circle; }",
+            ),
+            (
+                "src/math.vn",
+                "public enum Shape { public Circle, Square(float64) }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn module_qualified_private_variant_errors() {
+    let root = project(
+        "module_qualified_private_variant",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): unit { let s = math::Shape::Circle; }",
+            ),
+            ("src/math.vn", "public enum Shape { Circle }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err(), "cross-module private variant should error");
+}
+
+#[test]
+fn imported_type_public_field_access() {
+    let root = project(
+        "imported_type_public_field",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): int32 { math::make_point().x }",
+            ),
+            (
+                "src/math.vn",
+                "public struct Point { public x: int32 } public fn make_point(): Point { Point { x: 1 } }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn imported_type_private_field_errors() {
+    let root = project(
+        "imported_type_private_field",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): int32 { math::make_point().x }",
+            ),
+            (
+                "src/math.vn",
+                "public struct Point { x: int32 } public fn make_point(): Point { Point { x: 1 } }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_err(), "cross-module private field access should error");
+}

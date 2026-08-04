@@ -201,4 +201,11 @@ pub enum TypeDiagnosticKind {
     #[error("item `{module}::{name}` is private")]
     #[diagnostic(code(typeck::private_access))]
     PrivateAccess { module: String, name: String },
+
+    #[error("field `{field_name}` of `{type_name}` is private")]
+    #[diagnostic(code(typeck::private_field))]
+    PrivateField {
+        type_name: String,
+        field_name: String,
+    },
 }

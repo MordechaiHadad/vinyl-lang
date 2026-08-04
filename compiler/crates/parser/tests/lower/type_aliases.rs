@@ -1,4 +1,4 @@
-use vinyl_parser::ast::item::{Item, TypeAliasDef};
+use vinyl_parser::ast::item::Item;
 use vinyl_parser::ast::types::Type;
 
 use super::common;

@@ -4,9 +4,10 @@ use std::sync::Arc;
 
 use eyre::{Result, eyre};
 use line_index::LineIndex;
-use vinyl_parser::ast::item::Item;
-use vinyl_resolver::resolver::{ImportPrefix, Resolver, ResolverMode};
+use vinyl_parser::ast::item::{ImportDef, Item};
+use vinyl_resolver::resolver::{ImportPrefix, ModuleInfo, Resolver, ResolverMode};
 use vinyl_resolver::structs::DiskFileSystem;
+use vinyl_resolver::ResolveDiagnostic;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
 use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
@@ -195,6 +196,7 @@ pub(crate) fn analyze_workspace(
         Ok((entry_source, entry_items)) => {
             collect_publics(&entry_items, entry_path, &mut publics);
             let mut all_items = entry_items.clone();
+            let mut bare_imported_symbols = HashSet::new();
             collect_modules(
                 vfs,
                 &mut resolver,
@@ -204,6 +206,7 @@ pub(crate) fn analyze_workspace(
                 &mut all_items,
                 &mut entry_module_table,
                 &mut visited,
+                &mut bare_imported_symbols,
                 &mut diagnostics,
             );
             add_resolved_modules(vfs, &resolver, entry_path, &mut entry_module_table);
@@ -253,6 +256,7 @@ pub(crate) fn analyze_workspace(
         let mut all_items = items.clone();
         let mut module_table = ModuleTable::new();
         let mut file_visited = HashSet::new();
+        let mut file_bare_imported_symbols = HashSet::new();
         collect_modules(
             vfs,
             &mut resolver,
@@ -262,6 +266,7 @@ pub(crate) fn analyze_workspace(
             &mut all_items,
             &mut module_table,
             &mut file_visited,
+            &mut file_bare_imported_symbols,
             &mut diagnostics,
         );
         add_resolved_modules(vfs, &resolver, file, &mut module_table);
@@ -377,31 +382,41 @@ pub(crate) fn load_imported_modules(vfs: &mut Vfs, root: &Path, opened_path: &Pa
         Item::Import(def) => Some(def),
         _ => None,
     }) {
-        let resolved = if import.prefix.is_empty() {
-            resolver.resolve_module_path(&import.path)
-        } else {
-            let package_count = import
-                .prefix
-                .iter()
-                .filter(|segment| segment.as_str() == "package")
-                .count();
-            let parent_count = import
-                .prefix
-                .iter()
-                .filter(|segment| segment.as_str() == "parent")
-                .count();
-            if import.prefix.len() != package_count + parent_count {
-                continue;
+        if !import.symbols.is_empty() {
+            for symbol in &import.symbols {
+                let mut path = import.path.clone();
+                path.push(symbol.clone());
+                let synthetic = ImportDef {
+                    span: import.span,
+                    prefix: import.prefix.clone(),
+                    path,
+                    symbols: Vec::new(),
+                    wildcard: false,
+                };
+                load_imported_module(vfs, &mut resolver, opened_path, &synthetic);
             }
-            let import_prefix = if package_count > 0 {
-                ImportPrefix::Package
-            } else if parent_count == 1 {
-                ImportPrefix::Self_
-            } else {
-                ImportPrefix::Parent(parent_count - 1)
-            };
-            let path_strs: Vec<&str> = import.path.iter().map(|segment| segment.as_str()).collect();
-            resolver.resolve(&import_prefix, &path_strs, opened_path)
+            continue;
+        }
+        load_imported_module(vfs, &mut resolver, opened_path, import);
+    }
+}
+
+fn load_imported_module(vfs: &mut Vfs, resolver: &mut Resolver, opened_path: &Path, import: &ImportDef) {
+    let Ok(import_prefix) = import_prefix(import) else {
+            return;
+        };
+        let resolved = if import.wildcard || import.path.len() <= 1 {
+            resolve_module_with_prefix(resolver, &import_prefix, &import.path, opened_path)
+        } else {
+            resolve_module_with_prefix(resolver, &import_prefix, &import.path, opened_path)
+                .or_else(|_| {
+                    resolve_module_with_prefix(
+                        resolver,
+                        &import_prefix,
+                        &import.path[..import.path.len() - 1],
+                        opened_path,
+                    )
+                })
         };
         if let Ok(info) = resolved
             && !vfs.files().contains_key(&info.file_path)
@@ -409,7 +424,77 @@ pub(crate) fn load_imported_modules(vfs: &mut Vfs, root: &Path, opened_path: &Pa
         {
             vfs.set(info.file_path, source);
         }
+}
+
+fn import_prefix(import: &ImportDef) -> std::result::Result<Option<ImportPrefix>, ()> {
+    if import.prefix.is_empty() {
+        return Ok(None);
     }
+    let package_count = import
+        .prefix
+        .iter()
+        .filter(|segment| segment.as_str() == "package")
+        .count();
+    let parent_count = import
+        .prefix
+        .iter()
+        .filter(|segment| segment.as_str() == "parent")
+        .count();
+    if import.prefix.len() != package_count + parent_count {
+        return Err(());
+    }
+    let prefix = if package_count > 0 {
+        ImportPrefix::Package
+    } else if parent_count == 1 {
+        ImportPrefix::Self_
+    } else {
+        ImportPrefix::Parent(parent_count - 1)
+    };
+    Ok(Some(prefix))
+}
+
+fn resolve_module_with_prefix(
+    resolver: &mut Resolver,
+    prefix: &Option<ImportPrefix>,
+    path: &[String],
+    from: &Path,
+) -> Result<ModuleInfo, ResolveDiagnostic> {
+    match prefix {
+        None => resolver.resolve_module_path(path),
+        Some(prefix) => {
+            let path_strs: Vec<&str> = path.iter().map(|segment| segment.as_str()).collect();
+            resolver.resolve(prefix, &path_strs, from)
+        }
+    }
+}
+
+fn item_name(item: &Item) -> &str {
+    match item {
+        Item::Function(function) => &function.name,
+        Item::Struct(structure) => &structure.name,
+        Item::TupleStruct(tuple) => &tuple.name,
+        Item::Enum(enumeration) => &enumeration.name,
+        Item::TypeAlias(alias) => &alias.name,
+        Item::Import(_) => unreachable!("imports cannot be injected into all_items"),
+    }
+}
+
+fn push_import_diagnostic(
+    diagnostics: &mut HashMap<PathBuf, Vec<SourceDiagnostic>>,
+    resolver: &Resolver,
+    workspace_root: &Path,
+    from: &Path,
+    import: &ImportDef,
+    message: String,
+) {
+    diagnostics
+        .entry(non_canonical_key(from, resolver, workspace_root))
+        .or_default()
+        .push(SourceDiagnostic {
+            message,
+            offset: import.span.offset(),
+            length: import.span.len(),
+        });
 }
 
 /// Recursively threads per-module collection state; args are split across
@@ -425,73 +510,89 @@ fn collect_modules(
     all_items: &mut Vec<Item>,
     module_table: &mut ModuleTable,
     visited: &mut HashSet<PathBuf>,
+    bare_imported_symbols: &mut HashSet<String>,
     diagnostics: &mut HashMap<PathBuf, Vec<SourceDiagnostic>>,
 ) {
-    for item in items.iter().filter_map(|item| match item {
-        Item::Import(def) => Some(def),
-        _ => None,
-    }) {
-        let info = if item.prefix.is_empty() {
-            match resolver.resolve_module_path(&item.path) {
-                Ok(info) => info,
+    let imports: Vec<ImportDef> = items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Import(def) => Some(def),
+            _ => None,
+        })
+        .flat_map(|import| {
+            if import.symbols.is_empty() {
+                return vec![import.clone()];
+            }
+            import
+                .symbols
+                .iter()
+                .map(|symbol| {
+                    let mut path = import.path.clone();
+                    path.push(symbol.clone());
+                    ImportDef {
+                        span: import.span,
+                        prefix: import.prefix.clone(),
+                        path,
+                        symbols: Vec::new(),
+                        wildcard: false,
+                    }
+                })
+                .collect()
+        })
+        .collect();
+    for item in &imports {
+        let Ok(import_prefix) = import_prefix(item) else {
+            push_import_diagnostic(
+                diagnostics,
+                resolver,
+                workspace_root,
+                from,
+                item,
+                "`self::` prefix refers to the current file, not an external module; \
+                 use `parent::` for relative imports"
+                    .to_string(),
+            );
+            continue;
+        };
+        let (info, symbol) = if item.wildcard || item.path.len() <= 1 {
+            match resolve_module_with_prefix(resolver, &import_prefix, &item.path, from) {
+                Ok(info) => (info, None),
                 Err(err) => {
-                    diagnostics
-                        .entry(non_canonical_key(from, resolver, workspace_root))
-                        .or_default()
-                        .push(SourceDiagnostic {
-                            message: format!("{err}"),
-                            offset: item.span.offset(),
-                            length: item.span.len(),
-                        });
+                    push_import_diagnostic(
+                        diagnostics,
+                        resolver,
+                        workspace_root,
+                        from,
+                        item,
+                        format!("{err}"),
+                    );
                     continue;
                 }
             }
         } else {
-            let package_count = item
-                .prefix
-                .iter()
-                .filter(|s| s.as_str() == "package")
-                .count();
-            let parent_count = item
-                .prefix
-                .iter()
-                .filter(|s| s.as_str() == "parent")
-                .count();
-            let total = item.prefix.len();
-            if total != package_count + parent_count {
-                diagnostics
-                    .entry(non_canonical_key(from, resolver, workspace_root))
-                    .or_default()
-                    .push(SourceDiagnostic {
-                        message:
-                            "`self::` prefix refers to the current file, not an external module; \
-                                 use `parent::` for relative imports"
-                                .to_string(),
-                        offset: item.span.offset(),
-                        length: item.span.len(),
-                    });
-                continue;
-            }
-            let p = if package_count > 0 {
-                ImportPrefix::Package
-            } else if parent_count == 1 {
-                ImportPrefix::Self_
-            } else {
-                ImportPrefix::Parent(parent_count - 1)
-            };
-            let path_strs: Vec<&str> = item.path.iter().map(|s| s.as_str()).collect();
-            match resolver.resolve(&p, &path_strs, from) {
-                Ok(info) => info,
-                Err(err) => {
-                    diagnostics
-                        .entry(non_canonical_key(from, resolver, workspace_root))
-                        .or_default()
-                        .push(SourceDiagnostic {
-                            message: format!("{err}"),
-                            offset: item.span.offset(),
-                            length: item.span.len(),
-                        });
-                    continue;
+            match resolve_module_with_prefix(resolver, &import_prefix, &item.path, from) {
+                Ok(info) => (info, None),
+                Err(first_error) => {
+                    let parent_path = item.path[..item.path.len() - 1].to_vec();
+                    match resolve_module_with_prefix(
+                        resolver,
+                        &import_prefix,
+                        &parent_path,
+                        from,
+                    ) {
+                        Ok(info) => (info, Some(item.path.last().unwrap().clone())),
+                        Err(_) => {
+                            push_import_diagnostic(
+                                diagnostics,
+                                resolver,
+                                workspace_root,
+                                from,
+                                item,
+                                format!("{first_error}"),
+                            );
+                            continue;
+                        }
+                    }
                 }
             }
         };
@@ -499,7 +600,8 @@ fn collect_modules(
             .file_path
             .canonicalize()
             .unwrap_or(info.file_path.clone());
-        if !visited.insert(path.clone()) {
+        let already_visited = !visited.insert(path.clone());
+        if already_visited && symbol.is_none() {
             continue;
         }
         let (_, module_items) = match parse_file_with_diagnostics(vfs, &path) {
@@ -514,28 +616,106 @@ fn collect_modules(
         };
         let mut functions = Vec::new();
         let mut types = Vec::new();
+        let mut type_items = Vec::new();
         for module_item in &module_items {
             match module_item {
                 Item::Function(function) if function.public => {
                     functions.push(function.clone());
-                    let mut imported = function.clone();
-                    imported.name = format!("{}::{}", info.import_name, imported.name);
-                    all_items.push(Item::Function(imported));
                 }
                 Item::Struct(structure) if structure.public => {
                     types.push(structure.name.clone());
-                    all_items.push(module_item.clone());
+                    type_items.push(module_item.clone());
                 }
                 Item::TupleStruct(tuple) if tuple.public => {
                     types.push(tuple.name.clone());
-                    all_items.push(module_item.clone());
+                    type_items.push(module_item.clone());
                 }
                 Item::Enum(enumeration) if enumeration.public => {
                     types.push(enumeration.name.clone());
-                    all_items.push(module_item.clone());
+                    type_items.push(module_item.clone());
                 }
                 _ => {}
             }
+        }
+        if let Some(symbol_name) = symbol {
+            let found = functions
+                .iter()
+                .find(|function| function.name == symbol_name)
+                .cloned()
+                .map(Item::Function)
+                .or_else(|| {
+                    type_items
+                        .iter()
+                        .find(|type_item| item_name(type_item) == symbol_name)
+                        .cloned()
+                });
+            let Some(injected) = found else {
+                push_import_diagnostic(
+                    diagnostics,
+                    resolver,
+                    workspace_root,
+                    from,
+                    item,
+                    format!(
+                        "no public symbol `{symbol_name}` in module `{}`",
+                        info.import_name
+                    ),
+                );
+                continue;
+            };
+            if !bare_imported_symbols.insert(symbol_name.clone()) {
+                push_import_diagnostic(
+                    diagnostics,
+                    resolver,
+                    workspace_root,
+                    from,
+                    item,
+                    format!("import of `{symbol_name}` conflicts with an existing import"),
+                );
+                continue;
+            }
+            all_items.push(injected);
+        } else if item.wildcard {
+            for function in &functions {
+                if !bare_imported_symbols.insert(function.name.clone()) {
+                    push_import_diagnostic(
+                        diagnostics,
+                        resolver,
+                        workspace_root,
+                        from,
+                        item,
+                        format!("import of `{}` conflicts with an existing import", function.name),
+                    );
+                    continue;
+                }
+                all_items.push(Item::Function(function.clone()));
+            }
+            for type_item in &type_items {
+                if !bare_imported_symbols.insert(item_name(type_item).to_string()) {
+                    push_import_diagnostic(
+                        diagnostics,
+                        resolver,
+                        workspace_root,
+                        from,
+                        item,
+                        format!("import of `{}` conflicts with an existing import", item_name(type_item)),
+                    );
+                    continue;
+                }
+                all_items.push(type_item.clone());
+            }
+        } else {
+            for function in &functions {
+                let mut imported = function.clone();
+                imported.name = format!("{}::{}", info.import_name, imported.name);
+                all_items.push(Item::Function(imported));
+            }
+            for type_item in &type_items {
+                all_items.push(type_item.clone());
+            }
+        }
+        if already_visited {
+            continue;
         }
         module_table.insert(
             info.import_name.clone(),
@@ -556,6 +736,7 @@ fn collect_modules(
             all_items,
             module_table,
             visited,
+            bare_imported_symbols,
             diagnostics,
         );
     }

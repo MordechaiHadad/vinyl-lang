@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use vinyl_parser::ast::item::{ImportDef, Item};
-use vinyl_resolver::resolver::{ImportPrefix, Resolver};
+use vinyl_resolver::resolver::{ImportPrefix, ModuleInfo, Resolver};
 use vinyl_typecheck::TypeDiagnostic;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
@@ -37,21 +37,47 @@ fn parse_file(path: &Path) -> Result<(String, String, Vec<Item>), Vec<CompileErr
 struct CollectedImport {
     prefix: Vec<String>,
     path: Vec<String>,
+    wildcard: bool,
 }
 
 fn collect_imports(items: &[Item]) -> Vec<CollectedImport> {
     items
         .iter()
         .filter_map(|item| {
-            if let Item::Import(ImportDef { prefix, path, .. }) = item {
-                Some(CollectedImport {
+            if let Item::Import(ImportDef {
+                prefix,
+                path,
+                symbols,
+                wildcard,
+                ..
+            }) = item
+            {
+                if !symbols.is_empty() {
+                    return Some(
+                        symbols
+                            .iter()
+                            .map(|symbol| {
+                                let mut path = path.clone();
+                                path.push(symbol.clone());
+                                CollectedImport {
+                                    prefix: prefix.clone(),
+                                    path,
+                                    wildcard: false,
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                }
+                Some(vec![CollectedImport {
                     prefix: prefix.clone(),
                     path: path.clone(),
-                })
+                    wildcard: *wildcard,
+                }])
             } else {
                 None
             }
         })
+        .flatten()
         .collect()
 }
 
@@ -66,6 +92,17 @@ fn find_entry_file(source_root: &Path) -> Option<PathBuf> {
     None
 }
 
+fn item_name(item: &Item) -> &str {
+    match item {
+        Item::Function(f) => f.name.as_str(),
+        Item::Struct(s) => s.name.as_str(),
+        Item::TupleStruct(t) => t.name.as_str(),
+        Item::Enum(e) => e.name.as_str(),
+        Item::TypeAlias(a) => a.name.as_str(),
+        Item::Import(_) => unreachable!(),
+    }
+}
+
 fn resolve_imports(
     items: &[Item],
     from: &Path,
@@ -74,6 +111,7 @@ fn resolve_imports(
     visited: &mut HashSet<PathBuf>,
 ) -> Result<ModuleTable, Vec<CompileError>> {
     let mut module_table: ModuleTable = HashMap::new();
+    let mut bare_imported_symbols: HashSet<String> = HashSet::new();
 
     for import in collect_imports(items) {
         let import_display = {
@@ -86,13 +124,15 @@ fn resolve_imports(
             s
         };
 
-        let module_info = if import.prefix.is_empty() {
-            resolver.resolve_module_path(&import.path).map_err(|e| {
-                vec![CompileError::Module(ModuleError {
-                    message: format!("could not resolve import `{import_display}`: {e}"),
-                })]
-            })?
-        } else {
+        #[allow(clippy::result_large_err)]
+        let mut resolve_module = |path: &[String]| -> Result<ModuleInfo, CompileError> {
+            if import.prefix.is_empty() {
+                return resolver.resolve_module_path(path).map_err(|e| {
+                    CompileError::Module(ModuleError {
+                        message: format!("could not resolve import `{import_display}`: {e}"),
+                    })
+                });
+            }
             let self_count = import
                 .prefix
                 .iter()
@@ -112,29 +152,29 @@ fn resolve_imports(
             let total = import.prefix.len();
 
             if total_known != total {
-                return Err(vec![CompileError::Module(ModuleError {
+                return Err(CompileError::Module(ModuleError {
                     message: format!("unknown import prefix in `{import_display}`"),
-                })]);
+                }));
             }
 
             if self_count > 0 {
-                return Err(vec![CompileError::Module(ModuleError {
+                return Err(CompileError::Module(ModuleError {
                     message: "`self::` prefix refers to the current file, not an external module; \
                          use `parent::` for relative imports"
                         .to_string(),
-                })]);
+                }));
             }
             if package_count > 1 {
-                return Err(vec![CompileError::Module(ModuleError {
+                return Err(CompileError::Module(ModuleError {
                     message: format!("`package` prefix can only appear once in `{import_display}`"),
-                })]);
+                }));
             }
             if package_count > 0 && parent_count > 0 {
-                return Err(vec![CompileError::Module(ModuleError {
+                return Err(CompileError::Module(ModuleError {
                     message: format!(
                         "cannot combine `package` and `parent` prefixes in `{import_display}`"
                     ),
-                })]);
+                }));
             }
 
             if parent_count >= 4 {
@@ -152,13 +192,41 @@ fn resolve_imports(
                 ImportPrefix::Parent(parent_count - 1)
             };
 
-            let path_strs: Vec<&str> = import.path.iter().map(|s| s.as_str()).collect();
+            let path_strs: Vec<&str> = path.iter().map(|s| s.as_str()).collect();
             resolver.resolve(&prefix, &path_strs, from).map_err(|e| {
-                vec![CompileError::Module(ModuleError {
+                CompileError::Module(ModuleError {
                     message: format!("could not resolve import `{import_display}`: {e}"),
-                })]
-            })?
+                })
+            })
         };
+
+        let module_info;
+        let symbol: Option<String>;
+
+        if import.wildcard {
+            module_info = resolve_module(&import.path).map_err(|e| vec![e])?;
+            symbol = None;
+        } else if import.path.len() > 1 {
+            match resolve_module(&import.path) {
+                Ok(info) => {
+                    module_info = info;
+                    symbol = None;
+                }
+                Err(first_error) => {
+                    let parent = &import.path[..import.path.len() - 1];
+                    match resolve_module(parent) {
+                        Ok(info) => {
+                            module_info = info;
+                            symbol = Some(import.path[import.path.len() - 1].clone());
+                        }
+                        Err(_) => return Err(vec![first_error]),
+                    }
+                }
+            }
+        } else {
+            module_info = resolve_module(&import.path).map_err(|e| vec![e])?;
+            symbol = None;
+        }
 
         let canonical = module_info.file_path.canonicalize().map_err(|e| {
             vec![CompileError::Module(ModuleError {
@@ -169,7 +237,8 @@ fn resolve_imports(
             })]
         })?;
 
-        if !visited.insert(canonical) {
+        let already_visited = !visited.insert(canonical);
+        if already_visited && symbol.is_none() {
             continue;
         }
 
@@ -179,53 +248,119 @@ fn resolve_imports(
 
         let mut public_functions = Vec::new();
         let mut public_types = Vec::new();
+        let mut public_type_items = Vec::new();
 
         for item in &module_items {
-            let is_public = match item {
-                Item::Function(f) => {
-                    if f.public {
-                        public_functions.push(f.clone());
-                    }
-                    f.public
+            match item {
+                Item::Function(function) if function.public => {
+                    public_functions.push(function.clone());
                 }
-                Item::Struct(s) => {
-                    if s.public {
-                        public_types.push(s.name.clone());
-                    }
-                    s.public
+                Item::Struct(structure) if structure.public => {
+                    public_types.push(structure.name.clone());
+                    public_type_items.push(Item::Struct(structure.clone()));
                 }
-                Item::TupleStruct(t) => {
-                    if t.public {
-                        public_types.push(t.name.clone());
-                    }
-                    t.public
+                Item::TupleStruct(tuple) if tuple.public => {
+                    public_types.push(tuple.name.clone());
+                    public_type_items.push(Item::TupleStruct(tuple.clone()));
                 }
-                Item::Enum(e) => {
-                    if e.public {
-                        public_types.push(e.name.clone());
-                    }
-                    e.public
+                Item::Enum(enumeration) if enumeration.public => {
+                    public_types.push(enumeration.name.clone());
+                    public_type_items.push(Item::Enum(enumeration.clone()));
                 }
-                Item::TypeAlias(a) => {
-                    if a.public {
-                        public_types.push(a.name.clone());
-                    }
-                    a.public
+                Item::TypeAlias(alias) if alias.public => {
+                    public_types.push(alias.name.clone());
+                    public_type_items.push(Item::TypeAlias(alias.clone()));
                 }
-                Item::Import(_) => true,
-            };
-
-            if is_public {
-                let item = match item {
-                    Item::Function(function) => {
-                        let mut function = function.clone();
-                        function.name = format!("{}::{}", import_name, function.name);
-                        Item::Function(function)
-                    }
-                    _ => item.clone(),
-                };
-                all_items.push(item);
+                _ => {}
             }
+        }
+
+        match &symbol {
+            Some(symbol_name) => {
+                let item = public_functions
+                    .iter()
+                    .find(|function| function.name == *symbol_name)
+                    .map(|function| Item::Function(function.clone()))
+                    .or_else(|| {
+                        public_type_items
+                            .iter()
+                            .find(|item| item_name(item) == symbol_name)
+                            .cloned()
+                    });
+                match item {
+                    Some(item) => {
+                        if !bare_imported_symbols.insert(item_name(&item).to_string()) {
+                            return Err(vec![CompileError::Module(ModuleError {
+                                message: format!(
+                                    "conflicting symbol imports for `{symbol_name}` in `{import_display}`"
+                                ),
+                            })]);
+                        }
+                        all_items.push(item);
+                    }
+                    None => {
+                        return Err(vec![CompileError::Module(ModuleError {
+                            message: format!(
+                                "symbol `{symbol_name}` is private or not found in module `{import_name}`"
+                            ),
+                        })]);
+                    }
+                }
+            }
+            None if import.wildcard => {
+                for function in &public_functions {
+                    if !bare_imported_symbols.insert(function.name.clone()) {
+                        return Err(vec![CompileError::Module(ModuleError {
+                            message: format!(
+                                "conflicting wildcard import for symbol `{}` in `{import_display}`",
+                                function.name
+                            ),
+                        })]);
+                    }
+                    all_items.push(Item::Function(function.clone()));
+                }
+                for item in &public_type_items {
+                    if !bare_imported_symbols.insert(item_name(item).to_string()) {
+                        return Err(vec![CompileError::Module(ModuleError {
+                            message: format!(
+                                "conflicting wildcard import for symbol `{}` in `{import_display}`",
+                                item_name(item)
+                            ),
+                        })]);
+                    }
+                    all_items.push(item.clone());
+                }
+            }
+            None => {
+                for function in &public_functions {
+                    let mut function = function.clone();
+                    function.name = format!("{}::{}", import_name, function.name);
+                    all_items.push(Item::Function(function));
+                }
+                for item in &public_type_items {
+                    let mut item = item.clone();
+                    match &mut item {
+                        Item::Struct(s) => {
+                            s.name = format!("{}::{}", import_name, s.name);
+                        }
+                        Item::TupleStruct(t) => {
+                            t.name = format!("{}::{}", import_name, t.name);
+                        }
+                        Item::Enum(e) => {
+                            e.name = format!("{}::{}", import_name, e.name);
+                        }
+                        Item::TypeAlias(a) => {
+                            a.name = format!("{}::{}", import_name, a.name);
+                        }
+                        _ => unreachable!(),
+                    }
+                    all_items.push(item);
+                }
+            }
+        }
+
+        if already_visited {
+            continue;
         }
 
         module_table.insert(

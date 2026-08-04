@@ -56,6 +56,7 @@ pub struct StructDef {
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub span: SourceSpan,
+    pub public: bool,
     pub name: String,
     pub type_: Type,
 }
@@ -81,6 +82,7 @@ pub struct EnumDef {
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub span: SourceSpan,
+    pub public: bool,
     pub name: String,
     pub data: Option<EnumVariantData>,
 }
@@ -105,6 +107,8 @@ pub struct ImportDef {
     pub span: SourceSpan,
     pub prefix: Vec<String>,
     pub path: Vec<String>,
+    pub symbols: Vec<String>,
+    pub wildcard: bool,
 }
 
 #[derive(Debug, Clone)]

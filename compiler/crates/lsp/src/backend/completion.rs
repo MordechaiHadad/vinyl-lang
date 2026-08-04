@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
@@ -43,6 +44,34 @@ impl Backend {
             .map(|(module_name, _)| (module_name, prefix.clone()));
         let is_colon_trigger =
             params.context.and_then(|c| c.trigger_character).as_deref() == Some(":");
+
+        let source_bytes = current_source.as_bytes();
+        let dot_trigger = offset > 0
+            && source_bytes[offset - 1] == b'.'
+            && (offset < 2 || source_bytes[offset - 2] != b'.');
+        let variant_trigger = (offset >= 2
+            && source_bytes[offset - 2] == b':'
+            && source_bytes[offset - 1] == b':')
+            || (offset > 0
+                && offset < source_bytes.len()
+                && source_bytes[offset - 1] == b':'
+                && source_bytes[offset] == b':');
+        if !in_import_context {
+            if variant_trigger
+                && let Some(items) =
+                    variant_completions(&state, &path, &current_source, offset, &prefix)
+            {
+                drop(state);
+                return Ok(Some(CompletionResponse::Array(items)));
+            }
+            if dot_trigger
+                && let Some(items) =
+                    field_completions(&state, &path, &current_source, offset, &prefix)
+            {
+                drop(state);
+                return Ok(Some(CompletionResponse::Array(items)));
+            }
+        }
 
         let mut items = if !in_import_context && module_ref_simple.is_none() {
             analysis
@@ -138,6 +167,235 @@ impl Backend {
     }
 }
 
+fn clean_completion_source(source: &str, offset: usize) -> String {
+    let offset = offset.min(source.len());
+    let before = &source[..offset];
+    let statement_start = before
+        .rfind([';', '{', '}'])
+        .map_or(0, |index| index + 1);
+    format!("{}{}", &source[..statement_start], &source[offset..])
+}
+
+fn analyze_completion_source(
+    state: &State,
+    path: &Path,
+    source: &str,
+) -> Option<Arc<Analysis>> {
+    let name = path.to_string_lossy();
+    let tree = vinyl_parser::parse_with_name(&name, source).ok()?;
+    let items = vinyl_parser::lower::lower(&tree, source, &name).ok()?;
+    analyze_with_diagnostics(path, source, &items, &state.module_table).ok()
+}
+
+fn field_completions(
+    state: &State,
+    path: &Path,
+    source: &str,
+    offset: usize,
+    prefix: &str,
+) -> Option<Vec<CompletionItem>> {
+    let variable_name = source[..offset.saturating_sub(1)]
+        .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
+        .next()?;
+    let clean_source = clean_completion_source(source, offset);
+    let analysis = analyze_completion_source(state, path, &clean_source)?;
+    let definition = analysis
+        .result
+        .definitions
+        .get(variable_name)?
+        .first()?;
+    let type_name = definition.type_name.as_ref()?;
+    let type_lookup_name = type_name.rsplit("::").next().unwrap_or(type_name);
+    let line_index = LineIndex::new(source);
+    let edit_range = Range::new(
+        position_at(&line_index, offset.saturating_sub(prefix.len())),
+        position_at(&line_index, offset),
+    );
+    let structure = analysis.result.items.iter().find_map(|item| match &item.kind {
+        vinyl_typecheck::hir::HirItemKind::Struct(structure)
+            if structure.name == type_lookup_name => Some(structure.clone()),
+        _ => None,
+    });
+    if let Some(structure) = structure {
+        let completions = structure
+            .fields
+            .iter()
+            .filter(|field| {
+                field.name.starts_with(prefix)
+                    && (!is_imported_type(state, type_lookup_name) || field.public)
+            })
+            .map(|field| CompletionItem {
+                label: field.name.clone(),
+                kind: Some(CompletionItemKind::FIELD),
+                detail: Some(field.type_.to_string()),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                    edit_range,
+                    field.name.clone(),
+                ))),
+                ..CompletionItem::default()
+            })
+            .collect();
+        return Some(completions);
+    }
+    if let Some(tuple) = analysis.result.items.iter().find_map(|item| match &item.kind {
+        vinyl_typecheck::hir::HirItemKind::TupleStruct(tuple)
+            if tuple.name == type_lookup_name =>
+        {
+            Some(tuple.clone())
+        }
+        _ => None,
+    }) {
+        return Some(tuple_member_completions(&tuple.types, prefix, edit_range));
+    }
+    let tuple_types = type_name.strip_prefix('(')?.strip_suffix(')')?;
+    let tuple_len = if tuple_types.trim().is_empty() {
+        0
+    } else {
+        tuple_types.split(',').count()
+    };
+    Some(
+        (0..tuple_len)
+            .map(|index| index.to_string())
+            .filter(|label| label.starts_with(prefix))
+            .map(|label| CompletionItem {
+                label: label.clone(),
+                kind: Some(CompletionItemKind::FIELD),
+                detail: Some("tuple member".to_string()),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                    edit_range,
+                    label,
+                ))),
+                ..CompletionItem::default()
+            })
+            .collect(),
+    )
+}
+
+fn tuple_member_completions(
+    types: &[vinyl_typecheck::hir::Type],
+    prefix: &str,
+    edit_range: Range,
+) -> Vec<CompletionItem> {
+    types
+        .iter()
+        .enumerate()
+        .map(|(index, _type_)| index.to_string())
+        .filter(|label| label.starts_with(prefix))
+        .map(|label| CompletionItem {
+            detail: Some("tuple member".to_string()),
+            kind: Some(CompletionItemKind::FIELD),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                edit_range,
+                label.clone(),
+            ))),
+            label,
+            ..CompletionItem::default()
+        })
+        .collect()
+}
+
+fn variant_completions(
+    state: &State,
+    path: &Path,
+    source: &str,
+    offset: usize,
+    prefix: &str,
+) -> Option<Vec<CompletionItem>> {
+    let between_colons = offset > 0
+        && offset < source.len()
+        && source.as_bytes()[offset - 1] == b':'
+        && source.as_bytes()[offset] == b':';
+    let enum_end = if between_colons {
+        offset - 1
+    } else {
+        offset.saturating_sub(2)
+    };
+    let enum_path = source[..enum_end]
+        .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
+        .next()?;
+    let qualified_name = source[..enum_end]
+        .rsplit(|character: char| character.is_whitespace() || "=({[,;".contains(character))
+        .next()
+        .unwrap_or(enum_path)
+        .trim();
+    let enum_name = qualified_name.rsplit("::").next().unwrap_or(enum_path);
+    let clean_end = if between_colons { offset + 1 } else { offset };
+    let clean_source = clean_completion_source(source, clean_end);
+    let variants = if qualified_name.contains("::") {
+        let (module_name, enum_name) = qualified_name.rsplit_once("::")?;
+        let resolver = state.resolver.as_ref()?;
+        let info = resolver
+            .all_modules()
+            .values()
+            .find(|info| info.import_name == module_name)?;
+        let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
+        let cache_key = crate::backend::workspace::non_canonical_key(
+            &info.file_path,
+            resolver,
+            workspace_root,
+        );
+        state.cache.get(&cache_key)?.result.items.iter().find_map(|item| match &item.kind {
+            vinyl_typecheck::hir::HirItemKind::Enum(enumeration)
+                if enumeration.name == enum_name => {
+                    Some(
+                        enumeration
+                            .variants
+                            .iter()
+                            .filter(|variant| variant.public)
+                            .map(|variant| variant.name.clone())
+                            .collect::<Vec<_>>(),
+                    )
+                }
+            _ => None,
+        })?
+    } else {
+        let analysis = analyze_completion_source(state, path, &clean_source)?;
+        analysis.result.items.iter().find_map(|item| match &item.kind {
+            vinyl_typecheck::hir::HirItemKind::Enum(enumeration)
+                if enumeration.name == enum_name => {
+                    Some(
+                        enumeration
+                            .variants
+                            .iter()
+                            .filter(|variant| {
+                                !is_imported_type(state, enum_name) || variant.public
+                            })
+                            .map(|variant| variant.name.clone())
+                            .collect::<Vec<_>>(),
+                    )
+                }
+            _ => None,
+        })?
+    };
+    let line_index = LineIndex::new(source);
+    let edit_range = Range::new(
+        position_at(&line_index, offset.saturating_sub(prefix.len())),
+        position_at(&line_index, offset),
+    );
+    Some(
+        variants
+            .into_iter()
+            .filter(|variant| variant.starts_with(prefix))
+            .map(|variant| CompletionItem {
+                label: variant.clone(),
+                kind: Some(CompletionItemKind::ENUM_MEMBER),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                    edit_range,
+                    variant.clone(),
+                ))),
+                ..CompletionItem::default()
+            })
+            .collect(),
+    )
+}
+
+fn is_imported_type(state: &State, type_name: &str) -> bool {
+    state
+        .module_table
+        .values()
+        .any(|exports| exports.imported && exports.types.iter().any(|name| name == type_name))
+}
+
 fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     for (name, definitions) in &analysis.result.definitions {
@@ -217,6 +475,7 @@ fn keyword_completions(prefix: &str) -> Vec<CompletionItem> {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::keyword_completions;
 

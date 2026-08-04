@@ -80,8 +80,14 @@ impl<'a> Lowerer<'a> {
                 })
             }
             "scoped_type_expression" => {
+                let module = child_by_field_opt(node, "module")
+                    .map(|module_node| node_text(&module_node, self.source));
                 let type_name = node_text(&self.child_by_field(node, "type")?, self.source);
                 let variant_name = node_text(&self.child_by_field(node, "variant")?, self.source);
+                let full_type_name = match module {
+                    Some(module) => format!("{module}::{type_name}"),
+                    None => type_name,
+                };
                 let args = if let Some(arg_node) = child_by_field_opt(node, "arguments") {
                     let arg_children: Vec<Expression> = children(&arg_node)
                         .iter()
@@ -93,7 +99,7 @@ impl<'a> Lowerer<'a> {
                 };
                 Ok(Expression::EnumVariant {
                     span: span(),
-                    type_name,
+                    type_name: full_type_name,
                     variant_name,
                     args,
                 })

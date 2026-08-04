@@ -82,6 +82,53 @@ fn import_self_nested_path() {
 }
 
 #[test]
+fn import_symbol_path() {
+    let items = common::do_lower("import math::double;");
+    let import = match &items[0] {
+        Item::Import(ImportDef {
+            prefix, path, wildcard, ..
+        }) => (prefix, path, wildcard),
+        _ => panic!("expected import"),
+    };
+    assert!(import.0.is_empty(), "no prefix expected");
+    assert_eq!(import.1, &["math", "double"]);
+    assert!(!import.2, "symbol import is not a wildcard");
+}
+
+#[test]
+fn import_wildcard_path() {
+    let items = common::do_lower("import math::*;");
+    let import = match &items[0] {
+        Item::Import(ImportDef {
+            prefix, path, wildcard, ..
+        }) => (prefix, path, wildcard),
+        _ => panic!("expected import"),
+    };
+    assert!(import.0.is_empty(), "no prefix expected");
+    assert_eq!(import.1, &["math"]);
+    assert!(*import.2, "wildcard import should be marked");
+}
+
+#[test]
+fn import_group_path() {
+    let items = common::do_lower("import math::{double, Point};");
+    let import = match &items[0] {
+        Item::Import(ImportDef {
+            prefix,
+            path,
+            symbols,
+            wildcard,
+            ..
+        }) => (prefix, path, symbols, wildcard),
+        _ => panic!("expected import"),
+    };
+    assert!(import.0.is_empty());
+    assert_eq!(import.1, &["math"]);
+    assert_eq!(import.2, &["double", "Point"]);
+    assert!(!import.3);
+}
+
+#[test]
 fn import_bare_keyword_errors() {
     let result = vinyl_parser::parse_and_lower("import parent;");
     assert!(result.is_err(), "bare `parent` keyword should error");

@@ -39,3 +39,14 @@ fn enum_definition_lower() {
         other => panic!("expected struct variant, got {other:?}"),
     }
 }
+
+#[test]
+fn enum_variant_public_lower() {
+    let items = common::do_lower("enum Shape {\n    public Circle,\n    Square(float64),\n}");
+    let e = match &items[0] {
+        Item::Enum(e) => e,
+        other => panic!("expected enum, got {other:?}"),
+    };
+    assert!(e.variants[0].public, "public variant should be marked public");
+    assert!(!e.variants[1].public, "bare variant should stay private");
+}

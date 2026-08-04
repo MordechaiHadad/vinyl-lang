@@ -1846,12 +1846,11 @@ fn incremental_changes_update_the_full_document() {
     }));
     let diagnostics = lsp.diagnostics_for(&math_uri);
     assert!(
-        diagnostics["params"]["diagnostics"]
+        !diagnostics["params"]["diagnostics"]
             .as_array()
             .unwrap()
-            .iter()
-            .any(|diagnostic| diagnostic["message"] == "unexpected token `6`"),
-        "intermediate edit should report its temporary parse error: {diagnostics}"
+            .is_empty(),
+        "intermediate edit should report a temporary parse error: {diagnostics}"
     );
 
     lsp.send(json!({
@@ -2613,4 +2612,208 @@ fn hover_and_signature_help_preserve_written_primitive_names() {
         label, "fn alias(n: int): int",
         "signature help should preserve the written primitive name, got: {label}"
     );
+}
+
+#[test]
+fn completion_field_access_after_dot() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "struct Point { public x: int32, public y: int32 }\nfn main(): int32 {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "struct Point { public x: int32, public y: int32 }\nfn main(): int32 {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 3, "character": 6 },
+            "context": { "triggerKind": 2, "triggerCharacter": "." }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+
+    for expected in ["x", "y"] {
+        assert!(
+            items.iter().any(|i| i["label"] == expected),
+            "field `{expected}` should appear in completions after `.`, got: {items:#?}"
+        );
+    }
+
+    let _ = lsp;
+}
+
+#[test]
+fn completion_enum_variant_after_colon() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "enum Shape { public Circle, public Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "enum Shape { public Circle, public Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 18 },
+            "context": { "triggerKind": 2, "triggerCharacter": ":" }
+        }
+    }));
+    let resp = lsp.response(2);
+    let items = resp["result"].as_array().unwrap();
+
+    for expected in ["Circle", "Square"] {
+        assert!(
+            items.iter().any(|i| i["label"] == expected),
+            "variant `{expected}` should appear in completions after `Shape::`, got: {items:#?}"
+        );
+    }
+
+    let _ = lsp;
+}
+
+#[test]
+fn completion_tuple_members_after_dot() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "fn main(): int32 {\n    let pair = (1, 2);\n    pair.\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": "fn main(): int32 {\n    let pair = (1, 2);\n    pair.\n}\n" } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 2, "character": 9 },
+            "context": { "triggerKind": 2, "triggerCharacter": "." } }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    for expected in ["0", "1"] {
+        assert!(items.iter().any(|item| item["label"] == expected), "missing tuple member {expected}: {items:#?}");
+    }
+}
+
+#[test]
+fn symbol_import_produces_no_diagnostic() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public fn answer(): int { 42 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import math::answer;\nfn main(): int {\n    answer()\n}\n" }
+        }
+    }));
+    let diagnostics = lsp.diagnostics_for(&main_uri);
+    assert!(
+        diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "symbol import `import math::answer;` should not produce diagnostics, got: {}",
+        diagnostics
+    );
+
+    let _ = lsp;
 }

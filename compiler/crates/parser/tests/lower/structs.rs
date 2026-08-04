@@ -31,3 +31,14 @@ fn struct_empty_lower() {
     assert_eq!(s.name, "Empty");
     assert!(s.fields.is_empty());
 }
+
+#[test]
+fn struct_field_public_lower() {
+    let items = common::do_lower("struct Point {\n    public x: int32,\n    y: float64,\n}");
+    let s = match &items[0] {
+        Item::Struct(s) => s,
+        other => panic!("expected struct, got {other:?}"),
+    };
+    assert!(s.fields[0].public, "public field should be marked public");
+    assert!(!s.fields[1].public, "bare field should stay private");
+}

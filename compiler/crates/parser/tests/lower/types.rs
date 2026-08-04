@@ -78,3 +78,16 @@ fn int_float_type_aliases() {
     assert_eq!(func.params[0].type_, Type::Primitive(Primitive::Int64));
     assert_eq!(func.params[1].type_, Type::Primitive(Primitive::Float64));
 }
+
+#[test]
+fn scoped_type() {
+    let items = common::do_lower("fn f(s: math::Shape) {}");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    assert_eq!(
+        func.params[0].type_,
+        Type::Named("math::Shape".to_string())
+    );
+}

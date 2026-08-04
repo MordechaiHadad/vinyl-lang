@@ -26,6 +26,7 @@ export default grammar({
     [$._statement, $._expression],
     [$.unary_expression, $.index_expression],
     [$.scoped_type_expression],
+    [$.import_name],
     [$._expression, $.struct_literal_expression],
   ],
 
@@ -68,6 +69,7 @@ export default grammar({
     ),
 
     field_definition: $ => seq(
+      optional("public"),
       field("name", $.value_identifier),
       ":",
       $._type,
@@ -91,6 +93,7 @@ export default grammar({
     ),
 
     enum_variant: $ => seq(
+      optional("public"),
       field("name", $.type_identifier),
       optional(choice(
         seq("(", commaSep($._type), ")"),
@@ -114,6 +117,13 @@ export default grammar({
       $.array_type,
       $.reference_type,
       $.tuple_type,
+      $.scoped_type,
+    ),
+
+    scoped_type: $ => seq(
+      field("module", choice($.value_identifier, $.type_identifier)),
+      "::",
+      field("name", $.type_identifier),
     ),
 
     tuple_type: $ => seq(
@@ -266,11 +276,23 @@ export default grammar({
 
     import_prefix: $ => choice("self", "package", "parent"),
 
-    import_name: $ => sep1(choice($.value_identifier, $.type_identifier), "::"),
+    import_name: $ => seq(
+      choice($.value_identifier, $.type_identifier),
+      repeat(seq("::", choice($.value_identifier, $.type_identifier, $.import_wildcard))),
+    ),
+
+    import_wildcard: $ => "*",
 
     import_path: $ => seq(
       repeat(seq(field("prefix", $.import_prefix), "::")),
       field("path", $.import_name),
+      optional(seq("::", field("symbols", $.import_group))),
+    ),
+
+    import_group: $ => seq(
+      "{",
+      commaSep1(choice($.value_identifier, $.type_identifier)),
+      "}",
     ),
 
     attribute: $ => seq(
@@ -383,6 +405,7 @@ export default grammar({
     )),
 
     scoped_type_expression: $ => prec(PREC.FIELD, seq(
+      optional(seq(field("module", $.value_identifier), "::")),
       field("type", choice($.value_identifier, $.type_identifier)),
       "::",
       field("variant", $.type_identifier),
@@ -480,8 +503,4 @@ function commaSep(rule) {
 
 function commaSep1(rule) {
   return seq(rule, repeat(seq(",", rule)));
-}
-
-function sep1(rule, separator) {
-  return seq(rule, repeat(seq(separator, rule)));
 }

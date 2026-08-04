@@ -562,33 +562,48 @@ impl InferState {
                         },
                     )));
                 }
-                let variant_info = resolve_named_type(type_name, &self.types).and_then(|kind| {
-                    if let HirItemKind::Enum(e) = kind {
-                        e.variants
-                            .iter()
-                            .position(|v| v.name == *variant_name)
-                            .map(|idx| {
-                                let variant = &e.variants[idx];
-                                let expected: Vec<Type> = match &variant.data {
-                                    Some(HirEnumVariantData::Tuple(types)) => types.clone(),
-                                    Some(HirEnumVariantData::Struct(fields)) => {
-                                        fields.iter().map(|f| f.type_.clone()).collect()
+                let canonical_type_name = self.canonicalize_scoped_name(type_name, *span)?;
+                let variant_info = resolve_named_type(&canonical_type_name, &self.types).and_then(
+                    |kind| {
+                        if let HirItemKind::Enum(e) = kind {
+                            e.variants
+                                .iter()
+                                .position(|v| v.name == *variant_name)
+                                .map(|idx| {
+                                    let variant = &e.variants[idx];
+                                    if self.type_origins.contains_key(&canonical_type_name)
+                                        && !variant.public
+                                    {
+                                        self.errors.push(self.source.error(
+                                            *span,
+                                            TypeDiagnosticKind::VariantPrivate {
+                                                type_name: canonical_type_name.clone(),
+                                                variant_name: variant_name.clone(),
+                                            },
+                                        ));
                                     }
-                                    None => Vec::new(),
-                                };
-                                (idx, expected)
-                            })
-                    } else {
-                        None
-                    }
-                });
+                                    let expected: Vec<Type> = match &variant.data {
+                                        Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+                                        Some(HirEnumVariantData::Struct(fields)) => fields
+                                            .iter()
+                                            .map(|f| f.type_.clone())
+                                            .collect(),
+                                        None => Vec::new(),
+                                    };
+                                    (idx, expected)
+                                })
+                        } else {
+                            None
+                        }
+                    },
+                );
                 let (variant_index, expected_types) = match variant_info {
                     Some(info) => info,
                     None => {
                         return Err(Box::new(self.source.error(
                             *span,
                             TypeDiagnosticKind::VariantNotFound {
-                                type_name: type_name.clone(),
+                                type_name: canonical_type_name.clone(),
                                 variant_name: variant_name.clone(),
                             },
                         )));
@@ -622,11 +637,11 @@ impl InferState {
                 Ok(HirExpression {
                     kind: HirExpressionKind::EnumVariant {
                         span: *span,
-                        type_name: type_name.clone(),
+                        type_name: canonical_type_name.clone(),
                         variant_index,
                         payload,
                     },
-                    type_: Type::Named(type_name.clone()),
+                    type_: Type::Named(canonical_type_name.clone()),
                 })
             }
             Expression::Struct {
@@ -640,6 +655,15 @@ impl InferState {
                     if let Some(HirItemKind::Struct(s)) = resolve_named_type(type_name, &self.types)
                     {
                         if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
+                            if self.type_origins.contains_key(type_name) && !field.public {
+                                self.errors.push(self.source.error(
+                                    expr.span(),
+                                    TypeDiagnosticKind::PrivateField {
+                                        type_name: type_name.clone(),
+                                        field_name: name.clone(),
+                                    },
+                                ));
+                            }
                             let field_type = self.subs.apply(&hir.type_);
                             if let Err(e) = self.subs.unify(
                                 &self.source,
@@ -713,6 +737,15 @@ impl InferState {
             Type::Named(name) => {
                 if let Some(HirItemKind::Struct(s)) = resolve_named_type(name, &self.types) {
                     if let Some(field) = s.fields.iter().find(|f| f.name == field_name) {
+                        if self.type_origins.contains_key(name) && !field.public {
+                            self.errors.push(self.source.error(
+                                span,
+                                TypeDiagnosticKind::PrivateField {
+                                    type_name: name.clone(),
+                                    field_name: field_name.to_string(),
+                                },
+                            ));
+                        }
                         return field.type_.clone();
                     }
                     self.errors.push(self.source.error(

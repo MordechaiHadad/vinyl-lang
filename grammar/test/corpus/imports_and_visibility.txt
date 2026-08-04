@@ -1,0 +1,180 @@
+==================
+Public struct field
+==================
+
+struct Point {
+    public x: int32,
+    y: int32,
+}
+
+---
+
+(source_file
+  (struct_definition
+    name: (type_identifier)
+    (field_definition
+      name: (value_identifier)
+      (simple_type
+        (primitive_type)))
+    (field_definition
+      name: (value_identifier)
+      (simple_type
+        (primitive_type)))))
+
+==================
+Public enum variant
+==================
+
+enum Shape {
+    public Circle,
+    Square(float64),
+}
+
+---
+
+(source_file
+  (enum_definition
+    name: (type_identifier)
+    (enum_variant
+      name: (type_identifier))
+    (enum_variant
+      name: (type_identifier)
+      (simple_type
+        (primitive_type)))))
+
+==================
+Scoped type in type position
+==================
+
+fn area(s: math::Shape): float64 { 0.0 }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters
+      (parameter
+        name: (value_identifier)
+        type: (type_annotation
+          (scoped_type
+            module: (value_identifier)
+            name: (type_identifier)))))
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (float_literal))))
+
+==================
+Scoped type generic argument
+==================
+
+fn f(s: Foo<math::Shape>) {}
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters
+      (parameter
+        name: (value_identifier)
+        type: (type_annotation
+          (generic_type
+            (type_identifier)
+            (scoped_type
+              module: (value_identifier)
+              name: (type_identifier))))))
+    body: (block)))
+
+==================
+Module qualified enum variant
+==================
+
+fn make(): unit { math::Shape::Circle }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (scoped_type_expression
+        module: (value_identifier)
+        type: (type_identifier)
+        variant: (type_identifier)))))
+
+==================
+Module qualified enum variant with arguments
+==================
+
+fn make(): unit { math::Shape::Square(2.0) }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (scoped_type_expression
+        module: (value_identifier)
+        type: (type_identifier)
+        variant: (type_identifier)
+        arguments: (arguments
+          (float_literal))))))
+
+==================
+Symbol import
+==================
+
+import math::double;
+
+---
+
+(source_file
+  (import_statement
+    path: (import_path
+      path: (import_name
+        (value_identifier)
+        (value_identifier)))))
+
+==================
+Wildcard import
+==================
+
+import math::*;
+
+---
+
+(source_file
+  (import_statement
+    path: (import_path
+      path: (import_name
+        (value_identifier)
+        (import_wildcard)))))
+
+==================
+Grouped import
+==================
+
+import math::{answer, Point};
+
+---
+
+(source_file
+  (import_statement
+    path: (import_path
+      path: (import_name
+        (value_identifier))
+      symbols: (import_group
+        (value_identifier)
+        (type_identifier)))))
