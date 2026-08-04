@@ -1,0 +1,29 @@
+==================
+Empty source
+==================
+
+
+---
+
+(source_file)
+
+==================
+Missing closing parenthesis
+==================
+
+fn main() {
+    println("hello world"  // missing closing paren
+}
+
+---
+
+(source_file
+  (ERROR
+    (value_identifier)
+    (parameters)
+    (value_identifier)
+    (binary_expression
+      (string_literal)
+      (value_identifier))
+    (UNEXPECTED 'l')))
+

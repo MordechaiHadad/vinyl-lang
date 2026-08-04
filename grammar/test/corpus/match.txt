@@ -1,0 +1,225 @@
+==================
+Match expression
+==================
+
+fn f(x: int32): int32 {
+    match x {
+        1 => 10,
+        2 => 20,
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          (pattern
+            (literal_pattern
+              (integer_literal)))
+          (integer_literal))
+        (match_arm
+          (pattern
+            (literal_pattern
+              (integer_literal)))
+          (integer_literal))
+        (match_arm
+          (pattern
+            (wildcard_pattern))
+          (integer_literal))))))
+
+==================
+Match with block arms
+==================
+
+fn f(x: int32): int32 {
+    match x {
+        1 => { let y = 10; y },
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          (pattern
+            (literal_pattern
+              (integer_literal)))
+          (block
+            (let_declaration
+              (value_identifier)
+              (integer_literal))
+            (value_identifier)))
+        (match_arm
+          (pattern
+            (wildcard_pattern))
+          (integer_literal))))))
+
+==================
+Match struct pattern
+==================
+
+fn f(p: Point): int32 {
+    match p {
+        Point { x, y } => x + y,
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (type_identifier)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          (pattern
+            (struct_pattern
+              (type_identifier)
+              (field_pattern
+                (value_identifier))
+              (field_pattern
+                (value_identifier))))
+          (binary_expression
+            (value_identifier)
+            (value_identifier)))
+        (match_arm
+          (pattern
+            (wildcard_pattern))
+          (integer_literal))))))
+
+==================
+Match tuple pattern
+==================
+
+fn f(): int32 {
+    let pair = (1, 2);
+    match pair {
+        (a, b) => a + b,
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (let_declaration
+        (value_identifier)
+        (tuple_expression
+          (integer_literal)
+          (integer_literal)))
+      (match_expression
+        (value_identifier)
+        (match_arm
+          (pattern
+            (tuple_pattern
+              (pattern
+                (identifier_pattern
+                  (value_identifier)))
+              (pattern
+                (identifier_pattern
+                  (value_identifier)))))
+          (binary_expression
+            (value_identifier)
+            (value_identifier)))
+        (match_arm
+          (pattern
+            (wildcard_pattern))
+          (integer_literal))))))
+
+==================
+Match with multiple arms
+==================
+
+fn f(x: int32): int32 {
+    match x {
+        1 => 10,
+        2 => 20,
+        3 => 30,
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          (pattern
+            (literal_pattern
+              (integer_literal)))
+          (integer_literal))
+        (match_arm
+          (pattern
+            (literal_pattern
+              (integer_literal)))
+          (integer_literal))
+        (match_arm
+          (pattern
+            (literal_pattern
+              (integer_literal)))
+          (integer_literal))
+        (match_arm
+          (pattern
+            (wildcard_pattern))
+          (integer_literal))))))

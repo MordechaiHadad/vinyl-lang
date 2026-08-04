@@ -1,0 +1,88 @@
+==================
+Hello world
+==================
+
+fn main() {
+    println("hello world");
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (expression_statement
+        (call_expression
+          (value_identifier)
+          (arguments
+            (string_literal)))))))
+
+==================
+All literals
+==================
+
+fn main() {
+    let a = 42;
+    let b = 0xFF;
+    let c = 0o77;
+    let d = 0b1010;
+    let e = -1;
+    let f = 3.14;
+    let g = 0.5;
+    let h = "hello";
+    let i = r"raw";
+    let j = f"interpolated";
+    let k = 'x';
+    let l = true;
+    let m = false;
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (unary_expression
+          (integer_literal)))
+      (let_declaration
+        (value_identifier)
+        (float_literal))
+      (let_declaration
+        (value_identifier)
+        (float_literal))
+      (let_declaration
+        (value_identifier)
+        (string_literal))
+      (let_declaration
+        (value_identifier)
+        (raw_string_literal))
+      (let_declaration
+        (value_identifier)
+        (string_literal))
+      (let_declaration
+        (value_identifier)
+        (char_literal))
+      (let_declaration
+        (value_identifier)
+        (bool_literal))
+      (let_declaration
+        (value_identifier)
+        (bool_literal)))))

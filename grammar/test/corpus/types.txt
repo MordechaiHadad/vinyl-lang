@@ -1,0 +1,72 @@
+==================
+Type annotations
+==================
+
+fn f(x: int32, y: float64, z: string, w: bool, c: char): uint8 {
+    let a: int64 = 1;
+    let b: [int32; 5] = [1, 2, 3, 4, 5];
+    let d: Option<int32> = 0;
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (let_declaration
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (type_annotation
+          (array_type
+            (simple_type
+              (primitive_type))
+            (integer_literal)))
+        (array_expression
+          (integer_literal)
+          (integer_literal)
+          (integer_literal)
+          (integer_literal)
+          (integer_literal)))
+      (let_declaration
+        (value_identifier)
+        (type_annotation
+          (generic_type
+            (type_identifier)
+            (simple_type
+              (primitive_type))))
+        (integer_literal)))))

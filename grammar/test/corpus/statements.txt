@@ -1,0 +1,267 @@
+==================
+Let declarations
+==================
+
+fn main() {
+    let x: int32 = 42;
+    let y = 10;
+    let mut z: float64 = 3.14;
+    return x + y;
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))
+        (float_literal))
+      (return_statement
+        (binary_expression
+          (value_identifier)
+          (value_identifier))))))
+
+==================
+Return with expression
+==================
+
+fn f(): int32 { return 42; }
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (return_statement
+        (integer_literal)))))
+
+==================
+Void return
+==================
+
+fn f() { return; }
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (return_statement))))
+
+==================
+Block with trailing expression
+==================
+
+fn f(): int32 { let x = 1; let y = 2; x + y }
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (binary_expression
+        (value_identifier)
+        (value_identifier)))))
+
+==================
+Missing semicolon
+==================
+
+fn main() { let x = 1 }
+
+---
+
+
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (integer_literal)
+        (MISSING ";")))))
+
+==================
+Missing closing brace
+==================
+
+fn main() { let x = 1; 
+
+---
+
+
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (MISSING "}"))))
+
+==================
+Let without equals
+==================
+
+fn main() { let x int32; }
+
+---
+
+
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (ERROR
+        (value_identifier)
+        (value_identifier)))))
+
+==================
+Import self prefix
+==================
+
+import self::foo;
+
+---
+
+(source_file
+  (import_statement
+    (import_path
+      (import_prefix)
+      (import_name
+        (value_identifier)))))
+
+==================
+Import parent prefix
+==================
+
+import parent::bar;
+
+---
+
+(source_file
+  (import_statement
+    (import_path
+      (import_prefix)
+      (import_name
+        (value_identifier)))))
+
+==================
+Import stacked parent prefix
+==================
+
+import parent::parent::baz;
+
+---
+
+(source_file
+  (import_statement
+    (import_path
+      (import_prefix)
+      (import_prefix)
+      (import_name
+        (value_identifier)))))
+
+==================
+Import package prefix
+==================
+
+import package::qux;
+
+---
+
+(source_file
+  (import_statement
+    (import_path
+      (import_prefix)
+      (import_name
+        (value_identifier)))))
+
+==================
+Import self nested path
+==================
+
+import self::module::math;
+
+---
+
+(source_file
+  (import_statement
+    (import_path
+      (import_prefix)
+      (import_name
+        (value_identifier)
+        (value_identifier)))))
+
+==================
+Bare parent import
+==================
+
+import parent;
+
+---
+
+(source_file
+  (ERROR
+    (import_prefix)))
+==================
+Bare self import
+==================
+
+import self;
+
+---
+
+(source_file
+  (ERROR
+    (import_prefix)))
+==================
+Bare package import
+==================
+
+import package;
+
+---
+
+(source_file
+  (ERROR
+    (import_prefix)))

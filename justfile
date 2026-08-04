@@ -1,13 +1,12 @@
 # https://just.systems
 
+# Installing stuff
+
 install-lsp:
     cargo install --path compiler/crates/lsp
 
 install-compiler:
     cargo install --path compiler/crates/cli
-
-test-workspace:
-    cd compiler && cargo test --workspace --all-targets
 
 build-workspace:
     cd compiler && cargo build --workspace --all-targets
@@ -23,3 +22,13 @@ audit:
 
 audit-ci:
     cd compiler && cargo audit --deny warnings
+
+# Test stuff
+
+test-all: test-workspace test-grammar
+
+test-workspace:
+    cd compiler && cargo test --workspace --all-targets
+
+test-grammar:
+    cd grammar && tree-sitter test

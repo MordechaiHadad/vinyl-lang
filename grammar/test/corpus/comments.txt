@@ -1,0 +1,23 @@
+==================
+Comments
+==================
+
+# line comment
+fn main() {
+    /* block comment */
+    let x = 1; # inline comment
+}
+
+---
+
+(source_file
+  (comment)
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (comment)
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (comment))))

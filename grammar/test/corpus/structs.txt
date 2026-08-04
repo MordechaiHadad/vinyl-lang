@@ -1,0 +1,159 @@
+==================
+Struct definition
+==================
+
+struct Point {
+    x: int32,
+    y: int32,
+}
+
+---
+
+(source_file
+  (struct_definition
+    (type_identifier)
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))))
+
+==================
+Empty struct
+==================
+
+struct Empty {}
+
+---
+
+(source_file
+  (struct_definition
+    (type_identifier)))
+
+==================
+Struct with comment
+==================
+
+struct Point {
+    # comment inside struct
+    x: int32,
+    y: int32,
+}
+
+---
+
+(source_file
+  (struct_definition
+    (type_identifier)
+    (comment)
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))))
+
+==================
+Struct and function together
+==================
+
+struct Point { x: int32, y: int32 }
+
+fn f(p: Point): int32 { p.x }
+
+---
+
+(source_file
+  (struct_definition
+    (type_identifier)
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type))))
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (type_identifier)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (field_access_expression
+        (value_identifier)
+        (value_identifier)))))
+
+==================
+Tuple and struct definitions
+==================
+
+tuple Pair(int32, int32)
+struct Point { x: int32, y: int32 }
+
+---
+
+(source_file
+  (tuple_definition
+    (type_identifier)
+    (simple_type
+      (primitive_type))
+    (simple_type
+      (primitive_type)))
+  (struct_definition
+    (type_identifier)
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))))
+
+==================
+Struct literal expression
+==================
+
+struct Point { x: int32, y: int32 }
+fn main() {
+    let p = Point { x: 1, y: 2 };
+}
+
+---
+
+(source_file
+  (struct_definition
+    (type_identifier)
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type)))
+    (field_definition
+      (value_identifier)
+      (simple_type
+        (primitive_type))))
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (struct_literal_expression
+          (type_identifier)
+          (struct_literal_fields
+            (value_identifier)
+            (integer_literal)
+            (value_identifier)
+            (integer_literal)))))))

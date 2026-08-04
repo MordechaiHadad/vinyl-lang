@@ -1,0 +1,43 @@
+==================
+Enum definition
+==================
+
+enum Option {
+    None,
+    Some(int32),
+    Error { code: int32, message: string },
+}
+
+---
+
+(source_file
+  (enum_definition
+    (type_identifier)
+    (enum_variant
+      (type_identifier))
+    (enum_variant
+      (type_identifier)
+      (simple_type
+        (primitive_type)))
+    (enum_variant
+      (type_identifier)
+      (field_definition
+        (value_identifier)
+        (simple_type
+          (primitive_type)))
+      (field_definition
+        (value_identifier)
+        (simple_type
+          (primitive_type))))))
+
+==================
+Empty enum
+==================
+
+enum Empty {}
+
+---
+
+(source_file
+  (enum_definition
+    (type_identifier)))

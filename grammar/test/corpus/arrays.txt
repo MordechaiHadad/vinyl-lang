@@ -1,0 +1,69 @@
+==================
+Array expression
+==================
+
+fn main() {
+    let a = [1, 2, 3];
+    let b = [];
+    let c = [[1, 2], [3, 4]];
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (array_expression
+          (integer_literal)
+          (integer_literal)
+          (integer_literal)))
+      (let_declaration
+        (value_identifier)
+        (array_expression))
+      (let_declaration
+        (value_identifier)
+        (array_expression
+          (array_expression
+            (integer_literal)
+            (integer_literal))
+          (array_expression
+            (integer_literal)
+            (integer_literal)))))))
+
+==================
+Index expression
+==================
+
+fn main() {
+    let a = [1, 2, 3];
+    let b = a[0];
+    let c = a[i];
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (array_expression
+          (integer_literal)
+          (integer_literal)
+          (integer_literal)))
+      (let_declaration
+        (value_identifier)
+        (index_expression
+          (value_identifier)
+          (integer_literal)))
+      (let_declaration
+        (value_identifier)
+        (index_expression
+          (value_identifier)
+          (value_identifier))))))

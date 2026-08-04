@@ -1,0 +1,20 @@
+==================
+Attribute on function
+==================
+
+@deprecated
+@inline(always)
+fn old_function() {}
+
+---
+
+(source_file
+  (attribute
+    (value_identifier))
+  (attribute
+    (value_identifier)
+    (value_identifier))
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block)))

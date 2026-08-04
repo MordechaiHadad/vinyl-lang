@@ -1,0 +1,145 @@
+==================
+If expression
+==================
+
+fn main() {
+    if true {
+        let x = 1;
+    } else {
+        let x = 2;
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (if_expression
+        (bool_literal)
+        (block
+          (let_declaration
+            (value_identifier)
+            (integer_literal)))
+        (block
+          (let_declaration
+            (value_identifier)
+            (integer_literal)))))))
+
+==================
+If else-if else
+==================
+
+fn main() {
+    if x < 0 {
+        "negative"
+    } else if x == 0 {
+        "zero"
+    } else {
+        "positive"
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (if_expression
+        (binary_expression
+          (value_identifier)
+          (integer_literal))
+        (block
+          (string_literal))
+        (binary_expression
+          (value_identifier)
+          (integer_literal))
+        (block
+          (string_literal))
+        (block
+          (string_literal))))))
+
+==================
+While loop
+==================
+
+fn main() {
+    let mut x = 0;
+    while x < 10 {
+        let y = x + 1;
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (integer_literal))
+      (while_statement
+        (binary_expression
+          (value_identifier)
+          (integer_literal))
+        (block
+          (let_declaration
+            (value_identifier)
+            (binary_expression
+              (value_identifier)
+              (integer_literal))))))))
+
+==================
+Loop statement
+==================
+
+fn main() {
+    loop {
+        if true { break; }
+        break;
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (loop_statement
+        (block
+          (if_expression
+            (bool_literal)
+            (block
+              (break_statement)))
+          (break_statement))))))
+
+==================
+Break and continue
+==================
+
+fn main() {
+    loop {
+        continue;
+        break;
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (loop_statement
+        (block
+          (continue_statement)
+          (break_statement))))))

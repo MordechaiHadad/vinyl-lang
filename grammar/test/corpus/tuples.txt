@@ -1,0 +1,75 @@
+==================
+Tuple definition
+==================
+
+tuple Pair(int32, float64)
+
+---
+
+(source_file
+  (tuple_definition
+    (type_identifier)
+    (simple_type
+      (primitive_type))
+    (simple_type
+      (primitive_type))))
+
+==================
+Empty tuple definition
+==================
+
+tuple Unit()
+
+---
+
+(source_file
+  (tuple_definition
+    (type_identifier)))
+
+==================
+Tuple type annotation
+==================
+
+fn f(x: (int32, float64)) {}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (tuple_type
+            (simple_type
+              (primitive_type))
+            (simple_type
+              (primitive_type))))))
+    (block)))
+
+==================
+Tuple expression
+==================
+
+fn f() {
+    let a = (1, 2);
+    let b = (1,);
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (tuple_expression
+          (integer_literal)
+          (integer_literal)))
+      (let_declaration
+        (value_identifier)
+        (tuple_expression
+          (integer_literal))))))

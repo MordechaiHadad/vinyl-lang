@@ -1,0 +1,67 @@
+==================
+Function without parameters
+==================
+
+fn main() {}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block)))
+
+==================
+Function with return type
+==================
+
+fn add(a: int32, b: int32): int32 { a + b }
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (binary_expression
+        (value_identifier)
+        (value_identifier)))))
+
+==================
+Multiple functions
+==================
+
+fn foo() {}
+fn bar() {}
+fn baz() {}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block))
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block))
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block)))
