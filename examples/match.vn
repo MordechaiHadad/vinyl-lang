@@ -53,7 +53,7 @@ fn classify_signed(n: int): int {
     bucket
 }
 
-fn main(): int {
+fn main() {
     let a = shape_area(Shape::Rect(3, 4));
     let b = shape_area(Shape::Circle(2));
     let c = classify(Shape::Circle(20));
@@ -67,5 +67,5 @@ fn main(): int {
     let k = classify_signed(-5);
     let l = classify_signed(7);
 
-    a + b + c + d + e + f + g + h + i + j + k + l
+    println(a + b + c + d + e + f + g + h + i + j + k + l);
 }

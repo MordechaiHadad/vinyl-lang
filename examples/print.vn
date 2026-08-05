@@ -1,0 +1,6 @@
+fn main() {
+    print(69);
+    println(true);
+    println(3.5);
+    println('A');
+}

@@ -94,14 +94,11 @@ impl InferState {
                 })
             }
             Pattern::Tuple(patterns, _) => {
-                let tuple_type = Type::Tuple(
-                    (0..patterns.len())
-                        .map(|_| self.subs.fresh_var())
-                        .collect(),
-                );
-                if let Err(e) = self
-                    .subs
-                    .unify(&self.source, &tuple_type, &expected, pattern.span())
+                let tuple_type =
+                    Type::Tuple((0..patterns.len()).map(|_| self.subs.fresh_var()).collect());
+                if let Err(e) =
+                    self.subs
+                        .unify(&self.source, &tuple_type, &expected, pattern.span())
                 {
                     self.errors.push(*e);
                 }
@@ -139,8 +136,8 @@ impl InferState {
                 ) {
                     self.errors.push(*e);
                 }
-                let variant_info = resolve_named_type(&canonical_type_name, &self.types).and_then(
-                    |kind| {
+                let variant_info =
+                    resolve_named_type(&canonical_type_name, &self.types).and_then(|kind| {
                         if let HirItemKind::Enum(e) = kind {
                             e.variants
                                 .iter()
@@ -160,10 +157,9 @@ impl InferState {
                                     }
                                     let expected_types = match &variant.data {
                                         Some(HirEnumVariantData::Tuple(types)) => types.clone(),
-                                        Some(HirEnumVariantData::Struct(fields)) => fields
-                                            .iter()
-                                            .map(|f| f.type_.clone())
-                                            .collect(),
+                                        Some(HirEnumVariantData::Struct(fields)) => {
+                                            fields.iter().map(|f| f.type_.clone()).collect()
+                                        }
                                         None => Vec::new(),
                                     };
                                     (idx, expected_types)
@@ -171,8 +167,7 @@ impl InferState {
                         } else {
                             None
                         }
-                    },
-                );
+                    });
                 let (variant_index, expected_types) = match variant_info {
                     Some(info) => info,
                     None => {
@@ -202,8 +197,7 @@ impl InferState {
                         .get(index)
                         .cloned()
                         .unwrap_or_else(|| self.subs.fresh_var());
-                    hir_patterns
-                        .push(self.infer_pattern(sub_pattern, &sub_type)?);
+                    hir_patterns.push(self.infer_pattern(sub_pattern, &sub_type)?);
                 }
                 Ok(HirPattern {
                     kind: HirPatternKind::EnumVariant {
@@ -215,11 +209,7 @@ impl InferState {
                     type_: expected,
                 })
             }
-            Pattern::Struct {
-                span,
-                name,
-                fields,
-            } => {
+            Pattern::Struct { span, name, fields } => {
                 let canonical_type_name = self.canonicalize_scoped_name(name, *span)?;
                 if let Err(e) = self.subs.unify(
                     &self.source,
@@ -233,7 +223,8 @@ impl InferState {
                 match resolve_named_type(&canonical_type_name, &self.types) {
                     Some(HirItemKind::Struct(s)) => {
                         for field in &s.fields {
-                            if self.type_origins.contains_key(&canonical_type_name) && !field.public {
+                            if self.type_origins.contains_key(&canonical_type_name) && !field.public
+                            {
                                 self.errors.push(self.source.error(
                                     pattern.span(),
                                     TypeDiagnosticKind::PrivateField {

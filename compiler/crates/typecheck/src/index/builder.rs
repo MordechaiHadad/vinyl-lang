@@ -349,7 +349,8 @@ impl IndexBuilder {
         }
     }
 
-    fn insert_expr(&mut self, expr: &HirExpression) {        let span = match &expr.kind {
+    fn insert_expr(&mut self, expr: &HirExpression) {
+        let span = match &expr.kind {
             HirExpressionKind::Int(_, span)
             | HirExpressionKind::UInt(_, span)
             | HirExpressionKind::Float(_, span)

@@ -82,7 +82,7 @@ fn enum_payloads(): int {
     same + different + different_variant
 }
 
-fn main(): int {
+fn main() {
     let a = struct_fields();
     let b = struct_field_assign();
     let c = struct_param(Point { x: 3, y: 4 });
@@ -94,5 +94,5 @@ fn main(): int {
     let j = enum_units();
     let k = enum_payloads();
 
-    a + b + c + d + e + g + h + i + j + k
+    println(a + b + c + d + e + g + h + i + j + k);
 }

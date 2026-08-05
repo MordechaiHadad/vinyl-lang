@@ -148,7 +148,9 @@ fn arm_type_mismatch() {
         }";
     let errors = common::compile(source).expect_err("typeck should fail: arm type mismatch");
     assert!(
-        errors.iter().any(|error| error.to_string().contains("type mismatch")),
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("type mismatch")),
         "expected mismatch diagnostic, got: {errors:?}"
     );
 }

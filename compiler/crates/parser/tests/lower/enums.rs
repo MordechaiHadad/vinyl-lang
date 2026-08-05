@@ -47,6 +47,9 @@ fn enum_variant_public_lower() {
         Item::Enum(e) => e,
         other => panic!("expected enum, got {other:?}"),
     };
-    assert!(e.variants[0].public, "public variant should be marked public");
+    assert!(
+        e.variants[0].public,
+        "public variant should be marked public"
+    );
     assert!(!e.variants[1].public, "bare variant should stay private");
 }

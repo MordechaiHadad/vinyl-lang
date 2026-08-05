@@ -86,8 +86,5 @@ fn scoped_type() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    assert_eq!(
-        func.params[0].type_,
-        Type::Named("math::Shape".to_string())
-    );
+    assert_eq!(func.params[0].type_, Type::Named("math::Shape".to_string()));
 }

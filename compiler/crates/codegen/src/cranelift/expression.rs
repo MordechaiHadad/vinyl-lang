@@ -16,6 +16,7 @@ use super::state::{CodegenCtx, VarInfo, VarSlot};
 use super::types::{ir_type_from_primitive, is_large_aggregate, type_needs_custom_equality};
 use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
+use crate::runtime::{TAG_BOOL, TAG_CHAR, TAG_FLOAT32, TAG_FLOAT64, TAG_INT, TAG_RAW, TAG_UINT};
 
 fn is_unsigned_type(t: &Type) -> bool {
     matches!(
@@ -29,6 +30,32 @@ fn is_unsigned_type(t: &Type) -> bool {
                 | Primitive::USize
         )
     )
+}
+
+fn print_tag(t: &Type) -> u8 {
+    match t {
+        Type::Primitive(
+            Primitive::Int8
+            | Primitive::Int16
+            | Primitive::Int32
+            | Primitive::Int64
+            | Primitive::Int128
+            | Primitive::ISize,
+        ) => TAG_INT,
+        Type::Primitive(
+            Primitive::UInt8
+            | Primitive::UInt16
+            | Primitive::UInt32
+            | Primitive::UInt64
+            | Primitive::UInt128
+            | Primitive::USize,
+        ) => TAG_UINT,
+        Type::Primitive(Primitive::Float32) => TAG_FLOAT32,
+        Type::Primitive(Primitive::Float64) => TAG_FLOAT64,
+        Type::Primitive(Primitive::Bool) => TAG_BOOL,
+        Type::Primitive(Primitive::Char) => TAG_CHAR,
+        _ => TAG_RAW,
+    }
 }
 
 pub struct IfExprBundle<'a> {
@@ -312,6 +339,9 @@ impl<'a> CodegenCtx<'a> {
             }
             HirExpressionKind::Call { function, args, .. } => {
                 if let HirExpressionKind::Ident(name, _) = &function.kind {
+                    if matches!(name.as_str(), "print" | "println") {
+                        return self.compile_print_call(name, args);
+                    }
                     let callee_info = self
                         .module
                         .decls
@@ -608,7 +638,8 @@ impl<'a> CodegenCtx<'a> {
                 value,
                 arms,
             } => self.compile_expr_match(value, arms, &expr.type_),
-            HirExpressionKind::FieldAccess { object, name, .. } => {                let ptr_size = self.module.pointer_type.bytes();
+            HirExpressionKind::FieldAccess { object, name, .. } => {
+                let ptr_size = self.module.pointer_type.bytes();
                 let obj = self.compile_expr(object)?;
                 let offset = match &object.type_ {
                     Type::Tuple(element_types) => {
@@ -719,6 +750,55 @@ impl<'a> CodegenCtx<'a> {
                 }
             }
         }
+    }
+
+    fn compile_print_call(
+        &mut self,
+        name: &str,
+        args: &[HirExpression],
+    ) -> Result<ir::Value, CraneliftError> {
+        let argument = args
+            .first()
+            .ok_or_else(|| CraneliftError::Msg(format!("{name} expects one argument")))?;
+        let value = self.compile_expr(argument)?;
+        let bytes = crate::layout::size_of(
+            &argument.type_,
+            self.module.types,
+            self.module.pointer_type.bytes(),
+        );
+        let pointer = if crate::layout::is_aggregate(&argument.type_)
+            && crate::layout::aggregate_register_count(
+                &argument.type_,
+                self.module.types,
+                self.module.pointer_type.bytes(),
+            ) != 1
+        {
+            value
+        } else {
+            let slot_size = bytes.max(self.module.pointer_type.bytes());
+            self.store_tmp(value, slot_size)?
+        };
+        let tag = print_tag(&argument.type_);
+        let size = self
+            .func
+            .builder
+            .ins()
+            .iconst(self.module.pointer_type, bytes as i64);
+        let tag = self.func.builder.ins().iconst(types::I8, tag as i64);
+        let newline = self
+            .func
+            .builder
+            .ins()
+            .iconst(types::I8, (name == "println") as i64);
+        let func = self
+            .module
+            .module
+            .declare_func_in_func(self.module.print_func, self.func.builder.func);
+        self.func
+            .builder
+            .ins()
+            .call(func, &[pointer, size, tag, newline]);
+        Ok(self.func.builder.ins().iconst(types::I8, 0))
     }
 
     /// Load a field value given its address. Primitive fields load their CLIF
@@ -1466,12 +1546,8 @@ impl<'a> CodegenCtx<'a> {
         );
         for (i, elem) in args.iter().enumerate() {
             let val = self.compile_expr(elem)?;
-            let offset = crate::layout::tuple_field_offset(
-                i,
-                element_types,
-                self.module.types,
-                ptr_size,
-            );
+            let offset =
+                crate::layout::tuple_field_offset(i, element_types, self.module.types, ptr_size);
             let field_addr = if offset == 0 {
                 base
             } else {
@@ -1655,11 +1731,10 @@ impl<'a> CodegenCtx<'a> {
     }
 
     fn store_tmp(&mut self, value: ir::Value, bytes: u32) -> Result<ir::Value, CraneliftError> {
-        let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
-            StackSlotKind::ExplicitSlot,
-            bytes,
-            0,
-        ));
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, bytes, 0));
         let addr = self
             .func
             .builder
@@ -1685,8 +1760,7 @@ impl<'a> CodegenCtx<'a> {
             return Ok(addr);
         }
         if crate::layout::is_aggregate(ty) {
-            let chunks =
-                crate::layout::aggregate_register_count(ty, self.module.types, ptr_size);
+            let chunks = crate::layout::aggregate_register_count(ty, self.module.types, ptr_size);
             if chunks != 1 {
                 return Ok(addr);
             }
@@ -1733,8 +1807,7 @@ impl<'a> CodegenCtx<'a> {
                     let right_addr = self.addr_at(right, offset);
                     let left_elem = self.load_value_of_type(left_addr, element)?;
                     let right_elem = self.load_value_of_type(right_addr, element)?;
-                    let elem_eq =
-                        self.emit_structural_equality(left_elem, right_elem, element)?;
+                    let elem_eq = self.emit_structural_equality(left_elem, right_elem, element)?;
                     acc = self.func.builder.ins().band(acc, elem_eq);
                 }
                 acc
@@ -1752,8 +1825,7 @@ impl<'a> CodegenCtx<'a> {
                     let right_addr = self.addr_at(right, offset);
                     let left_elem = self.load_value_of_type(left_addr, element)?;
                     let right_elem = self.load_value_of_type(right_addr, element)?;
-                    let elem_eq =
-                        self.emit_structural_equality(left_elem, right_elem, element)?;
+                    let elem_eq = self.emit_structural_equality(left_elem, right_elem, element)?;
                     acc = self.func.builder.ins().band(acc, elem_eq);
                 }
                 acc
@@ -1805,14 +1877,17 @@ impl<'a> CodegenCtx<'a> {
             Some(HirItemKind::TupleStruct(t)) => {
                 let mut acc = one;
                 for (index, element) in t.types.iter().enumerate() {
-                    let offset =
-                        crate::layout::tuple_field_offset(index, &t.types, self.module.types, ptr_size);
+                    let offset = crate::layout::tuple_field_offset(
+                        index,
+                        &t.types,
+                        self.module.types,
+                        ptr_size,
+                    );
                     let left_addr = self.addr_at(left, offset);
                     let right_addr = self.addr_at(right, offset);
                     let left_elem = self.load_value_of_type(left_addr, element)?;
                     let right_elem = self.load_value_of_type(right_addr, element)?;
-                    let elem_eq =
-                        self.emit_structural_equality(left_elem, right_elem, element)?;
+                    let elem_eq = self.emit_structural_equality(left_elem, right_elem, element)?;
                     acc = self.func.builder.ins().band(acc, elem_eq);
                 }
                 Ok(acc)
@@ -1850,8 +1925,7 @@ impl<'a> CodegenCtx<'a> {
                     if payload_types.is_empty() {
                         continue;
                     }
-                    let variant_const =
-                        self.func.builder.ins().iconst(types::I8, index as i64);
+                    let variant_const = self.func.builder.ins().iconst(types::I8, index as i64);
                     let cond = self
                         .func
                         .builder
@@ -1865,10 +1939,8 @@ impl<'a> CodegenCtx<'a> {
                         offset_acc = crate::layout::align_up(offset_acc, field_align);
                         let left_addr = self.addr_at(left, data_offset + offset_acc);
                         let right_addr = self.addr_at(right, data_offset + offset_acc);
-                        let left_field =
-                            self.load_value_of_type(left_addr, field_type)?;
-                        let right_field =
-                            self.load_value_of_type(right_addr, field_type)?;
+                        let left_field = self.load_value_of_type(left_addr, field_type)?;
+                        let right_field = self.load_value_of_type(right_addr, field_type)?;
                         let field_eq =
                             self.emit_structural_equality(left_field, right_field, field_type)?;
                         fields_eq = self.func.builder.ins().band(fields_eq, field_eq);
@@ -1998,10 +2070,13 @@ impl<'a> CodegenCtx<'a> {
                     // ponytail: last arm never has a failing guard (exhaustiveness
                     // requires an earlier non-guarded catch-all), trap as fallback.
                     let trap_block = self.func.builder.create_block();
-                    self.func
-                        .builder
-                        .ins()
-                        .brif(guard_val, body_blocks[index], &[], trap_block, &[]);
+                    self.func.builder.ins().brif(
+                        guard_val,
+                        body_blocks[index],
+                        &[],
+                        trap_block,
+                        &[],
+                    );
                     self.func.builder.switch_to_block(trap_block);
                     self.func
                         .builder
@@ -2010,10 +2085,13 @@ impl<'a> CodegenCtx<'a> {
                     self.func.builder.seal_block(trap_block);
                     self.func.builder.switch_to_block(arm_blocks[index]);
                 } else {
-                    self.func
-                        .builder
-                        .ins()
-                        .brif(guard_val, body_blocks[index], &[], check_blocks[index + 1], &[]);
+                    self.func.builder.ins().brif(
+                        guard_val,
+                        body_blocks[index],
+                        &[],
+                        check_blocks[index + 1],
+                        &[],
+                    );
                 }
             } else {
                 self.func.builder.ins().jump(body_blocks[index], &[]);
@@ -2125,10 +2203,7 @@ impl<'a> CodegenCtx<'a> {
         Ok(base)
     }
 
-    fn enum_layout_info(
-        &self,
-        ty: &Type,
-    ) -> Result<(u32, u32, Vec<Vec<Type>>), CraneliftError> {
+    fn enum_layout_info(&self, ty: &Type) -> Result<(u32, u32, Vec<Vec<Type>>), CraneliftError> {
         let Type::Named(name) = ty else {
             return Err(CraneliftError::Msg(
                 "expected enum type in pattern".to_string(),
@@ -2154,9 +2229,7 @@ impl<'a> CodegenCtx<'a> {
                 );
                 Ok((data_offset, disc_size, all_variant_data))
             }
-            _ => Err(CraneliftError::Msg(format!(
-                "type `{name}` is not an enum"
-            ))),
+            _ => Err(CraneliftError::Msg(format!("type `{name}` is not an enum"))),
         }
     }
 
@@ -2192,11 +2265,8 @@ impl<'a> CodegenCtx<'a> {
                 let mut children = Vec::new();
                 let mut acc = 0u32;
                 for (index, sub) in patterns.iter().enumerate() {
-                    let elem_align = crate::layout::align_of(
-                        &payload_types[index],
-                        self.module.types,
-                        ptr_size,
-                    );
+                    let elem_align =
+                        crate::layout::align_of(&payload_types[index], self.module.types, ptr_size);
                     acc = crate::layout::align_up(acc, elem_align);
                     children.push((self.addr_at(addr, data_offset + acc), sub));
                     acc +=
@@ -2210,8 +2280,11 @@ impl<'a> CodegenCtx<'a> {
                         "expected named type in struct pattern".to_string(),
                     ));
                 };
-                match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new())
-                {
+                match crate::layout::resolve_type_item(
+                    type_name,
+                    self.module.types,
+                    &mut Vec::new(),
+                ) {
                     Some(HirItemKind::Struct(s)) => {
                         let field_types: Vec<(String, Type)> = s
                             .fields
@@ -2235,10 +2308,8 @@ impl<'a> CodegenCtx<'a> {
                                         "struct `{type_name}` has no field `{name}`"
                                     ))
                                 })?;
-                            children.push((
-                                self.addr_at(addr, field_layouts[field_idx].1.offset),
-                                sub,
-                            ));
+                            children
+                                .push((self.addr_at(addr, field_layouts[field_idx].1.offset), sub));
                         }
                         Ok(children)
                     }
@@ -2289,9 +2360,7 @@ impl<'a> CodegenCtx<'a> {
     ) -> Result<ir::Value, CraneliftError> {
         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
         match &pattern.kind {
-            HirPatternKind::EnumVariant {
-                variant_index, ..
-            } => {
+            HirPatternKind::EnumVariant { variant_index, .. } => {
                 let (_, disc_size, _) = self.enum_layout_info(&pattern.type_)?;
                 let disc_ty = if disc_size == 2 {
                     types::I16
@@ -2304,11 +2373,7 @@ impl<'a> CodegenCtx<'a> {
                     .builder
                     .ins()
                     .iconst(disc_ty, *variant_index as i64);
-                let mut cond = self
-                    .func
-                    .builder
-                    .ins()
-                    .icmp(IntCC::Equal, disc, target);
+                let mut cond = self.func.builder.ins().icmp(IntCC::Equal, disc, target);
                 let children = self.pattern_sub_children(pattern, addr)?;
                 for (sub_addr, sub) in children {
                     let sub_cond = self.compile_pattern_condition(sub, sub_addr)?;
@@ -2336,11 +2401,7 @@ impl<'a> CodegenCtx<'a> {
                         .ins()
                         .fcmp(FloatCC::Equal, loaded, constant))
                 } else {
-                    Ok(self
-                        .func
-                        .builder
-                        .ins()
-                        .icmp(IntCC::Equal, loaded, constant))
+                    Ok(self.func.builder.ins().icmp(IntCC::Equal, loaded, constant))
                 }
             }
             HirPatternKind::Struct { .. } | HirPatternKind::Tuple { .. } => {

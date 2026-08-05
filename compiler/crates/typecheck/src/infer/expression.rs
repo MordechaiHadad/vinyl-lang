@@ -206,6 +206,32 @@ impl InferState {
                 let hir_args = hir_args?;
 
                 if let Expression::Ident(name, _) = function.as_ref()
+                    && matches!(name.as_str(), "print" | "println")
+                {
+                    if hir_args.len() != 1 {
+                        self.errors.push(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::ArgCountMismatch {
+                                callee: name.clone(),
+                                expected: 1,
+                                found: hir_args.len(),
+                            },
+                        ));
+                    }
+                    return Ok(HirExpression {
+                        kind: HirExpressionKind::Call {
+                            span: *span,
+                            function: Box::new(HirExpression {
+                                kind: HirExpressionKind::Ident(name.clone(), *span),
+                                type_: Type::Primitive(Primitive::Unit),
+                            }),
+                            args: hir_args,
+                        },
+                        type_: Type::Primitive(Primitive::Unit),
+                    });
+                }
+
+                if let Expression::Ident(name, _) = function.as_ref()
                     && let Ok(canonical_name) = self.canonicalize_scoped_name(name, *span)
                     && let Some(HirItemKind::TupleStruct(tuple_struct)) =
                         resolve_named_type(&canonical_name, &self.types)
@@ -220,16 +246,13 @@ impl InferState {
                             },
                         ));
                     }
-                    for (i, (arg, expected_ty)) in
-                        args.iter().zip(&tuple_struct.types).enumerate()
+                    for (i, (arg, expected_ty)) in args.iter().zip(&tuple_struct.types).enumerate()
                     {
                         let arg_type = self.subs.apply(&hir_args[i].type_);
-                        if let Err(e) = self.subs.unify(
-                            &self.source,
-                            &arg_type,
-                            expected_ty,
-                            arg.span(),
-                        ) {
+                        if let Err(e) =
+                            self.subs
+                                .unify(&self.source, &arg_type, expected_ty, arg.span())
+                        {
                             self.errors.push(*e);
                         }
                     }
@@ -604,8 +627,8 @@ impl InferState {
                     )));
                 }
                 let canonical_type_name = self.canonicalize_scoped_name(type_name, *span)?;
-                let variant_info = resolve_named_type(&canonical_type_name, &self.types).and_then(
-                    |kind| {
+                let variant_info =
+                    resolve_named_type(&canonical_type_name, &self.types).and_then(|kind| {
                         if let HirItemKind::Enum(e) = kind {
                             e.variants
                                 .iter()
@@ -625,10 +648,9 @@ impl InferState {
                                     }
                                     let expected: Vec<Type> = match &variant.data {
                                         Some(HirEnumVariantData::Tuple(types)) => types.clone(),
-                                        Some(HirEnumVariantData::Struct(fields)) => fields
-                                            .iter()
-                                            .map(|f| f.type_.clone())
-                                            .collect(),
+                                        Some(HirEnumVariantData::Struct(fields)) => {
+                                            fields.iter().map(|f| f.type_.clone()).collect()
+                                        }
                                         None => Vec::new(),
                                     };
                                     (idx, expected)
@@ -636,8 +658,7 @@ impl InferState {
                         } else {
                             None
                         }
-                    },
-                );
+                    });
                 let (variant_index, expected_types) = match variant_info {
                     Some(info) => info,
                     None => {
@@ -807,10 +828,7 @@ impl InferState {
 
                 let result_type = self.subs.fresh_var();
                 for arm_type in &arm_types {
-                    if let Err(e) = self
-                        .subs
-                        .unify(&self.source, &result_type, arm_type, *span)
-                    {
+                    if let Err(e) = self.subs.unify(&self.source, &result_type, arm_type, *span) {
                         self.errors.push(*e);
                     }
                 }

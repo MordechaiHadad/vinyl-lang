@@ -11,8 +11,14 @@ pub struct HirPattern {
 #[derive(Debug, Clone)]
 pub enum HirPatternKind {
     Wildcard(SourceSpan),
-    Ident { span: SourceSpan, name: String },
-    Literal { span: SourceSpan, value: LiteralValue },
+    Ident {
+        span: SourceSpan,
+        name: String,
+    },
+    Literal {
+        span: SourceSpan,
+        value: LiteralValue,
+    },
     Struct {
         span: SourceSpan,
         type_name: String,

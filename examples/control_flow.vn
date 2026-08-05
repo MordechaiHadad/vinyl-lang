@@ -132,7 +132,7 @@ fn loop_with_continue(): int {
 
 # --- Main ---
 
-fn main(): int {
+fn main() {
     let c = clamp(150, 0, 100);
     let r = rating(75) + rating(45) + rating(15);
     let a = absolute(-5);
@@ -153,5 +153,5 @@ fn main(): int {
     let cdl = countdown_loop(5);
     let lwc = loop_with_continue();
 
-    c + r + a + m + q + sa + fact + fib + g + sr + cd + cs + wne + wib + lib + lcb + sw + cdl + lwc
+    println(c + r + a + m + q + sa + fact + fib + g + sr + cd + cs + wne + wib + lib + lcb + sw + cdl + lwc);
 }

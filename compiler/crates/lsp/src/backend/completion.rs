@@ -49,13 +49,12 @@ impl Backend {
         let dot_trigger = offset > 0
             && source_bytes[offset - 1] == b'.'
             && (offset < 2 || source_bytes[offset - 2] != b'.');
-        let variant_trigger = (offset >= 2
-            && source_bytes[offset - 2] == b':'
-            && source_bytes[offset - 1] == b':')
-            || (offset > 0
-                && offset < source_bytes.len()
-                && source_bytes[offset - 1] == b':'
-                && source_bytes[offset] == b':');
+        let variant_trigger =
+            (offset >= 2 && source_bytes[offset - 2] == b':' && source_bytes[offset - 1] == b':')
+                || (offset > 0
+                    && offset < source_bytes.len()
+                    && source_bytes[offset - 1] == b':'
+                    && source_bytes[offset] == b':');
         if !in_import_context {
             if variant_trigger
                 && let Some(items) =
@@ -170,17 +169,11 @@ impl Backend {
 fn clean_completion_source(source: &str, offset: usize) -> String {
     let offset = offset.min(source.len());
     let before = &source[..offset];
-    let statement_start = before
-        .rfind([';', '{', '}'])
-        .map_or(0, |index| index + 1);
+    let statement_start = before.rfind([';', '{', '}']).map_or(0, |index| index + 1);
     format!("{}{}", &source[..statement_start], &source[offset..])
 }
 
-fn analyze_completion_source(
-    state: &State,
-    path: &Path,
-    source: &str,
-) -> Option<Arc<Analysis>> {
+fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option<Arc<Analysis>> {
     let name = path.to_string_lossy();
     let tree = vinyl_parser::parse_with_name(&name, source).ok()?;
     let items = vinyl_parser::lower::lower(&tree, source, &name).ok()?;
@@ -199,11 +192,7 @@ fn field_completions(
         .next()?;
     let clean_source = clean_completion_source(source, offset);
     let analysis = analyze_completion_source(state, path, &clean_source)?;
-    let definition = analysis
-        .result
-        .definitions
-        .get(variable_name)?
-        .first()?;
+    let definition = analysis.result.definitions.get(variable_name)?.first()?;
     let type_name = definition.type_name.as_ref()?;
     let type_lookup_name = type_name.rsplit("::").next().unwrap_or(type_name);
     let line_index = LineIndex::new(source);
@@ -211,11 +200,18 @@ fn field_completions(
         position_at(&line_index, offset.saturating_sub(prefix.len())),
         position_at(&line_index, offset),
     );
-    let structure = analysis.result.items.iter().find_map(|item| match &item.kind {
-        vinyl_typecheck::hir::HirItemKind::Struct(structure)
-            if structure.name == type_lookup_name => Some(structure.clone()),
-        _ => None,
-    });
+    let structure = analysis
+        .result
+        .items
+        .iter()
+        .find_map(|item| match &item.kind {
+            vinyl_typecheck::hir::HirItemKind::Struct(structure)
+                if structure.name == type_lookup_name =>
+            {
+                Some(structure.clone())
+            }
+            _ => None,
+        });
     if let Some(structure) = structure {
         let completions = structure
             .fields
@@ -237,14 +233,19 @@ fn field_completions(
             .collect();
         return Some(completions);
     }
-    if let Some(tuple) = analysis.result.items.iter().find_map(|item| match &item.kind {
-        vinyl_typecheck::hir::HirItemKind::TupleStruct(tuple)
-            if tuple.name == type_lookup_name =>
-        {
-            Some(tuple.clone())
-        }
-        _ => None,
-    }) {
+    if let Some(tuple) = analysis
+        .result
+        .items
+        .iter()
+        .find_map(|item| match &item.kind {
+            vinyl_typecheck::hir::HirItemKind::TupleStruct(tuple)
+                if tuple.name == type_lookup_name =>
+            {
+                Some(tuple.clone())
+            }
+            _ => None,
+        })
+    {
         return Some(tuple_member_completions(&tuple.types, prefix, edit_range));
     }
     let tuple_types = type_name.strip_prefix('(')?.strip_suffix(')')?;
@@ -261,10 +262,7 @@ fn field_completions(
                 label: label.clone(),
                 kind: Some(CompletionItemKind::FIELD),
                 detail: Some("tuple member".to_string()),
-                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
-                    edit_range,
-                    label,
-                ))),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(edit_range, label))),
                 ..CompletionItem::default()
             })
             .collect(),
@@ -329,14 +327,18 @@ fn variant_completions(
             .values()
             .find(|info| info.import_name == module_name)?;
         let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
-        let cache_key = crate::backend::workspace::non_canonical_key(
-            &info.file_path,
-            resolver,
-            workspace_root,
-        );
-        state.cache.get(&cache_key)?.result.items.iter().find_map(|item| match &item.kind {
-            vinyl_typecheck::hir::HirItemKind::Enum(enumeration)
-                if enumeration.name == enum_name => {
+        let cache_key =
+            crate::backend::workspace::non_canonical_key(&info.file_path, resolver, workspace_root);
+        state
+            .cache
+            .get(&cache_key)?
+            .result
+            .items
+            .iter()
+            .find_map(|item| match &item.kind {
+                vinyl_typecheck::hir::HirItemKind::Enum(enumeration)
+                    if enumeration.name == enum_name =>
+                {
                     Some(
                         enumeration
                             .variants
@@ -346,26 +348,29 @@ fn variant_completions(
                             .collect::<Vec<_>>(),
                     )
                 }
-            _ => None,
-        })?
+                _ => None,
+            })?
     } else {
         let analysis = analyze_completion_source(state, path, &clean_source)?;
-        analysis.result.items.iter().find_map(|item| match &item.kind {
-            vinyl_typecheck::hir::HirItemKind::Enum(enumeration)
-                if enumeration.name == enum_name => {
+        analysis
+            .result
+            .items
+            .iter()
+            .find_map(|item| match &item.kind {
+                vinyl_typecheck::hir::HirItemKind::Enum(enumeration)
+                    if enumeration.name == enum_name =>
+                {
                     Some(
                         enumeration
                             .variants
                             .iter()
-                            .filter(|variant| {
-                                !is_imported_type(state, enum_name) || variant.public
-                            })
+                            .filter(|variant| !is_imported_type(state, enum_name) || variant.public)
                             .map(|variant| variant.name.clone())
                             .collect::<Vec<_>>(),
                     )
                 }
-            _ => None,
-        })?
+                _ => None,
+            })?
     };
     let line_index = LineIndex::new(source);
     let edit_range = Range::new(

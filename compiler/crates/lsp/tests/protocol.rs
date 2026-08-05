@@ -2768,7 +2768,10 @@ fn completion_tuple_members_after_dot() {
     }));
     let items = lsp.response(2)["result"].as_array().unwrap().clone();
     for expected in ["0", "1"] {
-        assert!(items.iter().any(|item| item["label"] == expected), "missing tuple member {expected}: {items:#?}");
+        assert!(
+            items.iter().any(|item| item["label"] == expected),
+            "missing tuple member {expected}: {items:#?}"
+        );
     }
 }
 

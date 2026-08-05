@@ -16,6 +16,7 @@ use super::state::{CodegenCtx, FuncEnv, ModuleEnv, VarInfo, VarSlot};
 use super::types::{hir_sig_to_clif, param_type_to_clif};
 use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
+use crate::runtime::vinyl_print_value;
 
 use tracing::debug;
 
@@ -37,7 +38,8 @@ impl CraneliftBackend {
         let isa = isa_builder
             .finish(flags)
             .map_err(|e| CraneliftError::Msg(format!("isa finish: {e}")))?;
-        let jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        let mut jit_builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+        jit_builder.symbol("vinyl_print_value", vinyl_print_value as *const u8);
         let module = JITModule::new(jit_builder);
         let ctx = module.make_context();
         Ok(CraneliftBackend {
@@ -54,6 +56,15 @@ impl crate::CodegenBackend for CraneliftBackend {
 
     fn compile(&mut self, items: &[HirItem]) -> Result<(), Self::Error> {
         let pointer_type = self.module.isa().pointer_type();
+        let mut print_sig = ir::Signature::new(self.module.isa().default_call_conv());
+        print_sig.params.push(ir::AbiParam::new(pointer_type));
+        print_sig.params.push(ir::AbiParam::new(pointer_type));
+        print_sig.params.push(ir::AbiParam::new(types::I8));
+        print_sig.params.push(ir::AbiParam::new(types::I8));
+        let print_func = self
+            .module
+            .declare_function("vinyl_print_value", Linkage::Import, &print_sig)
+            .map_err(|e| CraneliftError::Msg(format!("declare vinyl_print_value: {e}")))?;
 
         for item in items {
             let name = match &item.kind {
@@ -233,6 +244,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                     module: ModuleEnv {
                         module: &mut self.module,
                         decls: &self.decls,
+                        print_func,
                         types: &self.types,
                         pointer_type,
                     },

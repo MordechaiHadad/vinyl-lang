@@ -5,9 +5,9 @@ use std::sync::Arc;
 use eyre::{Result, eyre};
 use line_index::LineIndex;
 use vinyl_parser::ast::item::{ImportDef, Item};
+use vinyl_resolver::ResolveDiagnostic;
 use vinyl_resolver::resolver::{ImportPrefix, ModuleInfo, Resolver, ResolverMode};
 use vinyl_resolver::structs::DiskFileSystem;
-use vinyl_resolver::ResolveDiagnostic;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
 use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
@@ -401,29 +401,35 @@ pub(crate) fn load_imported_modules(vfs: &mut Vfs, root: &Path, opened_path: &Pa
     }
 }
 
-fn load_imported_module(vfs: &mut Vfs, resolver: &mut Resolver, opened_path: &Path, import: &ImportDef) {
+fn load_imported_module(
+    vfs: &mut Vfs,
+    resolver: &mut Resolver,
+    opened_path: &Path,
+    import: &ImportDef,
+) {
     let Ok(import_prefix) = import_prefix(import) else {
-            return;
-        };
-        let resolved = if import.wildcard || import.path.len() <= 1 {
-            resolve_module_with_prefix(resolver, &import_prefix, &import.path, opened_path)
-        } else {
-            resolve_module_with_prefix(resolver, &import_prefix, &import.path, opened_path)
-                .or_else(|_| {
-                    resolve_module_with_prefix(
-                        resolver,
-                        &import_prefix,
-                        &import.path[..import.path.len() - 1],
-                        opened_path,
-                    )
-                })
-        };
-        if let Ok(info) = resolved
-            && !vfs.files().contains_key(&info.file_path)
-            && let Ok(source) = std::fs::read_to_string(&info.file_path)
-        {
-            vfs.set(info.file_path, source);
-        }
+        return;
+    };
+    let resolved = if import.wildcard || import.path.len() <= 1 {
+        resolve_module_with_prefix(resolver, &import_prefix, &import.path, opened_path)
+    } else {
+        resolve_module_with_prefix(resolver, &import_prefix, &import.path, opened_path).or_else(
+            |_| {
+                resolve_module_with_prefix(
+                    resolver,
+                    &import_prefix,
+                    &import.path[..import.path.len() - 1],
+                    opened_path,
+                )
+            },
+        )
+    };
+    if let Ok(info) = resolved
+        && !vfs.files().contains_key(&info.file_path)
+        && let Ok(source) = std::fs::read_to_string(&info.file_path)
+    {
+        vfs.set(info.file_path, source);
+    }
 }
 
 fn import_prefix(import: &ImportDef) -> std::result::Result<Option<ImportPrefix>, ()> {
@@ -574,12 +580,7 @@ fn collect_modules(
                 Ok(info) => (info, None),
                 Err(first_error) => {
                     let parent_path = item.path[..item.path.len() - 1].to_vec();
-                    match resolve_module_with_prefix(
-                        resolver,
-                        &import_prefix,
-                        &parent_path,
-                        from,
-                    ) {
+                    match resolve_module_with_prefix(resolver, &import_prefix, &parent_path, from) {
                         Ok(info) => (info, Some(item.path.last().unwrap().clone())),
                         Err(_) => {
                             push_import_diagnostic(
@@ -684,7 +685,10 @@ fn collect_modules(
                         workspace_root,
                         from,
                         item,
-                        format!("import of `{}` conflicts with an existing import", function.name),
+                        format!(
+                            "import of `{}` conflicts with an existing import",
+                            function.name
+                        ),
                     );
                     continue;
                 }
@@ -698,7 +702,10 @@ fn collect_modules(
                         workspace_root,
                         from,
                         item,
-                        format!("import of `{}` conflicts with an existing import", item_name(type_item)),
+                        format!(
+                            "import of `{}` conflicts with an existing import",
+                            item_name(type_item)
+                        ),
                     );
                     continue;
                 }

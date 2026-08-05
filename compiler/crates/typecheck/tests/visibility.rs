@@ -2,8 +2,7 @@ mod common;
 
 #[test]
 fn private_field_access_same_module_allowed() {
-    let source =
-        "struct Point { x: int32 } fn main(): int32 { let p = Point { x: 1 }; p.x }";
+    let source = "struct Point { x: int32 } fn main(): int32 { let p = Point { x: 1 }; p.x }";
     let items = common::compile(source);
     assert!(
         items.is_ok(),
@@ -14,7 +13,8 @@ fn private_field_access_same_module_allowed() {
 
 #[test]
 fn private_field_construction_same_module_allowed() {
-    let source = "struct Point { x: int32, y: int32 } fn main(): unit { let p = Point { x: 1, y: 2 }; }";
+    let source =
+        "struct Point { x: int32, y: int32 } fn main(): unit { let p = Point { x: 1, y: 2 }; }";
     let items = common::compile(source);
     assert!(
         items.is_ok(),

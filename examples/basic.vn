@@ -73,7 +73,7 @@ fn both_nonzero(a: int, b: int): int {
 
 # --- Main: ties everything together ---
 
-fn main(): int {
+fn main() {
     let a = abs(-5);
     let s = signum(-3) + signum(0) + signum(7);
     let sq = square(average(10, 20));
@@ -86,5 +86,5 @@ fn main(): int {
     let bx = bitwise_demo(6, 3);
     let lo = both_nonzero(3, 0);
 
-    a + s + sq + fd + fs + ft + et + m + c + bx + lo
+    println(a + s + sq + fd + fs + ft + et + m + c + bx + lo);
 }

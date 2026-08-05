@@ -313,10 +313,7 @@ fn wildcard_import_bare_call() {
     let root = project(
         "wildcard_import",
         &[
-            (
-                "src/main.vn",
-                "import math::*; fn main(): int { answer() }",
-            ),
+            ("src/main.vn", "import math::*; fn main(): int { answer() }"),
             ("src/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
@@ -392,7 +389,10 @@ fn scoped_type_private_field_errors() {
         ],
     );
     let result = compile_entry(&root.join("src/main.vn"), Some(&root));
-    assert!(result.is_err(), "cross-module private field access should error");
+    assert!(
+        result.is_err(),
+        "cross-module private field access should error"
+    );
 }
 
 #[test]
@@ -484,5 +484,8 @@ fn imported_type_private_field_errors() {
         ],
     );
     let result = compile_entry(&root.join("src/main.vn"), Some(&root));
-    assert!(result.is_err(), "cross-module private field access should error");
+    assert!(
+        result.is_err(),
+        "cross-module private field access should error"
+    );
 }

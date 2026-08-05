@@ -147,7 +147,7 @@ fn float_aggregate_equality(): int {
     nan_equal + zero_equal
 }
 
-fn main(): int {
+fn main() {
     let a = tuple_struct_field_access();
     let b = tuple_struct_param(Vec2(3, 4));
     let c = tuple_struct_return();
@@ -160,5 +160,5 @@ fn main(): int {
     let j = array_equality();
     let k = float_aggregate_equality();
 
-    a + b + c + d + e + f + g + h + i + j + k
+    println(a + b + c + d + e + f + g + h + i + j + k);
 }

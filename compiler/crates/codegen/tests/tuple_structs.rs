@@ -3,8 +3,10 @@ mod common;
 #[test]
 fn tuple_struct_construction_and_field_access() {
     assert_eq!(
-        common::run("tuple Pair(int32, int32) fn main(): int32 { let p = Pair(10, 20); p.0 + p.1 }")
-            .unwrap(),
+        common::run(
+            "tuple Pair(int32, int32) fn main(): int32 { let p = Pair(10, 20); p.0 + p.1 }"
+        )
+        .unwrap(),
         30
     );
 }
@@ -57,8 +59,10 @@ fn tuple_struct_passed_to_function() {
 #[test]
 fn tuple_struct_returned_from_function() {
     assert_eq!(
-        common::run("tuple Foo(int32, int32) fn make(): Foo { Foo(3, 4) } fn main(): int32 { make().1 }")
-            .unwrap(),
+        common::run(
+            "tuple Foo(int32, int32) fn make(): Foo { Foo(3, 4) } fn main(): int32 { make().1 }"
+        )
+        .unwrap(),
         4
     );
 }

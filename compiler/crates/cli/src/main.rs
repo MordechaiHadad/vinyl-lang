@@ -75,6 +75,21 @@ fn jit_and_run(items: &[vinyl_typecheck::hir::HirItem]) -> eyre::Result<()> {
             vinyl_typecheck::hir::HirItemKind::Function(f) if f.name == "main"
         )
     });
+    if let Some(function) = items.iter().find_map(|item| match &item.kind {
+        vinyl_typecheck::hir::HirItemKind::Function(function) if function.name == "main" => {
+            Some(function)
+        }
+        _ => None,
+    }) {
+        if !matches!(
+            function.return_type,
+            vinyl_parser::ast::types::Type::Primitive(vinyl_parser::ast::types::Primitive::Unit)
+        ) {
+            return Err(eyre::eyre!(
+                "main must return unit; use print or println for output"
+            ));
+        }
+    }
     if !has_main {
         warn!("no main function found");
     }
@@ -84,10 +99,7 @@ fn jit_and_run(items: &[vinyl_typecheck::hir::HirItem]) -> eyre::Result<()> {
     backend
         .compile(items)
         .map_err(|e| eyre::eyre!("jit compile: {e}"))?;
-    let result = backend.run().map_err(|e| eyre::eyre!("jit run: {e}"))?;
-    if has_main {
-        println!("{}", result);
-    }
+    backend.run().map_err(|e| eyre::eyre!("jit run: {e}"))?;
     Ok(())
 }
 

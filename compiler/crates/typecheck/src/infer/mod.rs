@@ -137,9 +137,7 @@ impl InferState {
         span: SourceSpan,
     ) -> Result<AstType, Box<TypeDiagnostic>> {
         match type_ {
-            AstType::Named(name) => Ok(AstType::Named(
-                self.canonicalize_scoped_name(name, span)?,
-            )),
+            AstType::Named(name) => Ok(AstType::Named(self.canonicalize_scoped_name(name, span)?)),
             AstType::Generic { name, args } => {
                 let args = args
                     .iter()
@@ -154,9 +152,7 @@ impl InferState {
                 element: Box::new(self.canonicalize_type(element, span)?),
                 size: *size,
             }),
-            AstType::Ref(inner) => Ok(AstType::Ref(Box::new(
-                self.canonicalize_type(inner, span)?,
-            ))),
+            AstType::Ref(inner) => Ok(AstType::Ref(Box::new(self.canonicalize_type(inner, span)?))),
             AstType::Tuple(elements) => Ok(AstType::Tuple(
                 elements
                     .iter()
@@ -210,12 +206,10 @@ impl InferState {
                     }
                 }
             }
-            Item::TypeAlias(a) => {
-                match self.canonicalize_type(&a.type_, span) {
-                    Ok(type_) => a.type_ = type_,
-                    Err(e) => self.errors.push(*e),
-                }
-            }
+            Item::TypeAlias(a) => match self.canonicalize_type(&a.type_, span) {
+                Ok(type_) => a.type_ = type_,
+                Err(e) => self.errors.push(*e),
+            },
             Item::Function(f) => {
                 for param in &mut f.params {
                     match self.canonicalize_type(&param.type_, span) {

@@ -122,8 +122,10 @@ fn padded_tuple_equality_is_deterministic() {
 #[test]
 fn small_array_equality_same_elements() {
     assert_eq!(
-        common::run("fn main(): int32 { let a = [1, 2]; let b = [1, 2]; if a == b { 1 } else { 0 } }")
-            .unwrap(),
+        common::run(
+            "fn main(): int32 { let a = [1, 2]; let b = [1, 2]; if a == b { 1 } else { 0 } }"
+        )
+        .unwrap(),
         1
     );
 }
@@ -131,8 +133,10 @@ fn small_array_equality_same_elements() {
 #[test]
 fn small_array_equality_different_elements() {
     assert_eq!(
-        common::run("fn main(): int32 { let a = [1, 2]; let b = [1, 3]; if a == b { 1 } else { 0 } }")
-            .unwrap(),
+        common::run(
+            "fn main(): int32 { let a = [1, 2]; let b = [1, 3]; if a == b { 1 } else { 0 } }"
+        )
+        .unwrap(),
         0
     );
 }
@@ -140,8 +144,10 @@ fn small_array_equality_different_elements() {
 #[test]
 fn small_array_inequality() {
     assert_eq!(
-        common::run("fn main(): int32 { let a = [1, 2]; let b = [1, 3]; if a != b { 1 } else { 0 } }")
-            .unwrap(),
+        common::run(
+            "fn main(): int32 { let a = [1, 2]; let b = [1, 3]; if a != b { 1 } else { 0 } }"
+        )
+        .unwrap(),
         1
     );
 }
@@ -212,8 +218,10 @@ fn enum_float_payload_equality_different_values() {
 #[test]
 fn enum_float_payload_equality_different_variant() {
     assert_eq!(
-        common::run("enum E { A(float32), B } fn main(): int32 { if E::A(1.0) == E::B() { 1 } else { 0 } }")
-            .unwrap(),
+        common::run(
+            "enum E { A(float32), B } fn main(): int32 { if E::A(1.0) == E::B() { 1 } else { 0 } }"
+        )
+        .unwrap(),
         0
     );
 }

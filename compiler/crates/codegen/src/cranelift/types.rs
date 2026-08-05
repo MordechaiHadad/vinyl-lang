@@ -158,10 +158,9 @@ fn named_type_needs_custom_equality(
                 .any(|f| type_needs_custom_equality(&f.type_, types)),
             None => false,
         }),
-        Some(HirItemKind::TupleStruct(t)) => t
-            .types
-            .iter()
-            .any(|t| type_needs_custom_equality(t, types)),
+        Some(HirItemKind::TupleStruct(t)) => {
+            t.types.iter().any(|t| type_needs_custom_equality(t, types))
+        }
         Some(HirItemKind::TypeAlias(alias)) => type_needs_custom_equality(&alias.type_, types),
         _ => false,
     };

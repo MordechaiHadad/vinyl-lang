@@ -86,7 +86,10 @@ fn import_symbol_path() {
     let items = common::do_lower("import math::double;");
     let import = match &items[0] {
         Item::Import(ImportDef {
-            prefix, path, wildcard, ..
+            prefix,
+            path,
+            wildcard,
+            ..
         }) => (prefix, path, wildcard),
         _ => panic!("expected import"),
     };
@@ -100,7 +103,10 @@ fn import_wildcard_path() {
     let items = common::do_lower("import math::*;");
     let import = match &items[0] {
         Item::Import(ImportDef {
-            prefix, path, wildcard, ..
+            prefix,
+            path,
+            wildcard,
+            ..
         }) => (prefix, path, wildcard),
         _ => panic!("expected import"),
     };

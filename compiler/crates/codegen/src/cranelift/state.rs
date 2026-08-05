@@ -21,6 +21,7 @@ pub enum VarSlot {
 pub struct ModuleEnv<'a> {
     pub module: &'a mut JITModule,
     pub decls: &'a [(String, FuncId, Vec<HirParam>, Type)],
+    pub print_func: FuncId,
     pub types: &'a HashMap<String, HirItemKind>,
     pub pointer_type: ir::Type,
 }

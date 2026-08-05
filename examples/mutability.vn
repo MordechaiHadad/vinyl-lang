@@ -4,7 +4,7 @@ fn set_value(slot: &int) {
     slot = 10;
 }
 
-fn main(): int {
+fn main() {
     let mut value = 10;
     let view = &value;
     value = 20;
@@ -19,5 +19,5 @@ fn main(): int {
     set_value(&value);
 
     # view and value both read 10 after the function call.
-    view + value + other
+    println(view + value + other);
 }

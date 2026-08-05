@@ -151,11 +151,7 @@ impl InferState {
                                 .guard
                                 .as_ref()
                                 .map(|g| Box::new(self.resolve_hir_expr(g))),
-                            body: arm
-                                .body
-                                .iter()
-                                .map(|s| self.resolve_hir_stmt(s))
-                                .collect(),
+                            body: arm.body.iter().map(|s| self.resolve_hir_stmt(s)).collect(),
                         })
                         .collect(),
                 },

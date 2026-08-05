@@ -105,7 +105,7 @@ fn all_even(arr: [int; 4]): int {
 
 # --- Main Driver ---
 
-fn main(): int {
+fn main() {
     # 1. Binary Search
     let sorted_nums = [10, 20, 30, 40, 50, 60];
     let idx = binary_search(sorted_nums, 40);             # 3
@@ -134,5 +134,5 @@ fn main(): int {
     let is_even = all_even(evens);                         # 1
 
     # Aggregated return statement test
-    idx + dot + min_res + max_res + bound_sum + e_count + mid + is_even
+    println(idx + dot + min_res + max_res + bound_sum + e_count + mid + is_even);
 }

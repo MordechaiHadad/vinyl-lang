@@ -13,7 +13,7 @@ fn any_true(arr: [bool; 3]): int {
     if arr[0] || arr[1] || arr[2] { 1 } else { 0 }
 }
 
-fn main(): int {
+fn main() {
     let nums = [10, 20, 30, 40, 50];
     let s = sum5(nums);
 
@@ -23,5 +23,5 @@ fn main(): int {
     let bools = [false, true, false];
     let at = any_true(bools);
 
-    s + at
+    println(s + at);
 }

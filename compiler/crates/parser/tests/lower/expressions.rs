@@ -104,7 +104,10 @@ fn module_qualified_enum_variant() {
     match &function.body[0] {
         Statement::Value(
             Expression::EnumVariant {
-                type_name, variant_name, args, ..
+                type_name,
+                variant_name,
+                args,
+                ..
             },
             _,
         ) => {
@@ -188,7 +191,12 @@ fn match_arm_guard_lower() {
             assert_eq!(arms.len(), 2);
             match &arms[0].guard {
                 Some(guard) => match guard.as_ref() {
-                    Expression::Binary { left, op: BinaryOp::Gt, right, .. } => {
+                    Expression::Binary {
+                        left,
+                        op: BinaryOp::Gt,
+                        right,
+                        ..
+                    } => {
                         match left.as_ref() {
                             Expression::Ident(n, _) => assert_eq!(n, "x"),
                             other => panic!("expected ident, got {other:?}"),
@@ -232,7 +240,12 @@ fn match_enum_variant_pattern_lower() {
             assert_eq!(arms.len(), 3);
 
             match &arms[0].pattern {
-                Pattern::EnumVariant { type_path, variant_name, patterns, .. } => {
+                Pattern::EnumVariant {
+                    type_path,
+                    variant_name,
+                    patterns,
+                    ..
+                } => {
                     assert_eq!(type_path, "Shape");
                     assert_eq!(variant_name, "Circle");
                     assert_eq!(patterns.len(), 1);
@@ -245,7 +258,12 @@ fn match_enum_variant_pattern_lower() {
             }
 
             match &arms[1].pattern {
-                Pattern::EnumVariant { type_path, variant_name, patterns, .. } => {
+                Pattern::EnumVariant {
+                    type_path,
+                    variant_name,
+                    patterns,
+                    ..
+                } => {
                     assert_eq!(type_path, "Shape");
                     assert_eq!(variant_name, "Rect");
                     assert_eq!(patterns.len(), 2);
@@ -254,7 +272,12 @@ fn match_enum_variant_pattern_lower() {
             }
 
             match &arms[2].pattern {
-                Pattern::EnumVariant { type_path, variant_name, patterns, .. } => {
+                Pattern::EnumVariant {
+                    type_path,
+                    variant_name,
+                    patterns,
+                    ..
+                } => {
                     assert_eq!(type_path, "Shape");
                     assert_eq!(variant_name, "Empty");
                     assert!(patterns.is_empty());
@@ -265,4 +288,3 @@ fn match_enum_variant_pattern_lower() {
         other => panic!("expected match expression, got {other:?}"),
     }
 }
-
