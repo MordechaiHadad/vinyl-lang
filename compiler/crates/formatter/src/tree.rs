@@ -473,6 +473,7 @@ impl Formatter<'_> {
             match kind.as_str() {
                 "=>" => self.emit(" => "),
                 "," => {}
+                "if" => self.emit(" if "),
                 _ if child.is_named() => self.format_node(child),
                 _ => self.emit_node(child),
             }

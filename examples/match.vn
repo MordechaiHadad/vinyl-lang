@@ -21,9 +21,9 @@ fn shape_area(shape: Shape): int {
 # Guards filter arms; a failed guard falls through to the next arm.
 fn classify(shape: Shape): int {
     match shape {
-        Shape::Circle(r)ifr > 10 => 100
+        Shape::Circle(r) if r > 10 => 100
         Shape::Circle(_) => 0
-        Shape::Rect(w,h)ifw == h => 50
+        Shape::Rect(w,h) if w == h => 50
         Shape::Rect(_,_) => 10
         Shape::Empty() => 1
     }
@@ -31,8 +31,8 @@ fn classify(shape: Shape): int {
 # Struct patterns bind fields by name (field pun).
 fn point_quadrant(p: Point): int {
     match p {
-        Point{x,y}ifx > 0 && y > 0 => 1
-        Point{x,y}ifx < 0 && y < 0 => 3
+        Point{x,y} if x > 0 && y > 0 => 1
+        Point{x,y} if x < 0 && y < 0 => 3
         _ => 0
     }
 }
@@ -47,7 +47,7 @@ fn tuple_sum(pair: (int, int)): int {
 fn classify_signed(n: int): int {
     let bucket = match n {
         0 => 0
-        xifx < 0 => 1
+        x if x < 0 => 1
         _ => 2
     };
     bucket

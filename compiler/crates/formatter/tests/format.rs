@@ -51,6 +51,13 @@ fn formats_if_else() {
 }
 
 #[test]
+fn match_arm_guard_gets_spaces() {
+    let input = "fn classify_signed(n:int):int{match n{0=>0\nx if x<0=>1\n_=>2}}";
+    let expected = "fn classify_signed(n: int): int {\n    match n {\n        0 => 0\n        x if x < 0 => 1\n        _ => 2\n    }\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
 fn formats_import() {
     let input = "import   math ;";
     let expected = "import math;";
