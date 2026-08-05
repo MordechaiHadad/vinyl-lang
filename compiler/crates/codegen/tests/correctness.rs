@@ -118,3 +118,111 @@ fn padded_tuple_equality_is_deterministic() {
         1
     );
 }
+
+#[test]
+fn small_array_equality_same_elements() {
+    assert_eq!(
+        common::run("fn main(): int32 { let a = [1, 2]; let b = [1, 2]; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn small_array_equality_different_elements() {
+    assert_eq!(
+        common::run("fn main(): int32 { let a = [1, 2]; let b = [1, 3]; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn small_array_inequality() {
+    assert_eq!(
+        common::run("fn main(): int32 { let a = [1, 2]; let b = [1, 3]; if a != b { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn packed_small_struct_float_equality_is_ieee() {
+    assert_eq!(
+        common::run("struct P { a: float32, b: float32 } fn main(): int32 { let a = P { a: 0.0, b: 1.0 }; let b = P { a: -0.0, b: 1.0 }; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn packed_small_struct_float_inequality() {
+    assert_eq!(
+        common::run("struct P { a: float32, b: float32 } fn main(): int32 { let a = P { a: 0.0, b: 1.0 }; let b = P { a: 0.5, b: 1.0 }; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn float_tuple_equality_is_ieee() {
+    assert_eq!(
+        common::run("fn main(): int32 { let a = (0.0, 1.0); let b = (-0.0, 1.0); if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn two_chunk_float_struct_equality_is_ieee() {
+    assert_eq!(
+        common::run("struct T { a: float32, b: float32, c: float32 } fn main(): int32 { let a = T { a: 0.0, b: 0.0, c: 0.0 }; let b = T { a: -0.0, b: 0.0, c: 0.0 }; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn float_array_equality_is_ieee() {
+    assert_eq!(
+        common::run("fn main(): int32 { let a: [float64; 2] = [0.0, 1.0]; let b: [float64; 2] = [-0.0, 1.0]; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn enum_float_payload_equality_same_values() {
+    assert_eq!(
+        common::run("enum E { A(float32), B } fn main(): int32 { if E::A(0.0) == E::A(-0.0) { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn enum_float_payload_equality_different_values() {
+    assert_eq!(
+        common::run("enum E { A(float32), B } fn main(): int32 { if E::A(1.0) == E::A(2.0) { 1 } else { 0 } }")
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn enum_float_payload_equality_different_variant() {
+    assert_eq!(
+        common::run("enum E { A(float32), B } fn main(): int32 { if E::A(1.0) == E::B() { 1 } else { 0 } }")
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn struct_float_nan_equality_is_false() {
+    assert_eq!(
+        common::run("struct F { x: float } fn main(): int32 { let a = F { x: 0.0 / 0.0 }; let b = F { x: 0.0 / 0.0 }; if a == b { 1 } else { 0 } }")
+            .unwrap(),
+        0
+    );
+}

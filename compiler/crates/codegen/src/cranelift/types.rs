@@ -4,7 +4,7 @@ use cranelift_codegen::ir::{self, AbiParam, Signature, types};
 use cranelift_codegen::isa::CallConv;
 
 use vinyl_parser::ast::types::Primitive;
-use vinyl_typecheck::hir::{HirAssignTarget, HirFunction, HirItemKind, Type};
+use vinyl_typecheck::hir::{HirAssignTarget, HirEnumVariantData, HirFunction, HirItemKind, Type};
 
 pub fn extract_array_element_type(target: &HirAssignTarget) -> Option<&Type> {
     match target {
@@ -116,4 +116,55 @@ pub fn is_large_aggregate(
     // (pointer); smaller ones are packed into a single 64-bit value. Scalars
     // (including 128-bit ints) are never memory-backed.
     crate::layout::is_aggregate(t) && crate::layout::size_of(t, types, pointer_size) > 8
+}
+
+/// Whether equality for `t` must walk fields instead of comparing whole
+/// bytes: aggregates containing floats (which need IEEE semantics, not bitwise)
+/// and arrays (which are always memory-backed, so a packed i64 compare would
+/// compare addresses). Heap types will extend this when they gain deep
+/// equality in the std runtime.
+pub fn type_needs_custom_equality(t: &Type, types: &HashMap<String, HirItemKind>) -> bool {
+    match t {
+        Type::Array { .. } => true,
+        Type::Primitive(p) => matches!(p, Primitive::Float32 | Primitive::Float64),
+        Type::Tuple(elements) => elements
+            .iter()
+            .any(|element| type_needs_custom_equality(element, types)),
+        Type::Named(name) => named_type_needs_custom_equality(name, types, &mut Vec::new()),
+        _ => false,
+    }
+}
+
+fn named_type_needs_custom_equality(
+    name: &str,
+    types: &HashMap<String, HirItemKind>,
+    visited: &mut Vec<String>,
+) -> bool {
+    if visited.iter().any(|n| n == name) {
+        return false;
+    }
+    visited.push(name.to_string());
+    let result = match types.get(name) {
+        Some(HirItemKind::Struct(s)) => s
+            .fields
+            .iter()
+            .any(|f| type_needs_custom_equality(&f.type_, types)),
+        Some(HirItemKind::Enum(e)) => e.variants.iter().any(|variant| match &variant.data {
+            Some(HirEnumVariantData::Tuple(element_types)) => element_types
+                .iter()
+                .any(|t| type_needs_custom_equality(t, types)),
+            Some(HirEnumVariantData::Struct(fields)) => fields
+                .iter()
+                .any(|f| type_needs_custom_equality(&f.type_, types)),
+            None => false,
+        }),
+        Some(HirItemKind::TupleStruct(t)) => t
+            .types
+            .iter()
+            .any(|t| type_needs_custom_equality(t, types)),
+        Some(HirItemKind::TypeAlias(alias)) => type_needs_custom_equality(&alias.type_, types),
+        _ => false,
+    };
+    visited.pop();
+    result
 }

@@ -13,7 +13,7 @@ use vinyl_typecheck::hir::{
 };
 
 use super::state::{CodegenCtx, VarInfo, VarSlot};
-use super::types::{ir_type_from_primitive, is_large_aggregate};
+use super::types::{ir_type_from_primitive, is_large_aggregate, type_needs_custom_equality};
 use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
 
@@ -140,12 +140,14 @@ impl<'a> CodegenCtx<'a> {
                             .1
                         }
                     }
-                    BinaryOp::Eq => {
-                        if is_float {
+                    BinaryOp::Eq | BinaryOp::Ne => {
+                        let eq = if is_float {
                             self.func
                                 .builder
                                 .ins()
                                 .fcmp(FloatCC::Equal, left_val, right_val)
+                        } else if type_needs_custom_equality(&left.type_, self.module.types) {
+                            self.emit_structural_equality(left_val, right_val, &left.type_)?
                         } else if is_large_aggregate(&left.type_, self.module.types, ptr_size) {
                             let size =
                                 crate::layout::size_of(&left.type_, self.module.types, ptr_size);
@@ -157,25 +159,12 @@ impl<'a> CodegenCtx<'a> {
                                 .builder
                                 .ins()
                                 .icmp(IntCC::Equal, left_val, right_val)
-                        }
-                    }
-                    BinaryOp::Ne => {
-                        if is_float {
-                            self.func
-                                .builder
-                                .ins()
-                                .fcmp(FloatCC::NotEqual, left_val, right_val)
-                        } else if is_large_aggregate(&left.type_, self.module.types, ptr_size) {
-                            let size =
-                                crate::layout::size_of(&left.type_, self.module.types, ptr_size);
-                            let diff = self.emit_memcmp_diff(left_val, right_val, size);
-                            let zero = self.func.builder.ins().iconst(types::I8, 0);
-                            self.func.builder.ins().icmp(IntCC::NotEqual, diff, zero)
+                        };
+                        if matches!(op, BinaryOp::Ne) {
+                            let one = self.func.builder.ins().iconst(types::I8, 1);
+                            self.func.builder.ins().bxor(eq, one)
                         } else {
-                            self.func
-                                .builder
-                                .ins()
-                                .icmp(IntCC::NotEqual, left_val, right_val)
+                            eq
                         }
                     }
                     BinaryOp::Lt => {
@@ -1605,6 +1594,241 @@ impl<'a> CodegenCtx<'a> {
             let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
             self.func.builder.ins().store(mflags, val, addr, 0);
             Ok(())
+        }
+    }
+
+    fn store_tmp(&mut self, value: ir::Value, bytes: u32) -> Result<ir::Value, CraneliftError> {
+        let slot = self.func.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            bytes,
+            0,
+        ));
+        let addr = self
+            .func
+            .builder
+            .ins()
+            .stack_addr(self.module.pointer_type, slot, 0);
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        self.func.builder.ins().store(mflags, value, addr, 0);
+        Ok(addr)
+    }
+
+    /// Load the value an expression of type `ty` would carry when read from
+    /// `addr`: aggregate elements >8 bytes come back as their address, packed
+    /// small ones as an i64, scalars by their primitive type. Arrays are always
+    /// memory-backed, so they come back as their address.
+    fn load_value_of_type(
+        &mut self,
+        addr: ir::Value,
+        ty: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        if matches!(ty, Type::Array { .. }) {
+            return Ok(addr);
+        }
+        if crate::layout::is_aggregate(ty) {
+            let chunks =
+                crate::layout::aggregate_register_count(ty, self.module.types, ptr_size);
+            if chunks != 1 {
+                return Ok(addr);
+            }
+            return Ok(self.func.builder.ins().load(types::I64, mflags, addr, 0));
+        }
+        let result_ty = ir_type_from_primitive(ty, self.module.pointer_type);
+        Ok(self.func.builder.ins().load(result_ty, mflags, addr, 0))
+    }
+
+    /// Field-wise equality for aggregates that cannot be compared by raw bytes:
+    /// float leaves use IEEE fcmp (so NaN != NaN and -0.0 == 0.0), and arrays
+    /// are walked element-wise because their values are addresses. Both operands
+    /// must be the same kind of value `compile_expr` produces for `ty` (i64 for
+    /// packed small aggregates, an address otherwise).
+    fn emit_structural_equality(
+        &mut self,
+        left: ir::Value,
+        right: ir::Value,
+        ty: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        let packed_small = crate::layout::is_aggregate(ty)
+            && crate::layout::size_of(ty, self.module.types, ptr_size) <= 8
+            && !matches!(ty, Type::Array { .. });
+        let (left, right) = if packed_small {
+            (self.store_tmp(left, 8)?, self.store_tmp(right, 8)?)
+        } else {
+            (left, right)
+        };
+        let one = self.func.builder.ins().iconst(types::I8, 1);
+        Ok(match ty {
+            Type::Primitive(Primitive::Float32 | Primitive::Float64) => {
+                self.func.builder.ins().fcmp(FloatCC::Equal, left, right)
+            }
+            Type::Primitive(Primitive::Unit) => one,
+            Type::Primitive(_) => self.func.builder.ins().icmp(IntCC::Equal, left, right),
+            Type::Array { element, size } => {
+                let stride =
+                    crate::layout::array_element_stride(element, self.module.types, ptr_size);
+                let mut acc = one;
+                for index in 0..*size {
+                    let offset = (index as u32) * stride;
+                    let left_addr = self.addr_at(left, offset);
+                    let right_addr = self.addr_at(right, offset);
+                    let left_elem = self.load_value_of_type(left_addr, element)?;
+                    let right_elem = self.load_value_of_type(right_addr, element)?;
+                    let elem_eq =
+                        self.emit_structural_equality(left_elem, right_elem, element)?;
+                    acc = self.func.builder.ins().band(acc, elem_eq);
+                }
+                acc
+            }
+            Type::Tuple(elements) => {
+                let mut acc = one;
+                for (index, element) in elements.iter().enumerate() {
+                    let offset = crate::layout::tuple_field_offset(
+                        index,
+                        elements,
+                        self.module.types,
+                        ptr_size,
+                    );
+                    let left_addr = self.addr_at(left, offset);
+                    let right_addr = self.addr_at(right, offset);
+                    let left_elem = self.load_value_of_type(left_addr, element)?;
+                    let right_elem = self.load_value_of_type(right_addr, element)?;
+                    let elem_eq =
+                        self.emit_structural_equality(left_elem, right_elem, element)?;
+                    acc = self.func.builder.ins().band(acc, elem_eq);
+                }
+                acc
+            }
+            Type::Named(name) => self.emit_named_equality(left, right, name)?,
+            _ => self.func.builder.ins().icmp(IntCC::Equal, left, right),
+        })
+    }
+
+    fn emit_named_equality(
+        &mut self,
+        left: ir::Value,
+        right: ir::Value,
+        name: &str,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        let one = self.func.builder.ins().iconst(types::I8, 1);
+        match crate::layout::resolve_type_item(name, self.module.types, &mut Vec::new()) {
+            Some(HirItemKind::Struct(s)) => {
+                let field_types: Vec<(String, Type)> = s
+                    .fields
+                    .iter()
+                    .map(|f| (f.name.clone(), f.type_.clone()))
+                    .collect();
+                let (_, field_layouts) = crate::layout::struct_layout(
+                    &field_types,
+                    s.repr_c,
+                    self.module.types,
+                    ptr_size,
+                );
+                let mut acc = one;
+                for (field_name, layout) in &field_layouts {
+                    let field_type = s
+                        .fields
+                        .iter()
+                        .find(|f| f.name == *field_name)
+                        .map(|f| &f.type_)
+                        .expect("field layout refers to a declared field");
+                    let left_addr = self.addr_at(left, layout.offset);
+                    let right_addr = self.addr_at(right, layout.offset);
+                    let left_field = self.load_value_of_type(left_addr, field_type)?;
+                    let right_field = self.load_value_of_type(right_addr, field_type)?;
+                    let field_eq =
+                        self.emit_structural_equality(left_field, right_field, field_type)?;
+                    acc = self.func.builder.ins().band(acc, field_eq);
+                }
+                Ok(acc)
+            }
+            Some(HirItemKind::TupleStruct(t)) => {
+                let mut acc = one;
+                for (index, element) in t.types.iter().enumerate() {
+                    let offset =
+                        crate::layout::tuple_field_offset(index, &t.types, self.module.types, ptr_size);
+                    let left_addr = self.addr_at(left, offset);
+                    let right_addr = self.addr_at(right, offset);
+                    let left_elem = self.load_value_of_type(left_addr, element)?;
+                    let right_elem = self.load_value_of_type(right_addr, element)?;
+                    let elem_eq =
+                        self.emit_structural_equality(left_elem, right_elem, element)?;
+                    acc = self.func.builder.ins().band(acc, elem_eq);
+                }
+                Ok(acc)
+            }
+            Some(HirItemKind::Enum(e)) => {
+                let all_variant_data: Vec<Vec<Type>> = e
+                    .variants
+                    .iter()
+                    .map(|variant| match &variant.data {
+                        Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+                        Some(HirEnumVariantData::Struct(fields)) => {
+                            fields.iter().map(|f| f.type_.clone()).collect()
+                        }
+                        None => Vec::new(),
+                    })
+                    .collect();
+                let (_, data_offset, _) =
+                    crate::layout::enum_layout(&all_variant_data, self.module.types, ptr_size);
+                let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+                let left_disc = self.func.builder.ins().load(types::I8, mflags, left, 0);
+                let right_disc = self.func.builder.ins().load(types::I8, mflags, right, 0);
+                let mut acc = self
+                    .func
+                    .builder
+                    .ins()
+                    .icmp(IntCC::Equal, left_disc, right_disc);
+                for (index, variant) in e.variants.iter().enumerate() {
+                    let payload_types: Vec<Type> = match &variant.data {
+                        Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+                        Some(HirEnumVariantData::Struct(fields)) => {
+                            fields.iter().map(|f| f.type_.clone()).collect()
+                        }
+                        None => Vec::new(),
+                    };
+                    if payload_types.is_empty() {
+                        continue;
+                    }
+                    let variant_const =
+                        self.func.builder.ins().iconst(types::I8, index as i64);
+                    let cond = self
+                        .func
+                        .builder
+                        .ins()
+                        .icmp(IntCC::Equal, left_disc, variant_const);
+                    let mut fields_eq = one;
+                    let mut offset_acc = 0u32;
+                    for field_type in payload_types.iter() {
+                        let field_align =
+                            crate::layout::align_of(field_type, self.module.types, ptr_size);
+                        offset_acc = crate::layout::align_up(offset_acc, field_align);
+                        let left_addr = self.addr_at(left, data_offset + offset_acc);
+                        let right_addr = self.addr_at(right, data_offset + offset_acc);
+                        let left_field =
+                            self.load_value_of_type(left_addr, field_type)?;
+                        let right_field =
+                            self.load_value_of_type(right_addr, field_type)?;
+                        let field_eq =
+                            self.emit_structural_equality(left_field, right_field, field_type)?;
+                        fields_eq = self.func.builder.ins().band(fields_eq, field_eq);
+                        offset_acc +=
+                            crate::layout::size_of(field_type, self.module.types, ptr_size);
+                    }
+                    let acc_with_fields = self.func.builder.ins().band(acc, fields_eq);
+                    acc = self.func.builder.ins().select(cond, acc_with_fields, acc);
+                }
+                Ok(acc)
+            }
+            Some(HirItemKind::TypeAlias(alias)) => {
+                self.emit_structural_equality(left, right, &alias.type_)
+            }
+            _ => Err(CraneliftError::Msg(format!(
+                "equality not supported for type `{name}`"
+            ))),
         }
     }
 

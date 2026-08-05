@@ -426,8 +426,8 @@ The Cranelift backend does not implement these complete aggregate parameter and 
 - [ ] Implement tuple-struct construction and field access.
 - [ ] Implement aggregate copying, assignment, parameters, and return values.
 - [ ] Implement the complete small/large aggregate ABI, including values larger than one machine register.
-- [ ] Implement deep equality for structs and tuples.
-- [ ] Implement enum layouts and construction for values larger than 8 bytes.
+- [x] Implement deep equality for structs and tuples. Equality is automatic for all types: structs, tuples, tuple-structs, enums, and arrays compare per-field with IEEE float semantics (`NaN != NaN`, `-0.0 == 0.0`).
+- [x] Implement enum layouts and construction for values larger than 8 bytes.
 - [ ] Implement multi-segment scoped paths (`parent::Type::Variant()`) in match patterns.
 
 ```
@@ -464,7 +464,7 @@ let pair = (value, value);
 let first = pair.0;
 ```
 
-Tuple literals and numeric field access are currently supported. Tuple-struct construction, aggregate passing/return, and deep tuple equality remain TODO.
+Tuple literals and numeric field access are currently supported. Tuple-struct construction, aggregate passing/return remain TODO; tuple equality is implemented.
 ### Match
 
 `match` is an expression: the whole match evaluates to the value of the selected arm body. All arm bodies must unify to a single result type, and the match can be assigned or returned like any expression.
