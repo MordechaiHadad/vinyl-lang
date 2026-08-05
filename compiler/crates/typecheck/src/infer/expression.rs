@@ -199,13 +199,54 @@ impl InferState {
                 function,
                 args,
             } => {
-                let hir_func = self.infer_expr(function, signatures)?;
-
                 let hir_args: Result<Vec<HirExpression>, _> = args
                     .iter()
                     .map(|a| self.infer_expr(a, signatures))
                     .collect();
                 let hir_args = hir_args?;
+
+                if let Expression::Ident(name, _) = function.as_ref()
+                    && let Ok(canonical_name) = self.canonicalize_scoped_name(name, *span)
+                    && let Some(HirItemKind::TupleStruct(tuple_struct)) =
+                        resolve_named_type(&canonical_name, &self.types)
+                {
+                    if hir_args.len() != tuple_struct.types.len() {
+                        self.errors.push(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::ArgCountMismatch {
+                                callee: canonical_name.clone(),
+                                expected: tuple_struct.types.len(),
+                                found: hir_args.len(),
+                            },
+                        ));
+                    }
+                    for (i, (arg, expected_ty)) in
+                        args.iter().zip(&tuple_struct.types).enumerate()
+                    {
+                        let arg_type = self.subs.apply(&hir_args[i].type_);
+                        if let Err(e) = self.subs.unify(
+                            &self.source,
+                            &arg_type,
+                            expected_ty,
+                            arg.span(),
+                        ) {
+                            self.errors.push(*e);
+                        }
+                    }
+                    return Ok(HirExpression {
+                        kind: HirExpressionKind::Call {
+                            span: *span,
+                            function: Box::new(HirExpression {
+                                kind: HirExpressionKind::Ident(canonical_name.clone(), *span),
+                                type_: Type::Primitive(Primitive::Unit),
+                            }),
+                            args: hir_args,
+                        },
+                        type_: Type::Named(canonical_name),
+                    });
+                }
+
+                let hir_func = self.infer_expr(function, signatures)?;
 
                 if let Expression::ValuePath {
                     segments,

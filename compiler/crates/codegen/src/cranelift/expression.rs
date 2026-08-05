@@ -443,6 +443,10 @@ impl<'a> CodegenCtx<'a> {
                         } else {
                             Ok(result_values[0])
                         }
+                    } else if let Some(HirItemKind::TupleStruct(tuple_struct)) =
+                        crate::layout::resolve_type_item(name, self.module.types, &mut Vec::new())
+                    {
+                        self.compile_tuple_struct_literal(&tuple_struct.types, args, &expr.type_)
                     } else {
                         Err(CraneliftError::Msg(format!("undefined function `{name}`")))
                     }
@@ -1431,6 +1435,59 @@ impl<'a> CodegenCtx<'a> {
         if is_large {
             Ok(base)
         } else {
+            Ok(self.func.builder.ins().load(types::I64, mflags, base, 0))
+        }
+    }
+
+    fn compile_tuple_struct_literal(
+        &mut self,
+        element_types: &[Type],
+        args: &[HirExpression],
+        result_type: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        let is_large = is_large_aggregate(result_type, self.module.types, ptr_size);
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                crate::layout::aggregate_slot_size(result_type, self.module.types, ptr_size),
+                0,
+            ));
+        let base = self
+            .func
+            .builder
+            .ins()
+            .stack_addr(self.module.pointer_type, slot, 0);
+        self.zero_slot(
+            base,
+            crate::layout::size_of(result_type, self.module.types, ptr_size),
+        );
+        for (i, elem) in args.iter().enumerate() {
+            let val = self.compile_expr(elem)?;
+            let offset = crate::layout::tuple_field_offset(
+                i,
+                element_types,
+                self.module.types,
+                ptr_size,
+            );
+            let field_addr = if offset == 0 {
+                base
+            } else {
+                let off = self
+                    .func
+                    .builder
+                    .ins()
+                    .iconst(self.module.pointer_type, offset as i64);
+                self.func.builder.ins().iadd(base, off)
+            };
+            self.store_by_value(&element_types[i], val, field_addr)?;
+        }
+        if is_large {
+            Ok(base)
+        } else {
+            let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
             Ok(self.func.builder.ins().load(types::I64, mflags, base, 0))
         }
     }

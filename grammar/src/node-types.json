@@ -894,6 +894,10 @@
             "named": true
           },
           {
+            "type": "type_identifier",
+            "named": true
+          },
+          {
             "type": "value_identifier",
             "named": true
           }

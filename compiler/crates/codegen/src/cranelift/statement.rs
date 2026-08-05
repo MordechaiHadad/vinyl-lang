@@ -306,7 +306,41 @@ impl<'a> CodegenCtx<'a> {
         };
 
         match target {
-            HirAssignTarget::Ident(name, _) => self.write_var(name, write_val),
+            HirAssignTarget::Ident(name, _) => {
+                let ptr_size = self.module.pointer_type.bytes();
+                let needs_copy = self
+                    .func
+                    .vars
+                    .get(name.as_str())
+                    .map(|info| {
+                        is_large_aggregate(&info.vinyl_type, self.module.types, ptr_size)
+                    })
+                    .unwrap_or(false);
+                if needs_copy {
+                    // Large aggregates are stack-backed and the RHS is an
+                    // address; copy the whole value instead of storing a pointer.
+                    let slot = match self.func.vars.get(name.as_str()) {
+                        Some(VarInfo {
+                            slot: VarSlot::StackSlot(slot, _),
+                            ..
+                        }) => *slot,
+                        _ => {
+                            return Err(CraneliftError::Msg(format!(
+                                "aggregate variable `{name}` is not stack-backed"
+                            )));
+                        }
+                    };
+                    let ty = self.func.vars[name.as_str()].vinyl_type.clone();
+                    let addr = self
+                        .func
+                        .builder
+                        .ins()
+                        .stack_addr(self.module.pointer_type, slot, 0);
+                    self.store_by_value(&ty, write_val, addr)
+                } else {
+                    self.write_var(name, write_val)
+                }
+            }
             HirAssignTarget::Deref(inner, _) => {
                 let ptr = match &inner.kind {
                     HirExpressionKind::Ident(name, _) => self.read_var_raw(name)?,

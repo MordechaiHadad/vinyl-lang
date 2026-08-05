@@ -422,12 +422,6 @@ The Cranelift backend does not implement these complete aggregate parameter and 
 
 #### TODO
 
-- [ ] Implement struct literal construction: `Character { active: true, id: 1, hp: 100 }`.
-- [ ] Implement tuple-struct construction and field access.
-- [ ] Implement aggregate copying, assignment, parameters, and return values.
-- [ ] Implement the complete small/large aggregate ABI, including values larger than one machine register.
-- [x] Implement deep equality for structs and tuples. Equality is automatic for all types: structs, tuples, tuple-structs, enums, and arrays compare per-field with IEEE float semantics (`NaN != NaN`, `-0.0 == 0.0`).
-- [x] Implement enum layouts and construction for values larger than 8 bytes.
 - [ ] Implement multi-segment scoped paths (`parent::Type::Variant()`) in match patterns.
 
 ```

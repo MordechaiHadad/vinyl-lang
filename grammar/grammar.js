@@ -319,7 +319,7 @@ export default grammar({
     unit_literal: $ => "unit",
 
     call_expression: $ => prec(PREC.CALL, seq(
-      field("function", choice($.value_identifier, $.scoped_value_expression)),
+      field("function", choice($.value_identifier, $.type_identifier, $.scoped_value_expression)),
       field("arguments", $.arguments),
     )),
 

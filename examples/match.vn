@@ -1,0 +1,71 @@
+# Match expression examples
+# Run: vinyl run examples/match.vn
+enum Shape {
+    Empty,
+    Circle(int),
+    Rect(int,int),
+}
+
+struct Point {
+    x:int,
+    y:int,
+}
+# Match on enum payloads, extracting values per variant.
+fn shape_area(shape: Shape): int {
+    match shape {
+        Shape::Empty() => 0
+        Shape::Circle(r) => r * r * 3
+        Shape::Rect(w,h) => w * h
+    }
+}
+# Guards filter arms; a failed guard falls through to the next arm.
+fn classify(shape: Shape): int {
+    match shape {
+        Shape::Circle(r)ifr > 10 => 100
+        Shape::Circle(_) => 0
+        Shape::Rect(w,h)ifw == h => 50
+        Shape::Rect(_,_) => 10
+        Shape::Empty() => 1
+    }
+}
+# Struct patterns bind fields by name (field pun).
+fn point_quadrant(p: Point): int {
+    match p {
+        Point{x,y}ifx > 0 && y > 0 => 1
+        Point{x,y}ifx < 0 && y < 0 => 3
+        _ => 0
+    }
+}
+# Tuple patterns bind elements positionally.
+fn tuple_sum(pair: (int, int)): int {
+    match pair {
+        (a,b) => a + b
+        _ => 0
+    }
+}
+# A match is an expression: its value can be bound or returned directly.
+fn classify_signed(n: int): int {
+    let bucket = match n {
+        0 => 0
+        xifx < 0 => 1
+        _ => 2
+    };
+    bucket
+}
+
+fn main(): int {
+    let a = shape_area(Shape::Rect(3, 4));
+    let b = shape_area(Shape::Circle(2));
+    let c = classify(Shape::Circle(20));
+    let d = classify(Shape::Circle(5));
+    let e = classify(Shape::Rect(4, 4));
+    let f = classify(Shape::Rect(2, 3));
+    let g = point_quadrant(Point{x:3,y:4});
+    let h = point_quadrant(Point{x:-1,y:-1});
+    let i = tuple_sum((10, 20));
+    let j = classify_signed(0);
+    let k = classify_signed(-5);
+    let l = classify_signed(7);
+
+    a + b + c + d + e + f + g + h + i + j + k + l
+}

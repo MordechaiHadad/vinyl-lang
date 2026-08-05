@@ -1757,6 +1757,10 @@
                 },
                 {
                   "type": "SYMBOL",
+                  "name": "type_identifier"
+                },
+                {
+                  "type": "SYMBOL",
                   "name": "scoped_value_expression"
                 }
               ]

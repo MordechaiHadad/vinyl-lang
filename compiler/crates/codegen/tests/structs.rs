@@ -79,3 +79,39 @@ fn nested_struct_field_access() {
         52
     );
 }
+
+#[test]
+fn small_struct_whole_assignment() {
+    assert_eq!(
+        common::run("struct Point { x: int32, y: int32 } fn main(): int32 { let mut a = Point { x: 10, y: 20 }; let mut b = Point { x: 1, y: 2 }; b = a; b.x + b.y }")
+            .unwrap(),
+        30
+    );
+}
+
+#[test]
+fn two_chunk_struct_whole_assignment() {
+    assert_eq!(
+        common::run("struct Quad { a: int32, b: int32, c: int32, d: int32 } fn main(): int32 { let mut a = Quad { a: 1, b: 2, c: 3, d: 4 }; let mut b = Quad { a: 9, b: 9, c: 9, d: 9 }; b = a; b.a + b.b + b.c + b.d }")
+            .unwrap(),
+        10
+    );
+}
+
+#[test]
+fn large_struct_whole_assignment() {
+    assert_eq!(
+        common::run("struct Triple { a: int32, b: int32, c: int32 } fn main(): int32 { let mut a = Triple { a: 1, b: 2, c: 3 }; let mut b = Triple { a: 9, b: 9, c: 9 }; b = a; b.a + b.b + b.c }")
+            .unwrap(),
+        6
+    );
+}
+
+#[test]
+fn large_struct_assignment_is_a_copy() {
+    assert_eq!(
+        common::run("struct Triple { a: int32, b: int32, c: int32 } fn main(): int32 { let mut a = Triple { a: 1, b: 2, c: 3 }; let mut b = Triple { a: 9, b: 9, c: 9 }; b = a; a.a = 100; b.a }")
+            .unwrap(),
+        1
+    );
+}
