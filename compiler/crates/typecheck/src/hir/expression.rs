@@ -1,6 +1,7 @@
 use miette::SourceSpan;
 use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
 
+use crate::hir::pattern::HirPattern;
 use crate::hir::statement::HirStatement;
 use crate::hir::types::Type;
 
@@ -68,4 +69,17 @@ pub enum HirExpressionKind {
         object: Box<HirExpression>,
         name: String,
     },
+    Match {
+        span: SourceSpan,
+        value: Box<HirExpression>,
+        arms: Vec<HirMatchArm>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct HirMatchArm {
+    pub span: SourceSpan,
+    pub pattern: HirPattern,
+    pub guard: Option<Box<HirExpression>>,
+    pub body: Vec<HirStatement>,
 }

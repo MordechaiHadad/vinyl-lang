@@ -8,7 +8,7 @@ use vinyl_parser::ast::types::Primitive;
 
 use crate::error::{InferResult, TypeDiagnosticKind};
 use crate::hir::{
-    HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirStatement,
+    HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirMatchArm, HirStatement,
     HirStatementKind, Type,
 };
 use crate::infer::InferState;
@@ -718,12 +718,98 @@ impl InferState {
                     type_: struct_type,
                 })
             }
-            Expression::Match { span, .. } => Err(Box::new(self.source.error(
-                *span,
-                TypeDiagnosticKind::UnsupportedFeature {
-                    feature: "match expressions".to_string(),
-                },
-            ))),
+            Expression::Match { span, value, arms } => {
+                let hir_value = self.infer_expr(value, signatures)?;
+                let value_type = self.subs.apply(&hir_value.type_);
+
+                let mut hir_arms = Vec::new();
+                let mut arm_types = Vec::new();
+                for arm in arms {
+                    self.scope.push_scope();
+                    let hir_pattern = self.infer_pattern(&arm.pattern, &value_type)?;
+                    let guard = if let Some(guard) = &arm.guard {
+                        let hir_guard = self.infer_expr(guard, signatures)?;
+                        let guard_type = self.subs.apply(&hir_guard.type_);
+                        if self
+                            .subs
+                            .unify(
+                                &self.source,
+                                &guard_type,
+                                &Type::Primitive(Primitive::Bool),
+                                guard.span(),
+                            )
+                            .is_err()
+                        {
+                            self.errors.push(self.source.error(
+                                guard.span(),
+                                TypeDiagnosticKind::GuardNotBool {
+                                    found: guard_type.clone(),
+                                },
+                            ));
+                        }
+                        Some(Box::new(hir_guard))
+                    } else {
+                        None
+                    };
+                    let (body, body_type) = self.infer_arm_body(&arm.body, signatures)?;
+                    self.scope.pop_scope();
+                    arm_types.push(body_type);
+                    hir_arms.push(HirMatchArm {
+                        span: arm.span,
+                        pattern: hir_pattern,
+                        guard,
+                        body,
+                    });
+                }
+
+                self.check_exhaustive(&value_type, &hir_arms, *span);
+
+                let result_type = self.subs.fresh_var();
+                for arm_type in &arm_types {
+                    if let Err(e) = self
+                        .subs
+                        .unify(&self.source, &result_type, arm_type, *span)
+                    {
+                        self.errors.push(*e);
+                    }
+                }
+
+                Ok(HirExpression {
+                    kind: HirExpressionKind::Match {
+                        span: *span,
+                        value: Box::new(hir_value),
+                        arms: hir_arms,
+                    },
+                    type_: self.subs.apply(&result_type),
+                })
+            }
+        }
+    }
+
+    fn infer_arm_body(
+        &mut self,
+        body: &Expression,
+        signatures: &HashMap<&str, &FunctionDef>,
+    ) -> InferResult<(Vec<HirStatement>, Type)> {
+        match body {
+            Expression::Block(stmts, _) => {
+                self.scope.push_scope();
+                let result = self.infer_block(stmts, signatures);
+                self.scope.pop_scope();
+                let hir = result?;
+                let body_type = self.block_result_type(&hir);
+                Ok((hir, body_type))
+            }
+            other => {
+                let hir_expr = self.infer_expr(other, signatures)?;
+                let body_type = hir_expr.type_.clone();
+                Ok((
+                    vec![HirStatement {
+                        kind: HirStatementKind::Value(hir_expr, other.span()),
+                    }],
+                    body_type,
+                ))
+            }
         }
     }
 

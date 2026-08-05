@@ -172,6 +172,15 @@ impl InferState {
                     self.validate_literal_types(b, errors);
                 }
             }
+            HirExpressionKind::Match { value, arms, .. } => {
+                self.validate_literal_types_expr(value, errors);
+                for arm in arms {
+                    if let Some(guard) = &arm.guard {
+                        self.validate_literal_types_expr(guard, errors);
+                    }
+                    self.validate_literal_types(&arm.body, errors);
+                }
+            }
             _ => {}
         }
     }

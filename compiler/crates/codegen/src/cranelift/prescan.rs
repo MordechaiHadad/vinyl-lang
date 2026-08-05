@@ -98,6 +98,15 @@ fn prescan_expr(expr: &HirExpression, refed: &mut HashSet<String>) {
         HirExpressionKind::FieldAccess { object, .. } => {
             prescan_expr(object, refed);
         }
+        HirExpressionKind::Match { value, arms, .. } => {
+            prescan_expr(value, refed);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    prescan_expr(guard, refed);
+                }
+                prescan_stmts(&arm.body, refed);
+            }
+        }
         HirExpressionKind::Int(..)
         | HirExpressionKind::UInt(..)
         | HirExpressionKind::Float(..)

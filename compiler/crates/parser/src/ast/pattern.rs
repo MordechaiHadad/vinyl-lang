@@ -13,7 +13,8 @@ pub enum Pattern {
     Tuple(Vec<Pattern>, SourceSpan),
     EnumVariant {
         span: SourceSpan,
-        name: String,
+        type_path: String,
+        variant_name: String,
         patterns: Vec<Pattern>,
     },
 }

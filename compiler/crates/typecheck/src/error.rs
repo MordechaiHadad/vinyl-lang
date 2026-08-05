@@ -208,4 +208,16 @@ pub enum TypeDiagnosticKind {
         type_name: String,
         field_name: String,
     },
+
+    #[error("match is not exhaustive; a `_` arm is required")]
+    #[diagnostic(code(typeck::non_exhaustive_match))]
+    NonExhaustiveMatch,
+
+    #[error("match guard must be a bool, found `{found}`")]
+    #[diagnostic(code(typeck::guard_not_bool))]
+    GuardNotBool { found: crate::hir::Type },
+
+    #[error("tuple pattern expects {expected} elements, got {found}")]
+    #[diagnostic(code(typeck::tuple_arity_mismatch))]
+    TupleArityMismatch { expected: usize, found: usize },
 }

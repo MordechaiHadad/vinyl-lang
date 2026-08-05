@@ -113,5 +113,6 @@ impl Expression {
 pub struct MatchArm {
     pub span: SourceSpan,
     pub pattern: Pattern,
+    pub guard: Option<Box<Expression>>,
     pub body: Box<Expression>,
 }

@@ -223,3 +223,126 @@ fn f(x: int32): int32 {
           (pattern
             (wildcard_pattern))
           (integer_literal))))))
+
+==================
+Match enum variant pattern
+==================
+
+enum Shape {
+    Circle(int32),
+    Rect(int32, int32),
+    Empty(),
+}
+
+fn area(s: Shape): int32 {
+    match s {
+        Shape::Circle(r) => r,
+        Shape::Rect(w, h) => w * h,
+        Shape::Empty() => 0,
+    }
+}
+
+---
+
+(source_file
+  (enum_definition
+    name: (type_identifier)
+    (enum_variant
+      name: (type_identifier)
+      (simple_type
+        (primitive_type)))
+    (enum_variant
+      name: (type_identifier)
+      (simple_type
+        (primitive_type))
+      (simple_type
+        (primitive_type)))
+    (enum_variant
+      name: (type_identifier)))
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters
+      (parameter
+        name: (value_identifier)
+        type: (type_annotation
+          (simple_type
+            (type_identifier)))))
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          pattern: (pattern
+            (enum_variant_pattern
+              type: (type_identifier)
+              variant: (type_identifier)
+              arguments: (pattern_arguments
+                (pattern
+                  (identifier_pattern
+                    (value_identifier))))))
+          body: (value_identifier))
+        (match_arm
+          pattern: (pattern
+            (enum_variant_pattern
+              type: (type_identifier)
+              variant: (type_identifier)
+              arguments: (pattern_arguments
+                (pattern
+                  (identifier_pattern
+                    (value_identifier)))
+                (pattern
+                  (identifier_pattern
+                    (value_identifier))))))
+          body: (binary_expression
+            (value_identifier)
+            (value_identifier)))
+        (match_arm
+          pattern: (pattern
+            (enum_variant_pattern
+              type: (type_identifier)
+              variant: (type_identifier)
+              arguments: (pattern_arguments)))
+          body: (integer_literal))))))
+
+==================
+Match arm with guard
+==================
+
+fn f(x: int32): int32 {
+    match x {
+        1 if x > 0 => 10,
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters
+      (parameter
+        name: (value_identifier)
+        type: (type_annotation
+          (simple_type
+            (primitive_type)))))
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          pattern: (pattern
+            (literal_pattern
+              (integer_literal)))
+          guard: (binary_expression
+            (value_identifier)
+            (integer_literal))
+          body: (integer_literal))
+        (match_arm
+          pattern: (pattern
+            (wildcard_pattern))
+          body: (integer_literal))))))

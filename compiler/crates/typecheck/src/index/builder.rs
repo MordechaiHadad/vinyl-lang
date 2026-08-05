@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::hir::{
-    HirExpression, HirExpressionKind, HirItem, HirItemKind, HirStatement, HirStatementKind,
+    HirExpression, HirExpressionKind, HirItem, HirItemKind, HirPattern, HirPatternKind,
+    HirStatement, HirStatementKind,
 };
 use crate::index::types::{Definition, DefinitionKind, FieldAccessRef, HirExprRef, HirIndex};
 
@@ -294,6 +295,20 @@ impl IndexBuilder {
                     self.walk_expr(e);
                 }
             }
+            HirExpressionKind::Match { value, arms, .. } => {
+                self.walk_expr(value);
+                for arm in arms {
+                    self.scopes.push(HashMap::new());
+                    self.walk_pattern(&arm.pattern);
+                    if let Some(guard) = &arm.guard {
+                        self.walk_expr(guard);
+                    }
+                    for stmt in &arm.body {
+                        self.walk_stmt(stmt);
+                    }
+                    self.scopes.pop();
+                }
+            }
             HirExpressionKind::Int(_, _)
             | HirExpressionKind::UInt(_, _)
             | HirExpressionKind::Float(_, _)
@@ -305,8 +320,36 @@ impl IndexBuilder {
         }
     }
 
-    fn insert_expr(&mut self, expr: &HirExpression) {
-        let span = match &expr.kind {
+    fn walk_pattern(&mut self, pattern: &HirPattern) {
+        match &pattern.kind {
+            HirPatternKind::Wildcard(_) | HirPatternKind::Literal { .. } => {}
+            HirPatternKind::Ident { span, name } => {
+                self.add_definition(
+                    name,
+                    DefinitionKind::Variable,
+                    *span,
+                    Some(pattern.type_.to_string()),
+                );
+            }
+            HirPatternKind::Struct { fields, .. } => {
+                for (_, sub_pattern) in fields {
+                    self.walk_pattern(sub_pattern);
+                }
+            }
+            HirPatternKind::Tuple { elements, .. } => {
+                for element in elements {
+                    self.walk_pattern(element);
+                }
+            }
+            HirPatternKind::EnumVariant { patterns, .. } => {
+                for sub_pattern in patterns {
+                    self.walk_pattern(sub_pattern);
+                }
+            }
+        }
+    }
+
+    fn insert_expr(&mut self, expr: &HirExpression) {        let span = match &expr.kind {
             HirExpressionKind::Int(_, span)
             | HirExpressionKind::UInt(_, span)
             | HirExpressionKind::Float(_, span)
@@ -326,7 +369,8 @@ impl IndexBuilder {
             | HirExpressionKind::FieldAccess { span, .. }
             | HirExpressionKind::EnumVariant { span, .. }
             | HirExpressionKind::Struct { span, .. }
-            | HirExpressionKind::If { span, .. } => *span,
+            | HirExpressionKind::If { span, .. }
+            | HirExpressionKind::Match { span, .. } => *span,
         };
         self.expr_at_pos.insert(
             span.offset(),

@@ -8,12 +8,13 @@ use cranelift_module::Module;
 use vinyl_parser::ast::operator::{BinaryOp, UnaryOp};
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{
-    HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirStatement,
-    HirStatementKind, Type,
+    HirEnumVariantData, HirExpression, HirExpressionKind, HirItemKind, HirMatchArm, HirPattern,
+    HirPatternKind, HirStatement, HirStatementKind, LiteralValue, Type,
 };
 
-use super::state::CodegenCtx;
+use super::state::{CodegenCtx, VarInfo, VarSlot};
 use super::types::{ir_type_from_primitive, is_large_aggregate};
+use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
 
 fn is_unsigned_type(t: &Type) -> bool {
@@ -609,8 +610,12 @@ impl<'a> CodegenCtx<'a> {
             HirExpressionKind::Struct {
                 type_name, fields, ..
             } => self.compile_struct_literal(type_name, fields, &expr.type_),
-            HirExpressionKind::FieldAccess { object, name, .. } => {
-                let ptr_size = self.module.pointer_type.bytes();
+            HirExpressionKind::Match {
+                span: _,
+                value,
+                arms,
+            } => self.compile_expr_match(value, arms, &expr.type_),
+            HirExpressionKind::FieldAccess { object, name, .. } => {                let ptr_size = self.module.pointer_type.bytes();
                 let obj = self.compile_expr(object)?;
                 let offset = match &object.type_ {
                     Type::Tuple(element_types) => {
@@ -1638,5 +1643,532 @@ impl<'a> CodegenCtx<'a> {
             diff = self.func.builder.ins().bor(diff, xored);
         }
         diff
+    }
+
+    fn compile_expr_match(
+        &mut self,
+        value: &HirExpression,
+        arms: &[HirMatchArm],
+        result_type: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        let result_slot = if matches!(result_type, Type::Primitive(Primitive::Unit)) {
+            None
+        } else {
+            let slot = self
+                .func
+                .builder
+                .create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    crate::layout::aggregate_slot_size(result_type, self.module.types, ptr_size),
+                    0,
+                ));
+            let ptr = self
+                .func
+                .builder
+                .ins()
+                .stack_addr(self.module.pointer_type, slot, 0);
+            Some((result_type.clone(), ptr))
+        };
+
+        let header = self.func.builder.create_block();
+        let merge = self.func.builder.create_block();
+        let after = self.func.builder.create_block();
+        let check_blocks: Vec<ir::Block> = (0..arms.len())
+            .map(|_| self.func.builder.create_block())
+            .collect();
+        let arm_blocks: Vec<ir::Block> = (0..arms.len())
+            .map(|_| self.func.builder.create_block())
+            .collect();
+        let body_blocks: Vec<ir::Block> = (0..arms.len())
+            .map(|_| self.func.builder.create_block())
+            .collect();
+
+        self.func.builder.ins().jump(header, &[]);
+        self.func.builder.switch_to_block(header);
+        let scrutinee_val = self.compile_expr(value)?;
+        let base = self.materialize_scrutinee(scrutinee_val, &value.type_)?;
+        let first = check_blocks.first().copied().unwrap_or(merge);
+        self.func.builder.ins().jump(first, &[]);
+        self.func.builder.seal_block(header);
+
+        for (index, arm) in arms.iter().enumerate() {
+            self.func.builder.switch_to_block(check_blocks[index]);
+            if index == arms.len() - 1 {
+                self.func.builder.ins().jump(arm_blocks[index], &[]);
+            } else {
+                let cond = self.compile_pattern_condition(&arm.pattern, base)?;
+                self.func.builder.ins().brif(
+                    cond,
+                    arm_blocks[index],
+                    &[],
+                    check_blocks[index + 1],
+                    &[],
+                );
+            }
+        }
+
+        for (index, arm) in arms.iter().enumerate() {
+            self.func.builder.switch_to_block(arm_blocks[index]);
+            self.bind_pattern_vars(&arm.pattern, base)?;
+            if let Some(guard) = &arm.guard {
+                let guard_val = self.compile_expr(guard)?;
+                if index == arms.len() - 1 {
+                    // ponytail: last arm never has a failing guard (exhaustiveness
+                    // requires an earlier non-guarded catch-all), trap as fallback.
+                    let trap_block = self.func.builder.create_block();
+                    self.func
+                        .builder
+                        .ins()
+                        .brif(guard_val, body_blocks[index], &[], trap_block, &[]);
+                    self.func.builder.switch_to_block(trap_block);
+                    self.func
+                        .builder
+                        .ins()
+                        .trap(ir::TrapCode::user(1).expect("valid user trap code"));
+                    self.func.builder.seal_block(trap_block);
+                    self.func.builder.switch_to_block(arm_blocks[index]);
+                } else {
+                    self.func
+                        .builder
+                        .ins()
+                        .brif(guard_val, body_blocks[index], &[], check_blocks[index + 1], &[]);
+                }
+            } else {
+                self.func.builder.ins().jump(body_blocks[index], &[]);
+            }
+            self.func.builder.seal_block(arm_blocks[index]);
+        }
+
+        for block in &check_blocks {
+            self.func.builder.seal_block(*block);
+        }
+
+        for (index, arm) in arms.iter().enumerate() {
+            self.func.builder.switch_to_block(body_blocks[index]);
+            self.compile_match_body(&arm.body, &result_slot, merge)?;
+            self.func.builder.seal_block(body_blocks[index]);
+        }
+
+        self.func.builder.switch_to_block(merge);
+        self.func.builder.seal_block(merge);
+
+        let result_val = if let Some((res_type, res_ptr)) = &result_slot {
+            self.load_match_result(res_type, *res_ptr)?
+        } else {
+            self.func.builder.ins().iconst(types::I8, 0)
+        };
+
+        self.func.builder.ins().jump(after, &[]);
+        self.func.builder.switch_to_block(after);
+        self.func.builder.seal_block(after);
+        Ok(result_val)
+    }
+
+    fn compile_match_body(
+        &mut self,
+        stmts: &[HirStatement],
+        result_slot: &Option<(Type, ir::Value)>,
+        merge: ir::Block,
+    ) -> Result<(), CraneliftError> {
+        let mut terminated = false;
+        for (index, stmt) in stmts.iter().enumerate() {
+            if terminated {
+                break;
+            }
+            if index == stmts.len() - 1
+                && let HirStatement {
+                    kind: HirStatementKind::Value(val_expr, _),
+                    ..
+                } = stmt
+            {
+                let val = self.compile_expr(val_expr)?;
+                if let Some((res_type, res_ptr)) = result_slot {
+                    self.store_by_value(res_type, val, *res_ptr)?;
+                }
+                self.func.builder.ins().jump(merge, &[]);
+                terminated = true;
+                break;
+            }
+            self.compile_stmt(stmt, &mut terminated)?;
+        }
+        if !terminated {
+            self.func.builder.ins().jump(merge, &[]);
+        }
+        Ok(())
+    }
+
+    fn load_match_result(
+        &mut self,
+        res_type: &Type,
+        res_ptr: ir::Value,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        if is_large_aggregate(res_type, self.module.types, ptr_size) {
+            Ok(res_ptr)
+        } else if crate::layout::is_aggregate(res_type) {
+            Ok(self.func.builder.ins().load(types::I64, mflags, res_ptr, 0))
+        } else {
+            let clif_ty = ir_type_from_primitive(res_type, self.module.pointer_type);
+            Ok(self.func.builder.ins().load(clif_ty, mflags, res_ptr, 0))
+        }
+    }
+
+    /// Turn the scrutinee value into an address of its memory representation so
+    /// patterns can read the discriminant and payload fields uniformly.
+    fn materialize_scrutinee(
+        &mut self,
+        val: ir::Value,
+        ty: &Type,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        if is_large_aggregate(ty, self.module.types, ptr_size) {
+            return Ok(val);
+        }
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(
+                StackSlotKind::ExplicitSlot,
+                crate::layout::aggregate_slot_size(ty, self.module.types, ptr_size),
+                0,
+            ));
+        let base = self
+            .func
+            .builder
+            .ins()
+            .stack_addr(self.module.pointer_type, slot, 0);
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        self.func.builder.ins().store(mflags, val, base, 0);
+        Ok(base)
+    }
+
+    fn enum_layout_info(
+        &self,
+        ty: &Type,
+    ) -> Result<(u32, u32, Vec<Vec<Type>>), CraneliftError> {
+        let Type::Named(name) = ty else {
+            return Err(CraneliftError::Msg(
+                "expected enum type in pattern".to_string(),
+            ));
+        };
+        match crate::layout::resolve_type_item(name, self.module.types, &mut Vec::new()) {
+            Some(HirItemKind::Enum(e)) => {
+                let all_variant_data: Vec<Vec<Type>> = e
+                    .variants
+                    .iter()
+                    .map(|v| match &v.data {
+                        Some(HirEnumVariantData::Tuple(types)) => types.clone(),
+                        Some(HirEnumVariantData::Struct(fields)) => {
+                            fields.iter().map(|f| f.type_.clone()).collect()
+                        }
+                        None => Vec::new(),
+                    })
+                    .collect();
+                let (_, data_offset, disc_size) = crate::layout::enum_layout(
+                    &all_variant_data,
+                    self.module.types,
+                    self.module.pointer_type.bytes(),
+                );
+                Ok((data_offset, disc_size, all_variant_data))
+            }
+            _ => Err(CraneliftError::Msg(format!(
+                "type `{name}` is not an enum"
+            ))),
+        }
+    }
+
+    fn addr_at(&mut self, addr: ir::Value, offset: u32) -> ir::Value {
+        if offset == 0 {
+            addr
+        } else {
+            let off_val = self
+                .func
+                .builder
+                .ins()
+                .iconst(self.module.pointer_type, offset as i64);
+            self.func.builder.ins().iadd(addr, off_val)
+        }
+    }
+
+    /// Addresses of the sub-patterns' values relative to `addr`, using the same
+    /// layout rules as literal construction (enum payload, struct fields).
+    fn pattern_sub_children<'p>(
+        &mut self,
+        pattern: &'p HirPattern,
+        addr: ir::Value,
+    ) -> Result<Vec<(ir::Value, &'p HirPattern)>, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        match &pattern.kind {
+            HirPatternKind::EnumVariant {
+                variant_index,
+                patterns,
+                ..
+            } => {
+                let (data_offset, _, all_variant_data) = self.enum_layout_info(&pattern.type_)?;
+                let payload_types = &all_variant_data[*variant_index];
+                let mut children = Vec::new();
+                let mut acc = 0u32;
+                for (index, sub) in patterns.iter().enumerate() {
+                    let elem_align = crate::layout::align_of(
+                        &payload_types[index],
+                        self.module.types,
+                        ptr_size,
+                    );
+                    acc = crate::layout::align_up(acc, elem_align);
+                    children.push((self.addr_at(addr, data_offset + acc), sub));
+                    acc +=
+                        crate::layout::size_of(&payload_types[index], self.module.types, ptr_size);
+                }
+                Ok(children)
+            }
+            HirPatternKind::Struct { fields, .. } => {
+                let Type::Named(type_name) = &pattern.type_ else {
+                    return Err(CraneliftError::Msg(
+                        "expected named type in struct pattern".to_string(),
+                    ));
+                };
+                match crate::layout::resolve_type_item(type_name, self.module.types, &mut Vec::new())
+                {
+                    Some(HirItemKind::Struct(s)) => {
+                        let field_types: Vec<(String, Type)> = s
+                            .fields
+                            .iter()
+                            .map(|f| (f.name.clone(), f.type_.clone()))
+                            .collect();
+                        let (_, field_layouts) = crate::layout::struct_layout(
+                            &field_types,
+                            s.repr_c,
+                            self.module.types,
+                            ptr_size,
+                        );
+                        let mut children = Vec::new();
+                        for (name, sub) in fields {
+                            let field_idx = s
+                                .fields
+                                .iter()
+                                .position(|f| f.name == *name)
+                                .ok_or_else(|| {
+                                    CraneliftError::Msg(format!(
+                                        "struct `{type_name}` has no field `{name}`"
+                                    ))
+                                })?;
+                            children.push((
+                                self.addr_at(addr, field_layouts[field_idx].1.offset),
+                                sub,
+                            ));
+                        }
+                        Ok(children)
+                    }
+                    Some(HirItemKind::TupleStruct(t)) => {
+                        let mut children = Vec::new();
+                        for (index, (_, sub)) in fields.iter().enumerate() {
+                            let offset = crate::layout::tuple_field_offset(
+                                index,
+                                &t.types,
+                                self.module.types,
+                                ptr_size,
+                            );
+                            children.push((self.addr_at(addr, offset), sub));
+                        }
+                        Ok(children)
+                    }
+                    _ => Err(CraneliftError::Msg(format!(
+                        "type `{type_name}` is not a struct"
+                    ))),
+                }
+            }
+            HirPatternKind::Tuple { elements, .. } => {
+                let Type::Tuple(element_types) = &pattern.type_ else {
+                    return Err(CraneliftError::Msg(
+                        "expected tuple type in tuple pattern".to_string(),
+                    ));
+                };
+                let mut children = Vec::new();
+                for (index, sub) in elements.iter().enumerate() {
+                    let offset = crate::layout::tuple_field_offset(
+                        index,
+                        element_types,
+                        self.module.types,
+                        ptr_size,
+                    );
+                    children.push((self.addr_at(addr, offset), sub));
+                }
+                Ok(children)
+            }
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    fn compile_pattern_condition(
+        &mut self,
+        pattern: &HirPattern,
+        addr: ir::Value,
+    ) -> Result<ir::Value, CraneliftError> {
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        match &pattern.kind {
+            HirPatternKind::EnumVariant {
+                variant_index, ..
+            } => {
+                let (_, disc_size, _) = self.enum_layout_info(&pattern.type_)?;
+                let disc_ty = if disc_size == 2 {
+                    types::I16
+                } else {
+                    types::I8
+                };
+                let disc = self.func.builder.ins().load(disc_ty, mflags, addr, 0);
+                let target = self
+                    .func
+                    .builder
+                    .ins()
+                    .iconst(disc_ty, *variant_index as i64);
+                let mut cond = self
+                    .func
+                    .builder
+                    .ins()
+                    .icmp(IntCC::Equal, disc, target);
+                let children = self.pattern_sub_children(pattern, addr)?;
+                for (sub_addr, sub) in children {
+                    let sub_cond = self.compile_pattern_condition(sub, sub_addr)?;
+                    cond = self.func.builder.ins().band(cond, sub_cond);
+                }
+                Ok(cond)
+            }
+            HirPatternKind::Literal { value, .. } => {
+                let clif_ty = ir_type_from_primitive(&pattern.type_, self.module.pointer_type);
+                let loaded = self.func.builder.ins().load(clif_ty, mflags, addr, 0);
+                let constant = match value {
+                    LiteralValue::Int(v) => self.emit_iconst(clif_ty, *v),
+                    LiteralValue::Bool(b) => self.func.builder.ins().iconst(types::I8, *b as i64),
+                    LiteralValue::Char(c) => self.func.builder.ins().iconst(types::I32, *c as i64),
+                    LiteralValue::String(_) => {
+                        return Err(CraneliftError::Msg(
+                            "string patterns not supported in codegen".to_string(),
+                        ));
+                    }
+                };
+                if clif_ty == types::F32 || clif_ty == types::F64 {
+                    Ok(self
+                        .func
+                        .builder
+                        .ins()
+                        .fcmp(FloatCC::Equal, loaded, constant))
+                } else {
+                    Ok(self
+                        .func
+                        .builder
+                        .ins()
+                        .icmp(IntCC::Equal, loaded, constant))
+                }
+            }
+            HirPatternKind::Struct { .. } | HirPatternKind::Tuple { .. } => {
+                let mut cond = self.func.builder.ins().iconst(types::I8, 1);
+                let children = self.pattern_sub_children(pattern, addr)?;
+                for (sub_addr, sub) in children {
+                    let sub_cond = self.compile_pattern_condition(sub, sub_addr)?;
+                    cond = self.func.builder.ins().band(cond, sub_cond);
+                }
+                Ok(cond)
+            }
+            HirPatternKind::Wildcard(_) | HirPatternKind::Ident { .. } => {
+                Ok(self.func.builder.ins().iconst(types::I8, 1))
+            }
+        }
+    }
+
+    fn bind_pattern_vars(
+        &mut self,
+        pattern: &HirPattern,
+        addr: ir::Value,
+    ) -> Result<(), CraneliftError> {
+        match &pattern.kind {
+            HirPatternKind::Ident { name, .. } => {
+                let val = self.load_pattern_value(pattern, addr)?;
+                self.bind_pattern_var(name, val, &pattern.type_)
+            }
+            HirPatternKind::Wildcard(_) | HirPatternKind::Literal { .. } => Ok(()),
+            _ => {
+                let children = self.pattern_sub_children(pattern, addr)?;
+                for (sub_addr, sub) in children {
+                    self.bind_pattern_vars(sub, sub_addr)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn load_pattern_value(
+        &mut self,
+        pattern: &HirPattern,
+        addr: ir::Value,
+    ) -> Result<ir::Value, CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        if is_large_aggregate(&pattern.type_, self.module.types, ptr_size) {
+            return Ok(addr);
+        }
+        let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
+        if crate::layout::is_aggregate(&pattern.type_) {
+            Ok(self.func.builder.ins().load(types::I64, mflags, addr, 0))
+        } else {
+            let clif_ty = ir_type_from_primitive(&pattern.type_, self.module.pointer_type);
+            Ok(self.func.builder.ins().load(clif_ty, mflags, addr, 0))
+        }
+    }
+
+    fn bind_pattern_var(
+        &mut self,
+        name: &str,
+        val: ir::Value,
+        ty: &Type,
+    ) -> Result<(), CraneliftError> {
+        let ptr_size = self.module.pointer_type.bytes();
+        if is_large_aggregate(ty, self.module.types, ptr_size) {
+            let slot = self
+                .func
+                .builder
+                .create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    crate::layout::aggregate_slot_size(ty, self.module.types, ptr_size),
+                    0,
+                ));
+            let dest = self
+                .func
+                .builder
+                .ins()
+                .stack_addr(self.module.pointer_type, slot, 0);
+            self.emit_memcpy(
+                dest,
+                val,
+                crate::layout::aggregate_copy_size(ty, self.module.types, ptr_size),
+            )?;
+            self.func.vars.insert(
+                name.to_string(),
+                VarInfo {
+                    slot: VarSlot::StackSlot(slot, self.module.pointer_type),
+                    vinyl_type: ty.clone(),
+                },
+            );
+            Ok(())
+        } else {
+            let clif_type = ir_type_from_primitive(ty, self.module.pointer_type);
+            let mode = var_mode(name, false, self.func.ref_vars);
+            let (slot, _) = build_var_info(
+                self.func.builder,
+                ty,
+                clif_type,
+                val,
+                mode,
+                self.module.pointer_type,
+            );
+            self.func.vars.insert(
+                name.to_string(),
+                VarInfo {
+                    slot,
+                    vinyl_type: ty.clone(),
+                },
+            );
+            Ok(())
+        }
     }
 }

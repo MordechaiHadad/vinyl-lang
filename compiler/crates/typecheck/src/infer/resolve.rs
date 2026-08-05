@@ -1,7 +1,8 @@
 use vinyl_parser::ast::types::Primitive;
 
 use crate::hir::{
-    HirAssignTarget, HirExpression, HirExpressionKind, HirStatement, HirStatementKind, Type,
+    HirAssignTarget, HirExpression, HirExpressionKind, HirMatchArm, HirPattern, HirPatternKind,
+    HirStatement, HirStatementKind, Type,
 };
 use crate::infer::InferState;
 
@@ -138,9 +139,79 @@ impl InferState {
                         .map(|(n, e)| (n.clone(), self.resolve_hir_expr(e)))
                         .collect(),
                 },
+                HirExpressionKind::Match { span, value, arms } => HirExpressionKind::Match {
+                    span: *span,
+                    value: Box::new(self.resolve_hir_expr(value)),
+                    arms: arms
+                        .iter()
+                        .map(|arm| HirMatchArm {
+                            span: arm.span,
+                            pattern: self.resolve_hir_pattern(&arm.pattern),
+                            guard: arm
+                                .guard
+                                .as_ref()
+                                .map(|g| Box::new(self.resolve_hir_expr(g))),
+                            body: arm
+                                .body
+                                .iter()
+                                .map(|s| self.resolve_hir_stmt(s))
+                                .collect(),
+                        })
+                        .collect(),
+                },
                 other => other.clone(),
             },
             type_: self.resolve_hir_type(&expr.type_),
+        }
+    }
+
+    pub(super) fn resolve_hir_pattern(&self, pattern: &HirPattern) -> HirPattern {
+        HirPattern {
+            kind: match &pattern.kind {
+                HirPatternKind::Wildcard(span) => HirPatternKind::Wildcard(*span),
+                HirPatternKind::Ident { span, name } => HirPatternKind::Ident {
+                    span: *span,
+                    name: name.clone(),
+                },
+                HirPatternKind::Literal { span, value } => HirPatternKind::Literal {
+                    span: *span,
+                    value: value.clone(),
+                },
+                HirPatternKind::Struct {
+                    span,
+                    type_name,
+                    fields,
+                } => HirPatternKind::Struct {
+                    span: *span,
+                    type_name: type_name.clone(),
+                    fields: fields
+                        .iter()
+                        .map(|(n, p)| (n.clone(), self.resolve_hir_pattern(p)))
+                        .collect(),
+                },
+                HirPatternKind::Tuple { span, elements } => HirPatternKind::Tuple {
+                    span: *span,
+                    elements: elements
+                        .iter()
+                        .map(|p| self.resolve_hir_pattern(p))
+                        .collect(),
+                },
+                HirPatternKind::EnumVariant {
+                    span,
+                    type_name,
+                    variant_index,
+                    patterns,
+                } => HirPatternKind::EnumVariant {
+                    span: *span,
+                    type_name: type_name.clone(),
+                    variant_index: *variant_index,
+                    patterns: patterns
+                        .iter()
+                        .map(|p| self.resolve_hir_pattern(p))
+                        .collect(),
+                },
+            },
+            type_: self.resolve_hir_type(&pattern.type_),
         }
     }
 

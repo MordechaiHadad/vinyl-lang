@@ -1,6 +1,7 @@
 use vinyl_parser::ast::{
     expression::Expression,
     item::Item,
+    operator::BinaryOp,
     pattern::{LiteralPattern, Pattern},
     statement::Statement,
 };
@@ -173,3 +174,95 @@ fn match_expression_lower() {
         other => panic!("expected match expression, got {other:?}"),
     }
 }
+
+#[test]
+fn match_arm_guard_lower() {
+    let items = common::do_lower("fn f(x: int32): int32 { match x { 1 if x > 0 => 10, _ => 0 } }");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Statement::Value(Expression::Match { arms, .. }, _) => {
+            assert_eq!(arms.len(), 2);
+            match &arms[0].guard {
+                Some(guard) => match guard.as_ref() {
+                    Expression::Binary { left, op: BinaryOp::Gt, right, .. } => {
+                        match left.as_ref() {
+                            Expression::Ident(n, _) => assert_eq!(n, "x"),
+                            other => panic!("expected ident, got {other:?}"),
+                        }
+                        match right.as_ref() {
+                            Expression::Int(0, _) => {}
+                            other => panic!("expected int 0, got {other:?}"),
+                        }
+                    }
+                    other => panic!("expected greater comparison, got {other:?}"),
+                },
+                None => panic!("expected guard"),
+            }
+            match &arms[1].guard {
+                None => {}
+                Some(_) => panic!("expected no guard on wildcard arm"),
+            }
+        }
+        other => panic!("expected match expression, got {other:?}"),
+    }
+}
+
+#[test]
+fn match_enum_variant_pattern_lower() {
+    let items = common::do_lower(
+        "fn area(s: Shape): int32 {\n\
+         match s {\n\
+         Shape::Circle(r) if r > 0 => r,\n\
+         Shape::Rect(w, h) => w * h,\n\
+         Shape::Empty() => 0,\n\
+         }\n\
+         }",
+    );
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let last = func.body.last().unwrap();
+    match last {
+        Statement::Value(Expression::Match { arms, .. }, _) => {
+            assert_eq!(arms.len(), 3);
+
+            match &arms[0].pattern {
+                Pattern::EnumVariant { type_path, variant_name, patterns, .. } => {
+                    assert_eq!(type_path, "Shape");
+                    assert_eq!(variant_name, "Circle");
+                    assert_eq!(patterns.len(), 1);
+                    match &patterns[0] {
+                        Pattern::Ident(n, _) => assert_eq!(n, "r"),
+                        other => panic!("expected ident pattern, got {other:?}"),
+                    }
+                }
+                other => panic!("expected enum variant pattern, got {other:?}"),
+            }
+
+            match &arms[1].pattern {
+                Pattern::EnumVariant { type_path, variant_name, patterns, .. } => {
+                    assert_eq!(type_path, "Shape");
+                    assert_eq!(variant_name, "Rect");
+                    assert_eq!(patterns.len(), 2);
+                }
+                other => panic!("expected enum variant pattern, got {other:?}"),
+            }
+
+            match &arms[2].pattern {
+                Pattern::EnumVariant { type_path, variant_name, patterns, .. } => {
+                    assert_eq!(type_path, "Shape");
+                    assert_eq!(variant_name, "Empty");
+                    assert!(patterns.is_empty());
+                }
+                other => panic!("expected enum variant pattern, got {other:?}"),
+            }
+        }
+        other => panic!("expected match expression, got {other:?}"),
+    }
+}
+

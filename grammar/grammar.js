@@ -413,9 +413,10 @@ export default grammar({
     )),
 
     match_arm: $ => seq(
-      $.pattern,
+      field("pattern", $.pattern),
+      optional(seq("if", field("guard", $._expression))),
       "=>",
-      $._expression,
+      field("body", $._expression),
       optional(","),
     ),
 
@@ -458,9 +459,15 @@ export default grammar({
     ),
 
     enum_variant_pattern: $ => seq(
-      $.type_identifier,
+      field("type", $.type_identifier),
+      "::",
+      field("variant", $.type_identifier),
+      optional(field("arguments", $.pattern_arguments)),
+    ),
+
+    pattern_arguments: $ => seq(
       "(",
-      commaSep1($.pattern),
+      commaSep($.pattern),
       ")",
     ),
 

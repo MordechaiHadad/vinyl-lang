@@ -428,7 +428,7 @@ The Cranelift backend does not implement these complete aggregate parameter and 
 - [ ] Implement the complete small/large aggregate ABI, including values larger than one machine register.
 - [ ] Implement deep equality for structs and tuples.
 - [ ] Implement enum layouts and construction for values larger than 8 bytes.
-- [ ] Implement enum payload extraction and exhaustive pattern matching.
+- [ ] Implement multi-segment scoped paths (`parent::Type::Variant()`) in match patterns.
 
 ```
 struct Name {
@@ -465,8 +465,10 @@ let first = pair.0;
 ```
 
 Tuple literals and numeric field access are currently supported. Tuple-struct construction, aggregate passing/return, and deep tuple equality remain TODO.
-
 ### Match
+
+`match` is an expression: the whole match evaluates to the value of the selected arm body. All arm bodies must unify to a single result type, and the match can be assigned or returned like any expression.
+
 ```
 match value {
     Pattern => expr,
@@ -475,7 +477,21 @@ match value {
 }
 ```
 
-Planned to be exhaustive. Patterns will destructure structs, enums, and tuples once match code generation is implemented.
+Patterns:
+- `_` wildcard (matches anything)
+- `Name` identifier (matches anything, binds the value as an immutable variable)
+- `literal` int, bool, char, and string literals
+- `(pat, pat, ...)` tuple patterns, destructured positionally
+- `TypeName { field, field: pat, ... }` struct patterns; a bare field name binds the field value
+- `Type::Variant(pat, ...)` enum variant patterns, destructured positionally (unit variants use `Type::Variant()`)
+
+Arms may carry a guard: `Pattern if condition => expr`. The guard has access to the arm's pattern bindings. A guarded arm never counts toward exhaustiveness, so a guarded match must still end in a non-guarded catch-all arm (`_` or `Name`) or cover every variant/literal.
+
+Exhaustiveness is required: a match with no catch-all arm must cover every enum variant (or both `true` and `false` for a `bool` scrutinee), otherwise the compiler rejects it as non-exhaustive. Guards are evaluated only for arms whose pattern matched; if a guard fails, control falls through to the next arm.
+
+Pattern bindings are immutable and scoped to their own arm (they do not leak into sibling arms or code after the match).
+
+Not supported: `@` binding patterns, or-patterns (`pat | pat`), and nested destructuring of enums inside structs/tuples beyond the direct pattern forms above. Multi-segment scoped paths in patterns (`parent::Type::Variant()`) are not yet supported.
 
 ### Error Propagation
 ```

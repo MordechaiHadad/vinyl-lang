@@ -303,15 +303,16 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn lower_match_arm(&self, node: &Node) -> Result<MatchArm, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
-        let children = children(node);
-        if children.len() < 2 {
-            return Err(self.span_error(node, "incomplete match arm"));
-        }
-        let pattern = self.lower_pattern(&children[0])?;
-        let body = Box::new(self.lower_expression(&children[1])?);
+        let pattern = self.lower_pattern(&self.child_by_field(node, "pattern")?)?;
+        let guard = match child_by_field_opt(node, "guard") {
+            Some(guard_node) => Some(Box::new(self.lower_expression(&guard_node)?)),
+            None => None,
+        };
+        let body = Box::new(self.lower_expression(&self.child_by_field(node, "body")?)?);
         Ok(MatchArm {
             span,
             pattern,
+            guard,
             body,
         })
     }

@@ -18,6 +18,7 @@ pub use crate::index::{Definition, DefinitionKind, HirExprRef, TypeckResult};
 
 pub mod expression;
 pub mod literal;
+pub mod pattern;
 pub mod resolve;
 pub mod scope;
 pub mod statement;

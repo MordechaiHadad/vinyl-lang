@@ -6,7 +6,7 @@ use crate::{
     ast::pattern::{LiteralPattern, Pattern},
     lower::{
         Lowerer,
-        helpers::{children, node_text},
+        helpers::{child_by_field_opt, children, node_text},
     },
 };
 
@@ -29,18 +29,20 @@ impl<'a> Lowerer<'a> {
                 Ok(Pattern::Tuple(patterns, span()))
             }
             "enum_variant_pattern" => {
-                let children = children(node);
-                if children.is_empty() {
-                    return Err(self.span_error(node, "incomplete enum variant pattern"));
-                }
-                let name = node_text(&children[0], self.source);
-                let patterns = children[1..]
-                    .iter()
-                    .map(|c| self.lower_pattern(c))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let type_name = node_text(&self.child_by_field(node, "type")?, self.source);
+                let variant_name = node_text(&self.child_by_field(node, "variant")?, self.source);
+                let patterns = if let Some(arguments) = child_by_field_opt(node, "arguments") {
+                    children(&arguments)
+                        .iter()
+                        .map(|c| self.lower_pattern(c))
+                        .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    Vec::new()
+                };
                 Ok(Pattern::EnumVariant {
                     span: span(),
-                    name,
+                    type_path: type_name,
+                    variant_name,
                     patterns,
                 })
             }
