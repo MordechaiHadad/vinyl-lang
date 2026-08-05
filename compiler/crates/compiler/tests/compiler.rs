@@ -31,10 +31,7 @@ fn compiles_public_import() {
     let root = project(
         "public_import",
         &[
-            (
-                "src/main.vn",
-                "import math; fn main(): int { math::answer() }",
-            ),
+            ("src/main.vn", "import math; fn main() { math::answer() }"),
             ("src/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
@@ -43,11 +40,23 @@ fn compiles_public_import() {
 }
 
 #[test]
+fn main_must_return_unit() {
+    let root = script_project("main_return_type", &[("main.vn", "fn main(): int { 0 }\n")]);
+    let errors = compile_entry(&root.join("main.vn"), None).unwrap_err();
+    let message = errors
+        .iter()
+        .map(ToString::to_string)
+        .find(|message| message.contains("main function must return `unit`"))
+        .expect("main return type diagnostic");
+    assert!(message.contains("main function must return `unit`"));
+}
+
+#[test]
 fn missing_module_import_is_a_type_diagnostic() {
     let root = script_project(
         "missing_import_diagnostic",
         &[
-            ("main.vn", "fn main(): int { math::double() }\n"),
+            ("main.vn", "fn main() { math::double() }\n"),
             ("math.vn", "public fn double(): int { 2 }\n"),
         ],
     );
@@ -65,10 +74,7 @@ fn rejects_private_import() {
     let root = project(
         "private_import",
         &[
-            (
-                "src/main.vn",
-                "import math; fn main(): int { math::answer() }",
-            ),
+            ("src/main.vn", "import math; fn main() { math::answer() }"),
             ("src/math.vn", "fn answer(): int { 42 }"),
         ],
     );
@@ -80,7 +86,7 @@ fn rejects_private_import() {
 fn import_not_found_errors() {
     let root = project(
         "import_not_found",
-        &[("src/main.vn", "import math; fn main(): int { 0 }")],
+        &[("src/main.vn", "import math; fn main() { 0 }")],
     );
     let result = compile_entry(&root.join("src/main.vn"), Some(&root));
     assert!(result.is_err());
@@ -93,7 +99,7 @@ fn nested_module_import() {
         &[
             (
                 "src/main.vn",
-                "import utils::format; fn main(): string { format::greet() }",
+                "import utils::format; fn main() { format::greet() }",
             ),
             (
                 "src/utils/format.vn",
@@ -117,10 +123,7 @@ fn compiles_script_project_with_import() {
     let root = script_project(
         "script_import",
         &[
-            (
-                "main.vn",
-                "import math; fn main(): int { math::double(21) }",
-            ),
+            ("main.vn", "import math; fn main() { math::double(21) }"),
             ("math.vn", "public fn double(n: int): int { n * 2 }"),
         ],
     );
@@ -133,10 +136,7 @@ fn compiles_manifest_via_detect() {
     let root = project(
         "manifest_detect",
         &[
-            (
-                "src/main.vn",
-                "import math; fn main(): int { math::answer() }",
-            ),
+            ("src/main.vn", "import math; fn main() { math::answer() }"),
             ("src/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
@@ -149,10 +149,7 @@ fn resolves_directory_module() {
     let root = project(
         "directory_module",
         &[
-            (
-                "src/main.vn",
-                "import math; fn main(): int { math::answer() }",
-            ),
+            ("src/main.vn", "import math; fn main() { math::answer() }"),
             ("src/math/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
@@ -164,7 +161,7 @@ fn resolves_directory_module() {
 fn script_self_prefix_errors() {
     let root = script_project(
         "script_self_errors",
-        &[("main.vn", "import self::helper; fn main(): int { 0 }")],
+        &[("main.vn", "import self::helper; fn main() { 0 }")],
     );
     let result = compile_entry(&root.join("main.vn"), None);
     assert!(result.is_err(), "self:: should error in imports");
@@ -177,7 +174,7 @@ fn script_parent_prefix_same_dir() {
         &[
             (
                 "sub/main.vn",
-                "import parent::helper; fn main(): int { helper::answer() }",
+                "import parent::helper; fn main() { helper::answer() }",
             ),
             ("sub/helper.vn", "public fn answer(): int { 42 }"),
         ],
@@ -193,7 +190,7 @@ fn script_parent_parent_prefix() {
         &[
             (
                 "sub/main.vn",
-                "import parent::parent::helper; fn main(): int { helper::answer() }",
+                "import parent::parent::helper; fn main() { helper::answer() }",
             ),
             ("helper.vn", "public fn answer(): int { 42 }"),
         ],
@@ -207,7 +204,7 @@ fn script_package_prefix_rejected() {
     let root = script_project(
         "script_package_rejected",
         &[
-            ("main.vn", "import package::helper; fn main(): int { 0 }"),
+            ("main.vn", "import package::helper; fn main() { 0 }"),
             ("helper.vn", "public fn answer(): int { 42 }"),
         ],
     );
@@ -222,7 +219,7 @@ fn script_package_prefix_rejected() {
 fn manifest_self_prefix_errors() {
     let root = project(
         "manifest_self_errors",
-        &[("src/main.vn", "import self::helper; fn main(): int { 0 }")],
+        &[("src/main.vn", "import self::helper; fn main() { 0 }")],
     );
     let result = compile_entry(&root.join("src/main.vn"), Some(&root));
     assert!(result.is_err(), "self:: should error in imports");
@@ -235,7 +232,7 @@ fn manifest_parent_prefix_same_dir() {
         &[
             (
                 "src/sub/main.vn",
-                "import parent::helper; fn main(): int { helper::answer() }",
+                "import parent::helper; fn main() { helper::answer() }",
             ),
             ("src/sub/helper.vn", "public fn answer(): int { 42 }"),
         ],
@@ -251,7 +248,7 @@ fn manifest_parent_parent_prefix() {
         &[
             (
                 "src/sub/main.vn",
-                "import parent::parent::helper; fn main(): int { helper::answer() }",
+                "import parent::parent::helper; fn main() { helper::answer() }",
             ),
             ("src/helper.vn", "public fn answer(): int { 42 }"),
         ],
@@ -267,7 +264,7 @@ fn manifest_package_prefix() {
         &[
             (
                 "src/main.vn",
-                "import package::helper; fn main(): int { helper::answer() }",
+                "import package::helper; fn main() { helper::answer() }",
             ),
             ("src/helper.vn", "public fn answer(): int { 42 }"),
         ],
@@ -283,7 +280,7 @@ fn symbol_import_function_bare_call() {
         &[
             (
                 "src/main.vn",
-                "import math::double; fn main(): int { double(21) }",
+                "import math::double; fn main() { double(21) }",
             ),
             ("src/math.vn", "public fn double(n: int): int { n * 2 }"),
         ],
@@ -297,10 +294,7 @@ fn symbol_import_private_errors() {
     let root = project(
         "symbol_import_private",
         &[
-            (
-                "src/main.vn",
-                "import math::hidden; fn main(): int { hidden() }",
-            ),
+            ("src/main.vn", "import math::hidden; fn main() { hidden() }"),
             ("src/math.vn", "fn hidden(): int { 42 }"),
         ],
     );
@@ -313,7 +307,7 @@ fn wildcard_import_bare_call() {
     let root = project(
         "wildcard_import",
         &[
-            ("src/main.vn", "import math::*; fn main(): int { answer() }"),
+            ("src/main.vn", "import math::*; fn main() { answer() }"),
             ("src/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
@@ -328,7 +322,7 @@ fn grouped_symbol_import_bare_calls() {
         &[
             (
                 "src/main.vn",
-                "import math::{double, triple}; fn main(): int { double(2) + triple(2) }",
+                "import math::{double, triple}; fn main() { double(2) + triple(2) }",
             ),
             (
                 "src/math.vn",
@@ -347,7 +341,7 @@ fn symbol_import_conflict_errors() {
         &[
             (
                 "src/main.vn",
-                "import a::foo; import b::foo; fn main(): int { foo() }",
+                "import a::foo; import b::foo; fn main() { foo() }",
             ),
             ("src/a.vn", "public fn foo(): int { 1 }"),
             ("src/b.vn", "public fn foo(): int { 2 }"),
@@ -456,7 +450,7 @@ fn imported_type_public_field_access() {
         &[
             (
                 "src/main.vn",
-                "import math; fn main(): int32 { math::make_point().x }",
+                "import math; fn main() { math::make_point().x }",
             ),
             (
                 "src/math.vn",
@@ -475,7 +469,7 @@ fn imported_type_private_field_errors() {
         &[
             (
                 "src/main.vn",
-                "import math; fn main(): int32 { math::make_point().x }",
+                "import math; fn main() { math::make_point().x }",
             ),
             (
                 "src/math.vn",

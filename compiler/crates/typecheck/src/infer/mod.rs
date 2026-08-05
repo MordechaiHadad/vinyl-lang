@@ -4,7 +4,7 @@ use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::expression::Expression;
 use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
 use vinyl_parser::ast::statement::Statement;
-use vinyl_parser::ast::types::Type as AstType;
+use vinyl_parser::ast::types::{Primitive, Type as AstType};
 
 use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
@@ -417,6 +417,28 @@ pub fn typeck(
     source_name: &str,
 ) -> Result<(Vec<HirItem>, Vec<TypeDiagnostic>), Vec<TypeDiagnostic>> {
     typeck_with_modules(items, source, source_name, &ModuleTable::new())
+}
+
+pub fn validate_main_return_type(
+    items: &[Item],
+    source: &str,
+    source_name: &str,
+) -> Result<(), TypeDiagnostic> {
+    let Some(function) = items.iter().find_map(|item| match item {
+        Item::Function(function) if function.name == "main" => Some(function),
+        _ => None,
+    }) else {
+        return Ok(());
+    };
+    if function
+        .return_type
+        .as_ref()
+        .is_some_and(|return_type| !matches!(return_type, AstType::Primitive(Primitive::Unit)))
+    {
+        return Err(SourceContext::new(source, source_name)
+            .error(function.span, TypeDiagnosticKind::MainReturnType));
+    }
+    Ok(())
 }
 
 pub fn typeck_with_modules(

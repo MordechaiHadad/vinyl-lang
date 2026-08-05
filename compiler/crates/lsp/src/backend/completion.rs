@@ -36,7 +36,8 @@ impl Backend {
         })()
         .or(self.analysis(uri).await);
         let current_line_index = LineIndex::new(&current_source);
-        let offset = offset_at(&current_line_index, params.text_document_position.position);
+        let offset = offset_at(&current_line_index, params.text_document_position.position)
+            .min(current_source.len());
         let prefix = word_prefix(&current_source, offset);
         let import_prefix_info = detect_import_prefix(&current_source, offset);
         let in_import_context = import_prefix_info.is_some();

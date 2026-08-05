@@ -8,5 +8,6 @@ pub use error::{InferResult, TypeDiagnostic};
 pub use infer::typeck;
 pub use infer::typeck_with_index;
 pub use infer::typeck_with_modules;
+pub use infer::validate_main_return_type;
 pub use infer::{Definition, DefinitionKind, HirExprRef, TypeckResult};
 pub use miette::SourceSpan;

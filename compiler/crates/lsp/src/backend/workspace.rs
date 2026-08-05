@@ -210,17 +210,33 @@ pub(crate) fn analyze_workspace(
                 &mut diagnostics,
             );
             add_resolved_modules(vfs, &resolver, entry_path, &mut entry_module_table);
-            match analyze_with_diagnostics(
-                entry_path,
+            match vinyl_typecheck::validate_main_return_type(
+                &entry_items,
                 &entry_source,
-                &all_items,
-                &entry_module_table,
+                &entry_path.to_string_lossy(),
             ) {
-                Ok(analysis) => {
-                    analyses.insert(entry_path.to_path_buf(), analysis);
-                }
+                Ok(()) => match analyze_with_diagnostics(
+                    entry_path,
+                    &entry_source,
+                    &all_items,
+                    &entry_module_table,
+                ) {
+                    Ok(analysis) => {
+                        analyses.insert(entry_path.to_path_buf(), analysis);
+                    }
+                    Err(error) => {
+                        diagnostics.insert(entry_path.to_path_buf(), error);
+                    }
+                },
                 Err(error) => {
-                    diagnostics.insert(entry_path.to_path_buf(), error);
+                    diagnostics.insert(
+                        entry_path.to_path_buf(),
+                        vec![SourceDiagnostic {
+                            message: error.to_string(),
+                            offset: error.span.offset(),
+                            length: error.span.len(),
+                        }],
+                    );
                 }
             }
         }

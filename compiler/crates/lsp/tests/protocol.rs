@@ -103,11 +103,7 @@ impl TestProject {
         std::fs::create_dir_all(&root).unwrap();
         let main = root.join("main.vn");
         let math = root.join("math.vn");
-        std::fs::write(
-            &main,
-            "import math;\nfn main(): int {\n    math::answer()\n}\n",
-        )
-        .unwrap();
+        std::fs::write(&main, "import math;\nfn main() {\n    math::answer()\n}\n").unwrap();
         std::fs::write(&math, "public fn answer(): int { 42 }\n").unwrap();
         Self { root, main, math }
     }
@@ -181,7 +177,7 @@ fn serves_core_lsp_features_over_stdio() {
                 "uri": main_uri,
                 "languageId": "vinyl",
                 "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n"
+                "text": "import math;\nfn main() {\n    math::answer()\n}\n"
             }
         }
     }));
@@ -240,7 +236,7 @@ fn serves_core_lsp_features_over_stdio() {
     );
     assert_eq!(
         formatting["result"][0]["newText"],
-        "import math;\n\nfn main(): int {\n    math::answer()\n}\n"
+        "import math;\n\nfn main() {\n    math::answer()\n}\n"
     );
 
     lsp.send(json!({
@@ -313,7 +309,7 @@ fn serves_core_lsp_features_over_stdio() {
         "method": "textDocument/didChange",
         "params": {
             "textDocument": { "uri": math_uri, "version": 2 },
-            "contentChanges": [{ "text": "public fn answer(): int {\n" }]
+            "contentChanges": [{ "text": "public fn answer(): int { true }\n" }]
         }
     }));
     // first notification: entry file (main_uri) — type errors from missing module exports
@@ -338,7 +334,7 @@ fn serves_core_lsp_features_over_stdio() {
         "method": "textDocument/didChange",
         "params": {
             "textDocument": { "uri": main_uri, "version": 2 },
-            "contentChanges": [{ "text": "import math;\nfn main(): int {\n" }]
+            "contentChanges": [{ "text": "import math;\nfn main() {\n" }]
         }
     }));
     let diagnostics = lsp.notification("textDocument/publishDiagnostics");
@@ -519,7 +515,7 @@ fn completion_module_ref() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+                "text": "import math;\nfn main() {\n    math::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -529,7 +525,7 @@ fn completion_module_ref() {
         "jsonrpc": "2.0", "method": "textDocument/didChange",
         "params": {
             "textDocument": { "uri": main_uri, "version": 2 },
-            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math::ans\n}\n" }]
+            "contentChanges": [{ "text": "import math;\nfn main() {\n    math::ans\n}\n" }]
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -601,7 +597,7 @@ fn completion_colon_trigger_guard() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    let x = \n}\n" }
+                "text": "import math;\nfn main() {\n    let x = \n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -657,7 +653,7 @@ fn completion_colon_after_module() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math:\n}\n" }
+                "text": "import math;\nfn main() {\n    math:\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -712,7 +708,7 @@ fn completion_no_duplicate_imported_colon() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+                "text": "import math;\nfn main() {\n    math::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -721,7 +717,7 @@ fn completion_no_duplicate_imported_colon() {
         "jsonrpc": "2.0", "method": "textDocument/didChange",
         "params": {
             "textDocument": { "uri": main_uri, "version": 2 },
-            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math:\n}\n" }]
+            "contentChanges": [{ "text": "import math;\nfn main() {\n    math:\n}\n" }]
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -783,7 +779,7 @@ fn completion_module_ref_reopen() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+                "text": "import math;\nfn main() {\n    math::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -840,7 +836,7 @@ fn completion_colon_reopen() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+                "text": "import math;\nfn main() {\n    math::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -850,7 +846,7 @@ fn completion_colon_reopen() {
         "jsonrpc": "2.0", "method": "textDocument/didChange",
         "params": {
             "textDocument": { "uri": main_uri, "version": 2 },
-            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math:\n}\n" }]
+            "contentChanges": [{ "text": "import math;\nfn main() {\n    math:\n}\n" }]
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -881,7 +877,7 @@ fn completion_colon_reopen() {
         "jsonrpc": "2.0", "method": "textDocument/didChange",
         "params": {
             "textDocument": { "uri": main_uri, "version": 3 },
-            "contentChanges": [{ "text": "import math;\nfn main(): int {\n    math::\n}\n" }]
+            "contentChanges": [{ "text": "import math;\nfn main() {\n    math::\n}\n" }]
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -939,7 +935,7 @@ fn completion_private_filtered() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::\n}\n" }
+                "text": "import math;\nfn main() {\n    math::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1027,7 +1023,7 @@ fn module_prefix_completion_in_import_and_expression() {
     }));
     lsp.response(1);
     lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
-    let text = "import par\nfn main(): int { par }\n";
+    let text = "import par\nfn main() { par }\n";
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1, "text": text } }
@@ -1105,7 +1101,7 @@ fn code_action_adds_import_for_qualified_module_reference() {
     lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
     for (uri, text) in [
         (math_uri, "public fn double(): int { 2 }\n"),
-        (main_uri.clone(), "fn main(): int { math::double() }\n"),
+        (main_uri.clone(), "fn main() { math::double() }\n"),
     ] {
         lsp.send(json!({
             "jsonrpc": "2.0", "method": "textDocument/didOpen",
@@ -1115,7 +1111,7 @@ fn code_action_adds_import_for_qualified_module_reference() {
     }
     lsp.send(json!({
         "jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction",
-        "params": { "textDocument": { "uri": main_uri }, "range": { "start": { "line": 0, "character": 26 }, "end": { "line": 0, "character": 32 } }, "context": { "diagnostics": [] } }
+        "params": { "textDocument": { "uri": main_uri }, "range": { "start": { "line": 0, "character": 19 }, "end": { "line": 0, "character": 25 } }, "context": { "diagnostics": [] } }
     }));
     let response = lsp.response(2);
     let actions = response["result"].as_array().unwrap();
@@ -1240,7 +1236,7 @@ fn import_prefix_completion_reopen() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import parent::\nfn main(): int {\n    0\n}\n" }
+                "text": "import parent::\nfn main() {\n    0\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1271,7 +1267,7 @@ fn import_prefix_completion_reopen() {
 #[test]
 fn goto_definition_from_non_entry_file() {
     let project = TestProject::new();
-    std::fs::write(&project.main, "fn main(): int {\n    0\n}\n").unwrap();
+    std::fs::write(&project.main, "fn main() {\n    0\n}\n").unwrap();
     let app = project.root.join("app.vn");
     std::fs::write(
         &app,
@@ -1314,7 +1310,7 @@ fn goto_definition_from_non_entry_file() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": TestProject::uri(&project.main), "languageId": "vinyl", "version": 1,
-                "text": "fn main(): int {\n    0\n}\n" }
+                "text": "fn main() {\n    0\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1366,7 +1362,7 @@ fn private_access_diagnostic() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::secret()\n}\n" }
+                "text": "import math;\nfn main() {\n    math::secret()\n}\n" }
         }
     }));
     let diag = lsp.notification("textDocument/publishDiagnostics");
@@ -1398,7 +1394,7 @@ fn open_pair(lsp: &mut LspProcess, math_uri: &str, main_uri: &str) {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n" }
+                "text": "import math;\nfn main() {\n    math::answer()\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1604,7 +1600,7 @@ fn goto_definition_across_module_with_type_error() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n" }
+                "text": "import math;\nfn main() {\n    math::answer()\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1882,7 +1878,7 @@ fn goto_definition_on_type_annotation() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "struct Point { x: int, y: int }\n\nfn main(): int {\n    let origin: Point = Point { x: 0, y: 0 };\n    origin.x\n}\n",
+        "struct Point { x: int, y: int }\n\nfn main() {\n    let origin: Point = Point { x: 0, y: 0 };\n    origin.x\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -1902,7 +1898,7 @@ fn goto_definition_on_type_annotation() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "struct Point { x: int, y: int }\n\nfn main(): int {\n    let origin: Point = Point { x: 0, y: 0 };\n    origin.x\n}\n" }
+                "text": "struct Point { x: int, y: int }\n\nfn main() {\n    let origin: Point = Point { x: 0, y: 0 };\n    origin.x\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1939,7 +1935,7 @@ fn goto_definition_on_struct_field() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "struct Point { x: int, y: int }\n\nfn main(): int {\n    let p = Point { x: 0, y: 0 };\n    p.x\n}\n",
+        "struct Point { x: int, y: int }\n\nfn main() {\n    let p = Point { x: 0, y: 0 };\n    p.x\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -1959,7 +1955,7 @@ fn goto_definition_on_struct_field() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "struct Point { x: int, y: int }\n\nfn main(): int {\n    let p = Point { x: 0, y: 0 };\n    p.x\n}\n" }
+                "text": "struct Point { x: int, y: int }\n\nfn main() {\n    let p = Point { x: 0, y: 0 };\n    p.x\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -1996,7 +1992,7 @@ fn goto_definition_on_enum_variant() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn main(): int {\n    let s = Shape::Empty();\n    if s == Shape::Empty() { 1 } else { 0 }\n}\n",
+        "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn main() {\n    let s = Shape::Empty();\n    if s == Shape::Empty() { 1 } else { 0 }\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -2016,7 +2012,7 @@ fn goto_definition_on_enum_variant() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn main(): int {\n    let s = Shape::Empty();\n    if s == Shape::Empty() { 1 } else { 0 }\n}\n" }
+                "text": "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn main() {\n    let s = Shape::Empty();\n    if s == Shape::Empty() { 1 } else { 0 }\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -2078,7 +2074,7 @@ fn goto_definition_on_module_segment() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math;\nfn main(): int {\n    math::answer()\n}\n" }
+                "text": "import math;\nfn main() {\n    math::answer()\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -2109,7 +2105,7 @@ fn hover_on_let_binding_shows_type() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "fn main(): int {\n    let value = 42;\n    value\n}\n",
+        "fn main() {\n    let value = 42;\n    value\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -2129,7 +2125,7 @@ fn hover_on_let_binding_shows_type() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "fn main(): int {\n    let value = 42;\n    value\n}\n" }
+                "text": "fn main() {\n    let value = 42;\n    value\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -2154,7 +2150,7 @@ fn hover_on_local_function_shows_signature() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "fn helper(): int { 42 }\n\nfn main(): int {\n    helper()\n}\n",
+        "fn helper(): int { 42 }\n\nfn main() {\n    helper()\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -2174,7 +2170,7 @@ fn hover_on_local_function_shows_signature() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "fn helper(): int { 42 }\n\nfn main(): int {\n    helper()\n}\n" }
+                "text": "fn helper(): int { 42 }\n\nfn main() {\n    helper()\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -2336,7 +2332,7 @@ fn cursor_on_whitespace_returns_nothing() {
 #[test]
 fn format_noop_and_code_action_hidden_when_already_formatted() {
     let project = TestProject::new();
-    let already_formatted = "fn main(): int {\n    answer()\n}\n";
+    let already_formatted = "fn main() {\n    answer()\n}\n";
     std::fs::write(&project.main, already_formatted).unwrap();
     let main_uri = TestProject::uri(&project.main);
     let root_uri = TestProject::uri(&project.root);
@@ -2619,7 +2615,7 @@ fn completion_field_access_after_dot() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "struct Point { public x: int32, public y: int32 }\nfn main(): int32 {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n",
+        "struct Point { public x: int32, public y: int32 }\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -2649,7 +2645,7 @@ fn completion_field_access_after_dot() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "struct Point { public x: int32, public y: int32 }\nfn main(): int32 {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n" }
+                "text": "struct Point { public x: int32, public y: int32 }\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -2741,7 +2737,7 @@ fn completion_tuple_members_after_dot() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "fn main(): int32 {\n    let pair = (1, 2);\n    pair.\n}\n",
+        "fn main() {\n    let pair = (1, 2);\n    pair.\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -2758,7 +2754,7 @@ fn completion_tuple_members_after_dot() {
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-            "text": "fn main(): int32 {\n    let pair = (1, 2);\n    pair.\n}\n" } }
+            "text": "fn main() {\n    let pair = (1, 2);\n    pair.\n}\n" } }
     }));
     lsp.notification("textDocument/publishDiagnostics");
     lsp.send(json!({
@@ -2805,7 +2801,7 @@ fn symbol_import_produces_no_diagnostic() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import math::answer;\nfn main(): int {\n    answer()\n}\n" }
+                "text": "import math::answer;\nfn main() {\n    answer()\n}\n" }
         }
     }));
     let diagnostics = lsp.diagnostics_for(&main_uri);

@@ -18,6 +18,10 @@ pub struct TypeDiagnostic {
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum TypeDiagnosticKind {
+    #[error("main function must return `unit`")]
+    #[diagnostic(code(typeck::main_return_type))]
+    MainReturnType,
+
     #[error("undefined variable `{name}`")]
     #[diagnostic(code(typeck::undefined_name))]
     UndefinedName { name: String },
