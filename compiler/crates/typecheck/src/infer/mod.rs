@@ -6,7 +6,7 @@ use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
 use vinyl_parser::ast::statement::Statement;
 use vinyl_parser::ast::types::{Primitive, Type as AstType};
 
-use crate::error::{TypeDiagnostic, TypeDiagnosticKind};
+use crate::error::{InferResult, TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
     HirTupleStruct, HirTypeAlias, Type,
@@ -549,7 +549,7 @@ pub fn validate_main_return_type(
     items: &[Item],
     source: &str,
     source_name: &str,
-) -> Result<(), TypeDiagnostic> {
+) -> InferResult<()> {
     let Some(function) = items.iter().find_map(|item| match item {
         Item::Function(function) if function.name == "main" => Some(function),
         _ => None,
@@ -561,8 +561,8 @@ pub fn validate_main_return_type(
         .as_ref()
         .is_some_and(|return_type| !matches!(return_type, AstType::Primitive(Primitive::Unit)))
     {
-        return Err(SourceContext::new(source, source_name)
-            .error(function.span, TypeDiagnosticKind::MainReturnType));
+        return Err(Box::new(SourceContext::new(source, source_name)
+            .error(function.span, TypeDiagnosticKind::MainReturnType)));
     }
     Ok(())
 }

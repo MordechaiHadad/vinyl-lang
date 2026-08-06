@@ -1,5 +1,3 @@
-mod common;
-
 use vinyl_typecheck::module::ModuleTable;
 
 fn positions(source: &str) -> std::collections::BTreeMap<usize, String> {

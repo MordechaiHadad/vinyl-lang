@@ -80,15 +80,13 @@ fn jit_and_run(items: &[vinyl_typecheck::hir::HirItem]) -> eyre::Result<()> {
             Some(function)
         }
         _ => None,
-    }) {
-        if !matches!(
-            function.return_type,
-            vinyl_parser::ast::types::Type::Primitive(vinyl_parser::ast::types::Primitive::Unit)
-        ) {
-            return Err(eyre::eyre!(
-                "main must return unit; use print or println for output"
-            ));
-        }
+    }) && !matches!(
+        function.return_type,
+        vinyl_parser::ast::types::Type::Primitive(vinyl_parser::ast::types::Primitive::Unit)
+    ) {
+        return Err(eyre::eyre!(
+            "main must return unit; use print or println for output"
+        ));
     }
     if !has_main {
         warn!("no main function found");

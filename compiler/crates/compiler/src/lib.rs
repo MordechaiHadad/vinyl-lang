@@ -493,7 +493,7 @@ pub fn compile_entry(
     if let Err(diagnostic) =
         vinyl_typecheck::validate_main_return_type(&entry_items, &entry_source, &entry_source_name)
     {
-        return Err(vec![CompileError::TypeDiagnostic(diagnostic)]);
+        return Err(vec![CompileError::TypeDiagnostic(*diagnostic)]);
     }
     let module_table = resolve_imports(
         &entry_items,

@@ -24,8 +24,11 @@ pub fn take_output() -> String {
 }
 
 /// TODO: Replace this raw tagged-byte bridge with the proper Vinyl formatting runtime.
+///
+/// # Safety
+/// `bytes` must point to at least `size` readable bytes, or be null only when `size` is zero.
 #[unsafe(no_mangle)]
-pub extern "C" fn vinyl_print_value(bytes: *const u8, size: usize, tag: u8, newline: u8) {
+pub unsafe extern "C" fn vinyl_print_value(bytes: *const u8, size: usize, tag: u8, newline: u8) {
     let bytes = unsafe { std::slice::from_raw_parts(bytes, size) };
     let text = match tag {
         TAG_INT => format_signed(bytes),
