@@ -22,7 +22,8 @@ fn is_unsigned_type(t: &Type) -> bool {
     matches!(
         t,
         Type::Primitive(
-            Primitive::UInt8
+            Primitive::UInt
+                | Primitive::UInt8
                 | Primitive::UInt16
                 | Primitive::UInt32
                 | Primitive::UInt64
@@ -35,7 +36,8 @@ fn is_unsigned_type(t: &Type) -> bool {
 fn print_tag(t: &Type) -> u8 {
     match t {
         Type::Primitive(
-            Primitive::Int8
+            Primitive::Int
+            | Primitive::Int8
             | Primitive::Int16
             | Primitive::Int32
             | Primitive::Int64
@@ -43,7 +45,8 @@ fn print_tag(t: &Type) -> u8 {
             | Primitive::ISize,
         ) => TAG_INT,
         Type::Primitive(
-            Primitive::UInt8
+            Primitive::UInt
+            | Primitive::UInt8
             | Primitive::UInt16
             | Primitive::UInt32
             | Primitive::UInt64
@@ -51,7 +54,7 @@ fn print_tag(t: &Type) -> u8 {
             | Primitive::USize,
         ) => TAG_UINT,
         Type::Primitive(Primitive::Float32) => TAG_FLOAT32,
-        Type::Primitive(Primitive::Float64) => TAG_FLOAT64,
+        Type::Primitive(Primitive::Float64 | Primitive::Float) => TAG_FLOAT64,
         Type::Primitive(Primitive::Bool) => TAG_BOOL,
         Type::Primitive(Primitive::Char) => TAG_CHAR,
         _ => TAG_RAW,
@@ -115,7 +118,7 @@ impl<'a> CodegenCtx<'a> {
                 let right_val = self.compile_expr(right)?;
                 let is_float = matches!(
                     left.type_,
-                    Type::Primitive(Primitive::Float32 | Primitive::Float64)
+                    Type::Primitive(Primitive::Float32 | Primitive::Float64 | Primitive::Float)
                 );
                 Ok(match op {
                     BinaryOp::Add => {
@@ -1792,7 +1795,7 @@ impl<'a> CodegenCtx<'a> {
         };
         let one = self.func.builder.ins().iconst(types::I8, 1);
         Ok(match ty {
-            Type::Primitive(Primitive::Float32 | Primitive::Float64) => {
+            Type::Primitive(Primitive::Float32 | Primitive::Float64 | Primitive::Float) => {
                 self.func.builder.ins().fcmp(FloatCC::Equal, left, right)
             }
             Type::Primitive(Primitive::Unit) => one,

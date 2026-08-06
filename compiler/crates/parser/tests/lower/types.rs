@@ -75,8 +75,8 @@ fn int_float_type_aliases() {
         Item::Function(f) => f,
         _ => panic!("expected function"),
     };
-    assert_eq!(func.params[0].type_, Type::Primitive(Primitive::Int64));
-    assert_eq!(func.params[1].type_, Type::Primitive(Primitive::Float64));
+    assert_eq!(func.params[0].type_, Type::Primitive(Primitive::Int));
+    assert_eq!(func.params[1].type_, Type::Primitive(Primitive::Float));
 }
 
 #[test]

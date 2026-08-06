@@ -64,7 +64,12 @@ pub fn size_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u32
             Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,
             Primitive::Int16 | Primitive::UInt16 => 2,
             Primitive::Int32 | Primitive::UInt32 | Primitive::Float32 | Primitive::Char => 4,
-            Primitive::Int64 | Primitive::UInt64 | Primitive::Float64 => 8,
+            Primitive::Int64
+            | Primitive::UInt64
+            | Primitive::Float64
+            | Primitive::Int
+            | Primitive::UInt
+            | Primitive::Float => 8,
             Primitive::Int128 | Primitive::UInt128 => 16,
             Primitive::ISize | Primitive::USize | Primitive::String => pointer_size,
             Primitive::Unit => 0,
@@ -101,7 +106,12 @@ pub fn align_of(t: &Type, types: &HashMap<String, HirItemKind>, pointer_size: u3
             Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,
             Primitive::Int16 | Primitive::UInt16 => 2,
             Primitive::Int32 | Primitive::UInt32 | Primitive::Float32 | Primitive::Char => 4,
-            Primitive::Int64 | Primitive::UInt64 | Primitive::Float64 => 8,
+            Primitive::Int64
+            | Primitive::UInt64
+            | Primitive::Float64
+            | Primitive::Int
+            | Primitive::UInt
+            | Primitive::Float => 8,
             Primitive::Int128 | Primitive::UInt128 => 16,
             Primitive::ISize | Primitive::USize | Primitive::String => pointer_size,
             Primitive::Unit => 1,

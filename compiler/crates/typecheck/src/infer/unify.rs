@@ -5,6 +5,7 @@ use miette::SourceSpan;
 use crate::error::{InferResult, TypeDiagnosticKind};
 use crate::hir::types::Type;
 use crate::infer::SourceContext;
+use vinyl_parser::ast::types::Primitive;
 
 pub(super) struct SubstitutionState {
     pub(super) subs: HashMap<usize, Type>,
@@ -109,7 +110,7 @@ impl SubstitutionState {
                 self.subs.insert(*id_b, a.clone());
                 Ok(())
             }
-            (Type::Primitive(p1), Type::Primitive(p2)) if p1 == p2 => Ok(()),
+            (Type::Primitive(p1), Type::Primitive(p2)) if primitives_compatible(p1, p2) => Ok(()),
             (Type::Named(n1), Type::Named(n2)) if n1 == n2 => Ok(()),
             (Type::Generic { name: n1, args: a1 }, Type::Generic { name: n2, args: a2 })
                 if n1 == n2 && a1.len() == a2.len() =>
@@ -145,4 +146,21 @@ impl SubstitutionState {
         self.next_var += 1;
         Type::Var(id)
     }
+}
+
+/// `int`/`uint`/`float` are sugar aliases for their 64-bit counterparts.
+fn primitives_compatible(a: &Primitive, b: &Primitive) -> bool {
+    if a == b {
+        return true;
+    }
+    matches!(
+        (a, b),
+        (Primitive::Int, Primitive::Int64) | (Primitive::Int64, Primitive::Int)
+    ) || matches!(
+        (a, b),
+        (Primitive::UInt, Primitive::UInt64) | (Primitive::UInt64, Primitive::UInt)
+    ) || matches!(
+        (a, b),
+        (Primitive::Float, Primitive::Float64) | (Primitive::Float64, Primitive::Float)
+    )
 }

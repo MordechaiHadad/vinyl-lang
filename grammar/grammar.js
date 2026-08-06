@@ -139,7 +139,7 @@ export default grammar({
       'uint8', 'uint16', 'uint32', 'uint64', 'uint128', 'usize',
       'float32', 'float64',
       'bool', 'char', 'string', 'unit',
-      'int', 'float'
+      'int', 'uint', 'float'
     ),
     simple_type: $ => choice($.primitive_type, $.type_identifier),
 

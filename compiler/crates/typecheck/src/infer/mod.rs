@@ -912,10 +912,33 @@ fn collect_parenthesized_types(
         cursor += start;
         let name = type_.to_string();
         positions.insert(span.offset() + cursor, name.clone());
-        cursor += name.len();
         let rest = &text[cursor..];
-        if let Some(comma) = rest.find(',') {
-            cursor += comma + 1;
+        let Some(extent) = type_token_extent(rest) else {
+            return;
+        };
+        cursor += extent;
+        let rest = &text[cursor..];
+        let Some(comma) = rest.find(',') else {
+            return;
+        };
+        cursor += comma + 1;
+    }
+}
+
+fn type_token_extent(text: &str) -> Option<usize> {
+    let mut depth = 0u32;
+    for (index, c) in text.char_indices() {
+        match c {
+            '(' | '[' | '<' => depth += 1,
+            ')' | ']' | '>' => {
+                if depth == 0 {
+                    return Some(index);
+                }
+                depth -= 1;
+            }
+            ',' if depth == 0 => return Some(index),
+            _ => {}
         }
     }
+    Some(text.len())
 }

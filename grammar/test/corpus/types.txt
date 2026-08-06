@@ -70,3 +70,43 @@ fn f(x: int32, y: float64, z: string, w: bool, c: char): uint8 {
             (simple_type
               (primitive_type))))
         (integer_literal)))))
+
+==================
+Int uint float sugar types
+==================
+
+fn f(x: int, y: uint, z: float): float {
+    let a: int = 1;
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type))))
+      (parameter
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))))
+    (type_annotation
+      (simple_type
+        (primitive_type)))
+    (block
+      (let_declaration
+        (value_identifier)
+        (type_annotation
+          (simple_type
+            (primitive_type)))
+        (integer_literal)))))

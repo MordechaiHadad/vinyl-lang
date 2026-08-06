@@ -771,6 +771,10 @@
         },
         {
           "type": "STRING",
+          "value": "uint"
+        },
+        {
+          "type": "STRING",
           "value": "float"
         }
       ]

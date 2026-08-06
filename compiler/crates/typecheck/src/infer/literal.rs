@@ -204,10 +204,10 @@ impl InferState {
 fn int_range(t: &Type) -> Option<(i128, i128)> {
     let p = t.as_primitive()?;
     Some(match p {
+        Primitive::Int | Primitive::Int64 => (i64::MIN as i128, i64::MAX as i128),
         Primitive::Int8 => (i8::MIN as i128, i8::MAX as i128),
         Primitive::Int16 => (i16::MIN as i128, i16::MAX as i128),
         Primitive::Int32 => (i32::MIN as i128, i32::MAX as i128),
-        Primitive::Int64 => (i64::MIN as i128, i64::MAX as i128),
         Primitive::Int128 => (i128::MIN, i128::MAX),
         Primitive::ISize => (isize::MIN as i128, isize::MAX as i128),
         Primitive::UInt8 => (0, u8::MAX as i128),
@@ -223,10 +223,7 @@ fn int_range(t: &Type) -> Option<(i128, i128)> {
 fn uint_range(t: &Type) -> Option<u128> {
     let p = t.as_primitive()?;
     Some(match p {
-        Primitive::UInt8 => u8::MAX as u128,
-        Primitive::UInt16 => u16::MAX as u128,
-        Primitive::UInt32 => u32::MAX as u128,
-        Primitive::UInt64 => u64::MAX as u128,
+        Primitive::UInt | Primitive::UInt64 => u64::MAX as u128,
         Primitive::UInt128 => u128::MAX,
         Primitive::USize => usize::MAX as u128,
         _ => return None,

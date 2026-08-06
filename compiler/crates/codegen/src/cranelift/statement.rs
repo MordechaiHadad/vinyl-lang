@@ -657,6 +657,7 @@ impl<'a> CodegenCtx<'a> {
                     | Primitive::UInt64
                     | Primitive::UInt128
                     | Primitive::USize
+                    | Primitive::UInt
             ))
         )
     }

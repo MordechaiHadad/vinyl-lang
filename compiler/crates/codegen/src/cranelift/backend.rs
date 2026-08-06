@@ -131,7 +131,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                     && (crate::layout::size_of(&func.return_type, &self.types, ptr_size) > 8
                         || matches!(
                             func.return_type,
-                            Type::Primitive(Primitive::Float32 | Primitive::Float64)
+                            Type::Primitive(Primitive::Float32 | Primitive::Float64 | Primitive::Float)
                         ))
                 {
                     return Err(CraneliftError::Msg(
@@ -307,7 +307,10 @@ impl crate::CodegenBackend for CraneliftBackend {
 
         let main_ptr = self.module.get_finalized_function(*main_id);
 
-        if matches!(main_return, Type::Primitive(Primitive::Float64)) {
+        if matches!(
+            main_return,
+            Type::Primitive(Primitive::Float64 | Primitive::Float)
+        ) {
             let main_fn: unsafe extern "C" fn() -> f64 = unsafe { mem::transmute(main_ptr) };
             let result = unsafe { main_fn() };
             return Ok(result.to_bits() as i64);

@@ -22,12 +22,13 @@ pub fn extract_array_element_type(target: &HirAssignTarget) -> Option<&Type> {
 pub fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> ir::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
-        Type::Primitive(Primitive::Int64) => types::I64,
+        Type::Primitive(Primitive::Int64 | Primitive::Int) => types::I64,
         Type::Primitive(Primitive::Int128) | Type::Primitive(Primitive::UInt128) => types::I128,
         Type::Primitive(Primitive::ISize) | Type::Ref(_) => pointer_type,
         Type::Primitive(Primitive::USize) => pointer_type,
+        Type::Primitive(Primitive::UInt64 | Primitive::UInt) => types::I64,
         Type::Primitive(Primitive::Float32) => types::F32,
-        Type::Primitive(Primitive::Float64) => types::F64,
+        Type::Primitive(Primitive::Float64 | Primitive::Float) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
         Type::Primitive(Primitive::Char) => types::I32,
         _ => types::I64,
@@ -37,12 +38,13 @@ pub fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> ir::Type {
 pub fn ir_type_from_primitive(t: &Type, pointer_type: ir::Type) -> ir::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
-        Type::Primitive(Primitive::Int64) => types::I64,
+        Type::Primitive(Primitive::Int64 | Primitive::Int) => types::I64,
         Type::Primitive(Primitive::Int128) | Type::Primitive(Primitive::UInt128) => types::I128,
         Type::Primitive(Primitive::ISize) | Type::Ref(_) => pointer_type,
         Type::Primitive(Primitive::USize) => pointer_type,
+        Type::Primitive(Primitive::UInt64 | Primitive::UInt) => types::I64,
         Type::Primitive(Primitive::Float32) => types::F32,
-        Type::Primitive(Primitive::Float64) => types::F64,
+        Type::Primitive(Primitive::Float64 | Primitive::Float) => types::F64,
         Type::Primitive(Primitive::Bool) => types::I8,
         Type::Primitive(Primitive::Char) => types::I32,
         _ => types::I64,
@@ -126,7 +128,10 @@ pub fn is_large_aggregate(
 pub fn type_needs_custom_equality(t: &Type, types: &HashMap<String, HirItemKind>) -> bool {
     match t {
         Type::Array { .. } => true,
-        Type::Primitive(p) => matches!(p, Primitive::Float32 | Primitive::Float64),
+        Type::Primitive(p) => matches!(
+            p,
+            Primitive::Float32 | Primitive::Float64 | Primitive::Float
+        ),
         Type::Tuple(elements) => elements
             .iter()
             .any(|element| type_needs_custom_equality(element, types)),

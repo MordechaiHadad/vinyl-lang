@@ -4000,6 +4000,10 @@
     "named": true
   },
   {
+    "type": "uint",
+    "named": false
+  },
+  {
     "type": "uint128",
     "named": false
   },

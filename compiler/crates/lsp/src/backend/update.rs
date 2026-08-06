@@ -43,7 +43,25 @@ impl Backend {
                     )),
                 })
                 .await;
+            let _progress_guard = ProgressGuard {
+                client: client.clone(),
+                token,
+            };
             perform_update(&state, &client, &uri).await;
+        });
+    }
+}
+
+struct ProgressGuard {
+    client: Client,
+    token: ProgressToken,
+}
+
+impl Drop for ProgressGuard {
+    fn drop(&mut self) {
+        let client = self.client.clone();
+        let token = self.token.clone();
+        tokio::spawn(async move {
             client
                 .send_notification::<Progress>(ProgressParams {
                     token,

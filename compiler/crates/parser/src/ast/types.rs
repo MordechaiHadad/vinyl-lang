@@ -81,18 +81,21 @@ impl fmt::Display for Type {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Primitive {
+    Int,
     Int8,
     Int16,
     Int32,
     Int64,
     Int128,
     ISize,
+    UInt,
     UInt8,
     UInt16,
     UInt32,
     UInt64,
     UInt128,
     USize,
+    Float,
     Float32,
     Float64,
     Bool,
@@ -105,7 +108,8 @@ impl Primitive {
     pub fn is_int(&self) -> bool {
         matches!(
             self,
-            Primitive::Int8
+            Primitive::Int
+                | Primitive::Int8
                 | Primitive::Int16
                 | Primitive::Int32
                 | Primitive::Int64
@@ -117,7 +121,8 @@ impl Primitive {
     pub fn is_uint(&self) -> bool {
         matches!(
             self,
-            Primitive::UInt8
+            Primitive::UInt
+                | Primitive::UInt8
                 | Primitive::UInt16
                 | Primitive::UInt32
                 | Primitive::UInt64
@@ -135,7 +140,7 @@ impl Primitive {
     }
 
     pub fn is_float(&self) -> bool {
-        matches!(self, Primitive::Float32 | Primitive::Float64)
+        matches!(self, Primitive::Float | Primitive::Float32 | Primitive::Float64)
     }
 
     pub fn is_numeric(&self) -> bool {
@@ -146,18 +151,21 @@ impl Primitive {
 impl fmt::Display for Primitive {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Primitive::Int => write!(f, "int"),
             Primitive::Int8 => write!(f, "int8"),
             Primitive::Int16 => write!(f, "int16"),
             Primitive::Int32 => write!(f, "int32"),
             Primitive::Int64 => write!(f, "int64"),
             Primitive::Int128 => write!(f, "int128"),
             Primitive::ISize => write!(f, "isize"),
+            Primitive::UInt => write!(f, "uint"),
             Primitive::UInt8 => write!(f, "uint8"),
             Primitive::UInt16 => write!(f, "uint16"),
             Primitive::UInt32 => write!(f, "uint32"),
             Primitive::UInt64 => write!(f, "uint64"),
             Primitive::UInt128 => write!(f, "uint128"),
             Primitive::USize => write!(f, "usize"),
+            Primitive::Float => write!(f, "float"),
             Primitive::Float32 => write!(f, "float32"),
             Primitive::Float64 => write!(f, "float64"),
             Primitive::Bool => write!(f, "bool"),
