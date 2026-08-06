@@ -1,5 +1,10 @@
 import parent::math;
 
+struct Point {
+    x:int,
+    y:int
+}
+
 fn main() {
     69 |> math::double()
 }

@@ -47,9 +47,7 @@ impl Backend {
             params.context.and_then(|c| c.trigger_character).as_deref() == Some(":");
 
         let source_bytes = current_source.as_bytes();
-        let dot_trigger = offset > 0
-            && source_bytes[offset - 1] == b'.'
-            && (offset < 2 || source_bytes[offset - 2] != b'.');
+        let field_access_dot = field_access_context(&current_source, offset);
         let variant_trigger =
             (offset >= 2 && source_bytes[offset - 2] == b':' && source_bytes[offset - 1] == b':')
                 || (offset > 0
@@ -64,10 +62,16 @@ impl Backend {
                 drop(state);
                 return Ok(Some(CompletionResponse::Array(items)));
             }
-            if dot_trigger
-                && let Some(items) =
-                    field_completions(&state, &path, &current_source, offset, &prefix)
-            {
+            if let Some(dot_index) = field_access_dot {
+                let items = field_completions(
+                    &state,
+                    &path,
+                    &current_source,
+                    offset,
+                    dot_index,
+                    &prefix,
+                )
+                .unwrap_or_default();
                 drop(state);
                 return Ok(Some(CompletionResponse::Array(items)));
             }
@@ -169,9 +173,11 @@ impl Backend {
 
 fn clean_completion_source(source: &str, offset: usize) -> String {
     let offset = offset.min(source.len());
-    let before = &source[..offset];
-    let statement_start = before.rfind([';', '{', '}']).map_or(0, |index| index + 1);
-    format!("{}{}", &source[..statement_start], &source[offset..])
+    let tree = vinyl_parser::parse_tree(source);
+    match vinyl_parser::statement_range_at(&tree, offset) {
+        Some((start, end)) => format!("{}{}", &source[..start], &source[end..]),
+        None => source.to_string(),
+    }
 }
 
 fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option<Arc<Analysis>> {
@@ -181,14 +187,43 @@ fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option
     analyze_with_diagnostics(path, source, &items, &state.module_table).ok()
 }
 
+fn field_access_context(source: &str, offset: usize) -> Option<usize> {
+    let offset = offset.min(source.len());
+    let bytes = source.as_bytes();
+    let mut word_start = offset;
+    while word_start > 0
+        && (bytes[word_start - 1].is_ascii_alphanumeric() || bytes[word_start - 1] == b'_')
+    {
+        word_start -= 1;
+    }
+    if word_start == 0 || bytes[word_start - 1] != b'.' {
+        return None;
+    }
+    if word_start >= 2 && bytes[word_start - 2] == b'.' {
+        return None;
+    }
+    if word_start >= 2 {
+        let before_dot = bytes[word_start - 2];
+        if !(before_dot.is_ascii_alphanumeric()
+            || before_dot == b'_'
+            || before_dot == b')'
+            || before_dot == b']')
+        {
+            return None;
+        }
+    }
+    Some(word_start - 1)
+}
+
 fn field_completions(
     state: &State,
     path: &Path,
     source: &str,
     offset: usize,
+    dot_index: usize,
     prefix: &str,
 ) -> Option<Vec<CompletionItem>> {
-    let variable_name = source[..offset.saturating_sub(1)]
+    let variable_name = source[..dot_index]
         .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
         .next()?;
     let clean_source = clean_completion_source(source, offset);
