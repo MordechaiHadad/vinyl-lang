@@ -3,7 +3,7 @@ use vinyl_typecheck::hir::HirItemKind;
 
 use crate::backend::definition::{definition_detail, function_signature};
 use crate::backend::state::Backend;
-use crate::backend::symbol::{resolve_symbol, target_definition};
+use crate::backend::symbol::{resolve_symbol, target_definition, SymbolRef};
 use crate::position::{offset_at, span_range};
 use crate::text::word_prefix;
 
@@ -22,19 +22,26 @@ impl Backend {
             &analysis.line_index,
             params.text_document_position_params.position,
         );
-        let detail = if let Some(target) = resolve_symbol(&analysis, offset)
-            && let Some(definition) = target_definition(&analysis, &target)
-        {
-            let source = self
-                .definition_source(&definition)
-                .await
-                .unwrap_or_else(|| analysis.source.clone());
-            definition_detail(&definition, &analysis.result, &source)
-        } else {
-            None
+        let (detail, type_symbol) = match resolve_symbol(&analysis, offset) {
+            Some(target) => {
+                let detail = match target_definition(&analysis, &target) {
+                    Some(definition) => {
+                        let source = self
+                            .definition_source(&definition)
+                            .await
+                            .unwrap_or_else(|| analysis.source.clone());
+                        definition_detail(&definition, &analysis.result, &source)
+                    }
+                    None => None,
+                };
+                (detail, Some(target))
+            }
+            None => (None, None),
         };
         let content = if let Some(detail) = detail {
             detail
+        } else if let Some(SymbolRef::Type { name }) = type_symbol {
+            name
         } else if let Some(expression) = analysis
             .result
             .expr_at_pos

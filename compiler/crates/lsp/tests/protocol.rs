@@ -79,6 +79,18 @@ impl LspProcess {
             }
         }
     }
+
+    fn progress_end(&mut self, token: &str) {
+        loop {
+            let message = self.receive();
+            if message.get("method") == Some(&json!("$/progress"))
+                && message["params"]["token"] == token
+                && message["params"]["value"]["kind"] == "end"
+            {
+                return;
+            }
+        }
+    }
 }
 
 impl Drop for LspProcess {
@@ -2813,6 +2825,55 @@ fn symbol_import_produces_no_diagnostic() {
         "symbol import `import math::answer;` should not produce diagnostics, got: {}",
         diagnostics
     );
+
+    let _ = lsp;
+}
+
+#[test]
+fn hover_shows_primitive_type_tokens() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    let text = "enum Shape {\n    Circle(int),\n}\nfn shape_area(r: int): int {\n    r\n}\n";
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": text }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.progress_end("vinyl-lsp-update-1");
+
+    for (line, character, expected) in [
+        (1, 11, "int"),  // int in Circle(int)
+        (3, 17, "int"),  // int in (r: int)
+        (3, 23, "int"),  // return type int
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+            "params": {
+                "textDocument": { "uri": main_uri },
+                "position": { "line": line, "character": character }
+            }
+        }));
+        let response = lsp.response(2);
+        assert_eq!(
+            response["result"]["contents"], expected,
+            "hover at ({line},{character}) should show `{expected}`"
+        );
+    }
 
     let _ = lsp;
 }
