@@ -92,6 +92,69 @@ fn undefined_variable() {
     let source = "fn main() { let x = y; }";
     let items = common::compile(source);
     assert!(items.is_err(), "typeck should fail: undefined variable");
+    let errors = items.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined variable `y`")),
+        "expected undefined variable diagnostic, got: {errors:?}"
+    );
+}
+
+#[test]
+fn undefined_type_in_annotation() {
+    let source = "fn main() { let x: Foo = 1; }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: undefined type");
+    let errors = items.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined type `Foo`")),
+        "expected undefined type diagnostic, got: {errors:?}"
+    );
+}
+
+#[test]
+fn undefined_type_in_struct_construction() {
+    let source = "fn main() { let x = Foo { a: 1 }; }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: undefined type");
+    let errors = items.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined type `Foo`")),
+        "expected undefined type diagnostic, got: {errors:?}"
+    );
+}
+
+#[test]
+fn undefined_type_in_enum_variant() {
+    let source = "fn main() { let x = Foo::Bar(1); }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: undefined type");
+    let errors = items.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined type `Foo`")),
+        "expected undefined type diagnostic, got: {errors:?}"
+    );
+}
+
+#[test]
+fn undefined_module_in_value_path() {
+    let source = "fn main() { foo::bar(); }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: undefined module");
+    let errors = items.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined module `foo`")),
+        "expected undefined module diagnostic, got: {errors:?}"
+    );
 }
 
 #[test]

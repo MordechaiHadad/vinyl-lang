@@ -170,6 +170,14 @@ impl InferState {
                     });
                 let (variant_index, expected_types) = match variant_info {
                     Some(info) => info,
+                    None if !self.types.contains_key(&canonical_type_name) => {
+                        return Err(Box::new(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::UndefinedType {
+                                name: canonical_type_name.clone(),
+                            },
+                        )));
+                    }
                     None => {
                         return Err(Box::new(self.source.error(
                             *span,
@@ -240,6 +248,14 @@ impl InferState {
                         for (index, type_) in t.types.iter().enumerate() {
                             field_types.insert(index.to_string(), type_.clone());
                         }
+                    }
+                    _ if !self.types.contains_key(&canonical_type_name) => {
+                        self.errors.push(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::UndefinedType {
+                                name: canonical_type_name.clone(),
+                            },
+                        ));
                     }
                     _ => {
                         self.errors.push(self.source.error(

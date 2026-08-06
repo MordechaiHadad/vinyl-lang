@@ -70,7 +70,7 @@ impl ScopeState {
         }
         Err(Box::new(source.error(
             span,
-            TypeDiagnosticKind::UndefinedName {
+            TypeDiagnosticKind::UndefinedVariable {
                 name: name.to_string(),
             },
         )))

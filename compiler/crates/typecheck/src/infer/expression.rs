@@ -78,7 +78,7 @@ impl InferState {
                     }),
                     None => Err(Box::new(self.source.error(
                         *span,
-                        TypeDiagnosticKind::UndefinedName { name: name.clone() },
+                        TypeDiagnosticKind::UndefinedVariable { name: name.clone() },
                     ))),
                 }
             }
@@ -108,6 +108,13 @@ impl InferState {
                                 },
                             ));
                         }
+                    } else {
+                        self.errors.push(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::UndefinedModule {
+                                name: module_name.clone(),
+                            },
+                        ));
                     }
                 }
                 Ok(HirExpression {
@@ -267,6 +274,17 @@ impl InferState {
                         },
                         type_: Type::Named(canonical_name),
                     });
+                }
+
+                if let Expression::Ident(name, function_span) = function.as_ref()
+                    && self.scope.lookup(name).is_none()
+                    && !signatures.contains_key(name.as_str())
+                    && !self.types.contains_key(name.as_str())
+                {
+                    return Err(Box::new(self.source.error(
+                        *function_span,
+                        TypeDiagnosticKind::UndefinedFunction { name: name.clone() },
+                    )));
                 }
 
                 let hir_func = self.infer_expr(function, signatures)?;
@@ -661,6 +679,14 @@ impl InferState {
                     });
                 let (variant_index, expected_types) = match variant_info {
                     Some(info) => info,
+                    None if !self.types.contains_key(&canonical_type_name) => {
+                        return Err(Box::new(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::UndefinedType {
+                                name: canonical_type_name.clone(),
+                            },
+                        )));
+                    }
                     None => {
                         return Err(Box::new(self.source.error(
                             *span,
@@ -761,6 +787,14 @@ impl InferState {
                             }
                         }
                         Type::Named(type_name.clone())
+                    }
+                    _ if !self.types.contains_key(type_name.as_str()) => {
+                        return Err(Box::new(self.source.error(
+                            *span,
+                            TypeDiagnosticKind::UndefinedType {
+                                name: type_name.clone(),
+                            },
+                        )));
                     }
                     _ => {
                         return Err(Box::new(self.source.error(

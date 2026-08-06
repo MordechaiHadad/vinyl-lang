@@ -127,6 +127,26 @@ fn undefined_function_call() {
     let source = "fn main() { undefined(1); }";
     let items = common::compile(source);
     assert!(items.is_err(), "typeck should fail: undefined function");
+    let errors = items.err().unwrap();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined function `undefined`")),
+        "expected undefined function diagnostic, got: {errors:?}"
+    );
+}
+
+#[test]
+fn undefined_function_call_is_not_undefined_variable() {
+    let source = "fn main() { undefined(1); }";
+    let items = common::compile(source);
+    let errors = items.err().unwrap();
+    assert!(
+        !errors
+            .iter()
+            .any(|error| error.to_string().contains("undefined variable")),
+        "call target should not be reported as a variable, got: {errors:?}"
+    );
 }
 
 #[test]

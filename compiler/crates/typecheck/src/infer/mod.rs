@@ -124,8 +124,8 @@ impl InferState {
             ))),
             None => Err(Box::new(self.source.error(
                 span,
-                TypeDiagnosticKind::UnknownType {
-                    name: name.to_string(),
+                TypeDiagnosticKind::UndefinedModule {
+                    name: module.to_string(),
                 },
             ))),
         }
@@ -264,7 +264,7 @@ fn validate_type_aliases(state: &mut InferState) {
             Err(AliasTargetError::UnknownType(t)) => state.errors.push(
                 state
                     .source
-                    .error(span, TypeDiagnosticKind::UnknownType { name: t }),
+                    .error(span, TypeDiagnosticKind::UndefinedType { name: t }),
             ),
             Err(AliasTargetError::Recursive) => state.errors.push(
                 state
@@ -298,6 +298,132 @@ fn validate_alias_target(
             }
         }
         _ => Ok(()),
+    }
+}
+
+fn validate_named_types(state: &mut InferState, items: &[Item]) {
+    fn check_type(state: &mut InferState, type_: &AstType, span: SourceSpan) {
+        match type_ {
+            AstType::Named(name) if !name.contains("::") && !state.types.contains_key(name) => {
+                state.errors.push(
+                    state
+                        .source
+                        .error(span, TypeDiagnosticKind::UndefinedType { name: name.clone() }),
+                );
+            }
+            AstType::Ref(inner) => check_type(state, inner, span),
+            AstType::Array { element, .. } => check_type(state, element, span),
+            AstType::Tuple(elements) => {
+                for element in elements {
+                    check_type(state, element, span);
+                }
+            }
+            AstType::Generic { args, .. } => {
+                for arg in args {
+                    check_type(state, arg, span);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn check_expr(state: &mut InferState, expr: &Expression) {
+        match expr {
+            Expression::Block(block, _) => check_stmts(state, block),
+            Expression::If {
+                then_block,
+                else_if,
+                else_block,
+                ..
+            } => {
+                check_stmts(state, then_block);
+                for (_, block) in else_if {
+                    check_stmts(state, block);
+                }
+                if let Some(block) = else_block {
+                    check_stmts(state, block);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn check_stmts(state: &mut InferState, stmts: &[Statement]) {
+        for stmt in stmts {
+            match stmt {
+                Statement::Let {
+                    type_: Some(type_),
+                    span,
+                    ..
+                } => check_type(state, type_, *span),
+                Statement::Expression(expr) => check_expr(state, expr),
+                Statement::Return(Some(expr), _) => check_expr(state, expr),
+                Statement::Value(expr, _) => check_expr(state, expr),
+                Statement::If {
+                    then_block,
+                    else_if,
+                    else_block,
+                    ..
+                } => {
+                    check_stmts(state, then_block);
+                    for (_, block) in else_if {
+                        check_stmts(state, block);
+                    }
+                    if let Some(block) = else_block {
+                        check_stmts(state, block);
+                    }
+                }
+                Statement::While { body, .. } | Statement::Loop { body, .. } => {
+                    check_stmts(state, body);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    for item in items {
+        let span = item.span();
+        match item {
+            Item::Struct(s) => {
+                for field in &s.fields {
+                    check_type(state, &field.type_, span);
+                }
+            }
+            Item::TupleStruct(t) => {
+                for type_ in &t.types {
+                    check_type(state, type_, span);
+                }
+            }
+            Item::Enum(e) => {
+                for variant in &e.variants {
+                    if let Some(data) = &variant.data {
+                        match data {
+                            EnumVariantData::Tuple(types) => {
+                                for type_ in types {
+                                    check_type(state, type_, span);
+                                }
+                            }
+                            EnumVariantData::Struct(fields) => {
+                                for field in fields {
+                                    check_type(state, &field.type_, span);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Item::TypeAlias(a) => check_type(state, &a.type_, span),
+            Item::Function(f) => {
+                for param in &f.params {
+                    check_type(state, &param.type_, span);
+                }
+                if let Some(return_type) = &f.return_type {
+                    check_type(state, return_type, span);
+                }
+                check_stmts(state, &f.body);
+            }
+            Item::Import(_) => {}
+        }
     }
 }
 
@@ -567,6 +693,7 @@ pub fn typeck_with_modules(
         }
     }
 
+    validate_named_types(&mut state, &owned_items);
     validate_type_aliases(&mut state);
     validate_recursive_types(&mut state);
 

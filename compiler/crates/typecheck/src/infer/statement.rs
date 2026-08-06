@@ -287,7 +287,7 @@ impl InferState {
                 let scheme = self.scope.lookup(name).cloned().ok_or_else(|| {
                     self.source.error(
                         *name_span,
-                        TypeDiagnosticKind::UndefinedName { name: name.clone() },
+                        TypeDiagnosticKind::UndefinedVariable { name: name.clone() },
                     )
                 })?;
                 let resolved_type = self.subs.apply(&scheme.type_);

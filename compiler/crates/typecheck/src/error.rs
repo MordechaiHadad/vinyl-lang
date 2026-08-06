@@ -23,12 +23,20 @@ pub enum TypeDiagnosticKind {
     MainReturnType,
 
     #[error("undefined variable `{name}`")]
-    #[diagnostic(code(typeck::undefined_name))]
-    UndefinedName { name: String },
+    #[diagnostic(code(typeck::undefined_variable))]
+    UndefinedVariable { name: String },
 
-    #[error("unknown type `{name}`")]
-    #[diagnostic(code(typeck::unknown_type))]
-    UnknownType { name: String },
+    #[error("undefined function `{name}`")]
+    #[diagnostic(code(typeck::undefined_function))]
+    UndefinedFunction { name: String },
+
+    #[error("undefined type `{name}`")]
+    #[diagnostic(code(typeck::undefined_type))]
+    UndefinedType { name: String },
+
+    #[error("undefined module `{name}`")]
+    #[diagnostic(code(typeck::undefined_module))]
+    UndefinedModule { name: String },
 
     #[error("recursive type alias `{name}`")]
     #[diagnostic(code(typeck::recursive_type_alias))]
