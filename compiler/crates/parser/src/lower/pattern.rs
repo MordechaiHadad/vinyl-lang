@@ -29,8 +29,11 @@ impl<'a> Lowerer<'a> {
                 Ok(Pattern::Tuple(patterns, span()))
             }
             "enum_variant_pattern" => {
-                let type_name = node_text(&self.child_by_field(node, "type")?, self.source);
-                let variant_name = node_text(&self.child_by_field(node, "variant")?, self.source);
+                let path = self.child_by_field(node, "path")?;
+                let path_text = node_text(&path, self.source);
+                let (type_name, variant_name) = path_text
+                    .rsplit_once("::")
+                    .ok_or_else(|| self.span_error(node, "invalid enum variant path"))?;
                 let patterns = if let Some(arguments) = child_by_field_opt(node, "arguments") {
                     children(&arguments)
                         .iter()
@@ -41,8 +44,8 @@ impl<'a> Lowerer<'a> {
                 };
                 Ok(Pattern::EnumVariant {
                     span: span(),
-                    type_path: type_name,
-                    variant_name,
+                    type_path: type_name.to_string(),
+                    variant_name: variant_name.to_string(),
                     patterns,
                 })
             }

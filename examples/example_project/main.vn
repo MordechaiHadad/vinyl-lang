@@ -1,10 +1,7 @@
 import parent::math;
 
-struct Point {
-    x:int,
-    y:int
-}
 
 fn main() {
+    let x = math::Point { x: 10, y: 69 };
     69 |> math::double()
 }

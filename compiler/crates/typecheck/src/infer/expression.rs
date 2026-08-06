@@ -13,6 +13,7 @@ use crate::hir::{
 };
 use crate::infer::InferState;
 use crate::infer::resolve_named_type;
+use crate::module::resolve_module;
 
 impl InferState {
     pub(super) fn infer_expr(
@@ -84,9 +85,10 @@ impl InferState {
             }
             Expression::ValuePath { segments, span } => {
                 if segments.len() >= 2 {
-                    let module_name = &segments[0];
-                    let item_name = &segments[1];
-                    if let Some(exports) = self.module_table.get(module_name.as_str()) {
+                    if let Some((module_len, exports)) = resolve_module(&self.module_table, segments)
+                    {
+                        let module_name = segments[..module_len].join("::");
+                        let item_name = segments[module_len..].join("::");
                         if !exports.imported {
                             self.errors.push(self.source.error(
                                 *span,
@@ -97,14 +99,14 @@ impl InferState {
                                 },
                             ));
                         }
-                        let is_public = exports.functions.iter().any(|f| f.name == *item_name)
-                            || exports.types.iter().any(|t| t == item_name);
+                        let is_public = exports.functions.iter().any(|f| f.name == item_name)
+                            || exports.types.iter().any(|t| t == &item_name);
                         if !is_public {
                             self.errors.push(self.source.error(
                                 *span,
                                 TypeDiagnosticKind::PrivateAccess {
-                                    module: module_name.clone(),
-                                    name: item_name.clone(),
+                                    module: module_name,
+                                    name: item_name,
                                 },
                             ));
                         }
@@ -112,7 +114,7 @@ impl InferState {
                         self.errors.push(self.source.error(
                             *span,
                             TypeDiagnosticKind::UndefinedModule {
-                                name: module_name.clone(),
+                                name: segments[..segments.len() - 1].join("::"),
                             },
                         ));
                     }
@@ -293,18 +295,21 @@ impl InferState {
                     segments,
                     span: function_span,
                 } = function.as_ref()
-                    && segments.len() == 2
-                    && let Some(module_function) = self
-                        .module_table
-                        .get(&segments[0])
-                        .and_then(|module| module.functions.iter().find(|f| f.name == segments[1]))
+                    && let Some((module_len, module)) = resolve_module(&self.module_table, segments)
+                    && let Some(module_function) = module
+                        .functions
+                        .iter()
+                        .find(|f| f.name == segments[module_len..].join("::"))
                         .cloned()
                 {
+                    let module_name = segments[..module_len].join("::");
+                    let item_name = segments[module_len..].join("::");
+                    let canonical_function_name = format!("{}::{item_name}", module.import_name);
                     if hir_args.len() != module_function.params.len() {
                         self.errors.push(self.source.error(
                             *span,
                             TypeDiagnosticKind::ArgCountMismatch {
-                                callee: format!("{}::{}", segments[0], segments[1]),
+                                callee: format!("{module_name}::{item_name}"),
                                 expected: module_function.params.len(),
                                 found: hir_args.len(),
                             },
@@ -327,7 +332,10 @@ impl InferState {
                         kind: HirExpressionKind::Call {
                             span: *span,
                             function: Box::new(HirExpression {
-                                kind: HirExpressionKind::Ident(segments.join("::"), *function_span),
+                                kind: HirExpressionKind::Ident(
+                                    canonical_function_name,
+                                    *function_span,
+                                ),
                                 type_: Type::Primitive(Primitive::Unit),
                             }),
                             args: hir_args,
@@ -586,12 +594,15 @@ impl InferState {
                 variant_name,
                 args,
             } => {
-                if let Some(function) = self
-                    .module_table
-                    .get(type_name)
-                    .and_then(|module| module.functions.iter().find(|f| f.name == *variant_name))
-                    .cloned()
+                let type_segments: Vec<String> = type_name.split("::").map(str::to_string).collect();
+                if let Some((_, module)) = resolve_module(&self.module_table, &type_segments)
+                    && let Some(function) = module
+                        .functions
+                        .iter()
+                        .find(|f| f.name == *variant_name)
+                        .cloned()
                 {
+                    let module_name = module.import_name.clone();
                     let mut hir_args = Vec::new();
                     for (index, arg) in args.iter().enumerate() {
                         let hir_arg = self.infer_expr(arg, signatures)?;
@@ -621,8 +632,8 @@ impl InferState {
                         kind: HirExpressionKind::Call {
                             span: *span,
                             function: Box::new(HirExpression {
-                                kind: HirExpressionKind::Ident(
-                                    format!("{type_name}::{variant_name}"),
+                            kind: HirExpressionKind::Ident(
+                                    format!("{module_name}::{variant_name}"),
                                     *span,
                                 ),
                                 type_: Type::Primitive(Primitive::Unit),
@@ -635,7 +646,9 @@ impl InferState {
                             .unwrap_or(Type::Primitive(Primitive::Unit)),
                     });
                 }
-                if self.module_table.contains_key(type_name) {
+                if let Some((module_len, module)) = resolve_module(&self.module_table, &type_segments)
+                    && !module.types.iter().any(|name| name == &type_segments[module_len..].join("::"))
+                {
                     return Err(Box::new(self.source.error(
                         *span,
                         TypeDiagnosticKind::VariantPrivate {
@@ -737,13 +750,14 @@ impl InferState {
                 type_name,
                 fields,
             } => {
+                let type_name = self.canonicalize_scoped_name(type_name, *span)?;
                 let mut hir_fields = Vec::new();
                 for (name, expr) in fields {
                     let hir = self.infer_expr(expr, signatures)?;
-                    if let Some(HirItemKind::Struct(s)) = resolve_named_type(type_name, &self.types)
+                    if let Some(HirItemKind::Struct(s)) = resolve_named_type(&type_name, &self.types)
                     {
                         if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
-                            if self.type_origins.contains_key(type_name) && !field.public {
+                            if self.type_origins.contains_key(&type_name) && !field.public {
                                 self.errors.push(self.source.error(
                                     expr.span(),
                                     TypeDiagnosticKind::PrivateField {
@@ -773,7 +787,7 @@ impl InferState {
                     }
                     hir_fields.push((name.clone(), hir));
                 }
-                let struct_type = match resolve_named_type(type_name, &self.types) {
+                let struct_type = match resolve_named_type(&type_name, &self.types) {
                     Some(HirItemKind::Struct(s)) => {
                         for field in &s.fields {
                             if !hir_fields.iter().any(|(n, _)| n == &field.name) {

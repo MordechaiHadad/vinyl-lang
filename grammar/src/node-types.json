@@ -890,7 +890,7 @@
         "required": true,
         "types": [
           {
-            "type": "scoped_value_expression",
+            "type": "qualified_value_path",
             "named": true
           },
           {
@@ -1005,22 +1005,12 @@
           }
         ]
       },
-      "type": {
+      "path": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "type_identifier",
-            "named": true
-          }
-        ]
-      },
-      "variant": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type_identifier",
+            "type": "qualified_type_path",
             "named": true
           }
         ]
@@ -2826,36 +2816,12 @@
           }
         ]
       },
-      "module": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "value_identifier",
-            "named": true
-          }
-        ]
-      },
-      "type": {
+      "path": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "type_identifier",
-            "named": true
-          },
-          {
-            "type": "value_identifier",
-            "named": true
-          }
-        ]
-      },
-      "variant": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type_identifier",
+            "type": "qualified_type_path",
             "named": true
           }
         ]
@@ -2866,26 +2832,12 @@
     "type": "scoped_value_expression",
     "named": true,
     "fields": {
-      "function": {
+      "path": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "value_identifier",
-            "named": true
-          }
-        ]
-      },
-      "module": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "type_identifier",
-            "named": true
-          },
-          {
-            "type": "value_identifier",
+            "type": "qualified_value_path",
             "named": true
           }
         ]
@@ -2995,6 +2947,10 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "qualified_type_path",
+            "named": true
+          },
           {
             "type": "type_identifier",
             "named": true
@@ -3127,6 +3083,10 @@
       "types": [
         {
           "type": "field_pattern",
+          "named": true
+        },
+        {
+          "type": "qualified_type_path",
           "named": true
         },
         {
@@ -3958,6 +3918,14 @@
   {
     "type": "public",
     "named": false
+  },
+  {
+    "type": "qualified_type_path",
+    "named": true
+  },
+  {
+    "type": "qualified_value_path",
+    "named": true
   },
   {
     "type": "raw_string_literal",

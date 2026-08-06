@@ -30,20 +30,17 @@ fn type_name(type_: &Type) -> Option<&str> {
     }
 }
 
-/// Splits a `Type::X` or `module::item` span into (colon_offset, first, second).
+/// Splits a qualified span into its final item and module prefix.
 fn split_segments(source: &str, span: SourceSpan) -> Option<(usize, String, String)> {
     let start = span.offset();
     let end = (start + span.len()).min(source.len());
     let text = source.get(start..end)?;
-    let colon = text.find("::")?;
-    let first = text[..colon].to_string();
-    let after = &text[colon + 2..];
-    let second = after
+    let item_start = text.rfind("::")? + 2;
+    let item = text[item_start..]
         .split(|character: char| !character.is_alphanumeric() && character != '_')
         .next()
-        .unwrap_or("")
-        .to_string();
-    Some((colon, first, second))
+        .unwrap_or("");
+    Some((item_start - 2, text[..item_start - 2].to_string(), item.to_string()))
 }
 
 pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {

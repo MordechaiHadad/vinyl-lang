@@ -276,8 +276,7 @@ fn area(s: Shape): int32 {
         (match_arm
           pattern: (pattern
             (enum_variant_pattern
-              type: (type_identifier)
-              variant: (type_identifier)
+              path: (qualified_type_path)
               arguments: (pattern_arguments
                 (pattern
                   (identifier_pattern
@@ -286,8 +285,7 @@ fn area(s: Shape): int32 {
         (match_arm
           pattern: (pattern
             (enum_variant_pattern
-              type: (type_identifier)
-              variant: (type_identifier)
+              path: (qualified_type_path)
               arguments: (pattern_arguments
                 (pattern
                   (identifier_pattern
@@ -301,9 +299,46 @@ fn area(s: Shape): int32 {
         (match_arm
           pattern: (pattern
             (enum_variant_pattern
-              type: (type_identifier)
-              variant: (type_identifier)
+              path: (qualified_type_path)
               arguments: (pattern_arguments)))
+           body: (integer_literal))))))
+
+==================
+Deeply qualified enum variant pattern
+==================
+
+fn area(s: Enum): int32 {
+    match s {
+        parent::mod1::mod2::mod3::infinite::Enum::Variant => 1,
+        _ => 0,
+    }
+}
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters
+      (parameter
+        name: (value_identifier)
+        type: (type_annotation
+          (simple_type
+            (type_identifier)))))
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (match_expression
+        (value_identifier)
+        (match_arm
+          pattern: (pattern
+            (enum_variant_pattern
+              path: (qualified_type_path)))
+          body: (integer_literal))
+        (match_arm
+          pattern: (pattern
+            (wildcard_pattern))
           body: (integer_literal))))))
 
 ==================

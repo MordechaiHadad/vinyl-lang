@@ -132,6 +132,44 @@ fn compiles_script_project_with_import() {
 }
 
 #[test]
+fn compiles_nested_module_symbols() {
+    let root = project(
+        "nested_module_symbols",
+        &[
+            (
+                "src/main.vn",
+                "import parent::nested::math; fn main() { let point = parent::nested::math::Point { x: 69, y: 69 }; parent::nested::math::double(69) }",
+            ),
+            (
+                "src/nested/math.vn",
+                "public fn double(n: int): int { n * 2 } public struct Point { public x: int, public y: int }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn compiles_deep_nested_module_symbols() {
+    let root = project(
+        "deep_nested_module_symbols",
+        &[
+            (
+                "src/main.vn",
+                "import parent::mod1::mod2::mod3::infinite; fn main() { let value = parent::mod1::mod2::mod3::infinite::Enum::Variant; match value { parent::mod1::mod2::mod3::infinite::Enum::Variant => unit, _ => unit }; let point = parent::mod1::mod2::mod3::infinite::Struct { x: 69, y: 69 }; parent::mod1::mod2::mod3::infinite::function(69) }",
+            ),
+            (
+                "src/mod1/mod2/mod3/infinite.vn",
+                "public fn function(n: int): int { n * 2 } public struct Struct { public x: int, public y: int } public enum Enum { public Variant }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
 fn compiles_manifest_via_detect() {
     let root = project(
         "manifest_detect",

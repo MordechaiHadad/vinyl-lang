@@ -590,6 +590,49 @@ fn completion_module_ref() {
 }
 
 #[test]
+fn completion_module_ref_with_struct_does_not_crash() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public struct Point { x: int, y: int }\npublic fn double(n: int): int { n * 2 }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import parent::math;\nfn main() {\n    let x = math::Point { x: 69, y: 69 };\n    69 |> math::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 3, "character": 21 }
+        }
+    }));
+    let response = lsp.response(2);
+    assert!(response["result"].is_array(), "completion response: {response}");
+}
+
+#[test]
 fn completion_colon_trigger_guard() {
     let project = TestProject::new();
     let main_uri = TestProject::uri(&project.main);

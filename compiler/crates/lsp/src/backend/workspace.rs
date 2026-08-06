@@ -370,16 +370,15 @@ pub(crate) fn add_resolved_modules(
                 _ => None,
             })
             .collect();
-        module_table.insert(
-            info.import_name.clone(),
-            ModuleExports {
+        let exports = ModuleExports {
                 import_name: info.import_name.clone(),
                 import_path: relative_import_path(from, &info.file_path, resolver),
                 imported: false,
                 functions,
                 types,
-            },
-        );
+            };
+        module_table.insert(info.import_name.clone(), exports.clone());
+        module_table.insert(info.path.join("::"), exports);
     }
 }
 
@@ -740,16 +739,15 @@ pub(crate) fn collect_modules(
         if already_visited {
             continue;
         }
-        module_table.insert(
-            info.import_name.clone(),
-            ModuleExports {
+        let exports = ModuleExports {
                 import_name: info.import_name.clone(),
                 import_path: relative_import_path(from, &info.file_path, resolver),
                 imported: true,
                 functions,
                 types,
-            },
-        );
+            };
+        module_table.insert(info.import_name.clone(), exports.clone());
+        module_table.insert(info.path.join("::"), exports);
         collect_modules(
             vfs,
             resolver,

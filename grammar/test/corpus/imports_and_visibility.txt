@@ -105,9 +105,7 @@ fn make(): unit { math::Shape::Circle }
         (primitive_type)))
     body: (block
       (scoped_type_expression
-        module: (value_identifier)
-        type: (type_identifier)
-        variant: (type_identifier)))))
+        path: (qualified_type_path)))))
 
 ==================
 Module qualified enum variant with arguments
@@ -126,9 +124,7 @@ fn make(): unit { math::Shape::Square(2.0) }
         (primitive_type)))
     body: (block
       (scoped_type_expression
-        module: (value_identifier)
-        type: (type_identifier)
-        variant: (type_identifier)
+        path: (qualified_type_path)
         arguments: (arguments
           (float_literal))))))
 
@@ -176,5 +172,55 @@ import math::{answer, Point};
       path: (import_name
         (value_identifier))
       symbols: (import_group
-        (value_identifier)
-        (type_identifier)))))
+       (value_identifier)
+       (type_identifier)))))
+
+==================
+Deeply qualified function call
+==================
+
+fn call(x: int32): unit { parent::mod1::mod2::mod3::infinite::function(x) }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters
+      (parameter
+        name: (value_identifier)
+        type: (type_annotation
+          (simple_type
+            (primitive_type)))))
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (call_expression
+        function: (qualified_value_path)
+        arguments: (arguments
+          (value_identifier))))))
+
+==================
+Deeply qualified struct literal
+==================
+
+fn make(): unit { parent::mod1::mod2::mod3::infinite::Struct { x: 1, y: 2 } }
+
+---
+
+(source_file
+  (function_definition
+    name: (value_identifier)
+    parameters: (parameters)
+    return_type: (type_annotation
+      (simple_type
+        (primitive_type)))
+    body: (block
+      (struct_literal_expression
+        name: (qualified_type_path)
+        fields: (struct_literal_fields
+          name: (value_identifier)
+          value: (integer_literal)
+          name: (value_identifier)
+          value: (integer_literal))))))

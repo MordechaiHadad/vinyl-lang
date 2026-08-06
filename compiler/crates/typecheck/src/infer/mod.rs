@@ -11,7 +11,7 @@ use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
     HirTupleStruct, HirTypeAlias, Type,
 };
-use crate::module::ModuleTable;
+use crate::module::{ModuleTable, resolve_module};
 
 use crate::index::builder::IndexBuilder;
 pub use crate::index::{Definition, DefinitionKind, HirExprRef, TypeckResult};
@@ -108,26 +108,37 @@ impl InferState {
         name: &str,
         span: SourceSpan,
     ) -> Result<String, Box<TypeDiagnostic>> {
-        let Some((module, type_name)) = name.split_once("::") else {
+        let segments: Vec<String> = name.split("::").map(str::to_string).collect();
+        let Some((module_len, exports)) = resolve_module(&self.module_table, &segments) else {
+            if segments.len() > 1 {
+                let module = segments[..segments.len() - 1].join("::");
+                return Err(Box::new(self.source.error(
+                    span,
+                    TypeDiagnosticKind::UndefinedModule { name: module },
+                )));
+            }
             return Ok(name.to_string());
         };
-        match self.module_table.get(module) {
-            Some(exports) if exports.imported && exports.types.iter().any(|t| t == type_name) => {
-                Ok(type_name.to_string())
-            }
-            Some(_) => Err(Box::new(self.source.error(
+        let type_name = segments[module_len..].join("::");
+        if exports.imported && exports.types.iter().any(|t| t == &type_name) {
+            Ok(type_name)
+        } else if !exports.imported {
+            Err(Box::new(self.source.error(
+                span,
+                TypeDiagnosticKind::MissingImport {
+                    module: segments[..module_len].join("::"),
+                    name: type_name,
+                    import_path: exports.import_path.clone(),
+                },
+            )))
+        } else {
+            Err(Box::new(self.source.error(
                 span,
                 TypeDiagnosticKind::PrivateAccess {
-                    module: module.to_string(),
-                    name: type_name.to_string(),
+                    module: segments[..module_len].join("::"),
+                    name: type_name,
                 },
-            ))),
-            None => Err(Box::new(self.source.error(
-                span,
-                TypeDiagnosticKind::UndefinedModule {
-                    name: module.to_string(),
-                },
-            ))),
+            )))
         }
     }
 

@@ -12,3 +12,14 @@ pub struct ModuleExports {
 }
 
 pub type ModuleTable = HashMap<String, ModuleExports>;
+
+pub fn resolve_module<'a>(
+    modules: &'a ModuleTable,
+    segments: &[String],
+) -> Option<(usize, &'a ModuleExports)> {
+    (1..segments.len()).rev().find_map(|length| {
+        modules
+            .get(&segments[..length].join("::"))
+            .map(|exports| (length, exports))
+    })
+}

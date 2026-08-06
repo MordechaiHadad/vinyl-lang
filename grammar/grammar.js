@@ -28,6 +28,7 @@ export default grammar({
     [$.scoped_type_expression],
     [$.import_name],
     [$._expression, $.struct_literal_expression],
+    [$.enum_variant_pattern, $._path_segment],
   ],
 
   rules: {
@@ -319,7 +320,7 @@ export default grammar({
     unit_literal: $ => "unit",
 
     call_expression: $ => prec(PREC.CALL, seq(
-      field("function", choice($.value_identifier, $.type_identifier, $.scoped_value_expression)),
+      field("function", choice($.value_identifier, $.type_identifier, $.qualified_value_path)),
       field("arguments", $.arguments),
     )),
 
@@ -387,10 +388,10 @@ export default grammar({
       "}",
     ),
 
-    struct_literal_expression: $ => seq(
-      field("name", $.type_identifier),
+    struct_literal_expression: $ => prec(PREC.FIELD + 1, seq(
+      field("name", choice($.type_identifier, $.qualified_type_path)),
       field("fields", $.struct_literal_fields),
-    ),
+    )),
 
     struct_literal_fields: $ => seq(
       "{",
@@ -399,16 +400,11 @@ export default grammar({
     ),
 
     scoped_value_expression: $ => prec(PREC.FIELD, seq(
-      field("module", choice($.value_identifier, $.type_identifier)),
-      "::",
-      field("function", $.value_identifier),
+      field("path", $.qualified_value_path),
     )),
 
     scoped_type_expression: $ => prec(PREC.FIELD, seq(
-      optional(seq(field("module", $.value_identifier), "::")),
-      field("type", choice($.value_identifier, $.type_identifier)),
-      "::",
-      field("variant", $.type_identifier),
+      field("path", $.qualified_type_path),
       optional(field("arguments", $.arguments)),
     )),
 
@@ -441,7 +437,7 @@ export default grammar({
     ),
 
     struct_pattern: $ => seq(
-      $.type_identifier,
+      choice($.type_identifier, $.qualified_type_path),
       "{",
       commaSep($.field_pattern),
       "}",
@@ -459,9 +455,7 @@ export default grammar({
     ),
 
     enum_variant_pattern: $ => seq(
-      field("type", $.type_identifier),
-      "::",
-      field("variant", $.type_identifier),
+      field("path", $.qualified_type_path),
       optional(field("arguments", $.pattern_arguments)),
     ),
 
@@ -501,6 +495,11 @@ export default grammar({
     break_statement: $ => seq("break", ";"),
 
     continue_statement: $ => seq("continue", ";"),
+
+    _path_segment: $ => choice($.value_identifier, $.type_identifier),
+
+    qualified_value_path: $ => token(/[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*::[a-z_][a-zA-Z0-9_]*/),
+    qualified_type_path: $ => token(/[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*::[A-Z][a-zA-Z0-9_]*/),
   },
 });
 

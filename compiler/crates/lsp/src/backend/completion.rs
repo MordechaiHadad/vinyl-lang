@@ -61,6 +61,7 @@ impl Backend {
                     && source_bytes[offset] == b':');
         if !in_import_context {
             if variant_trigger
+                && module_ref_simple.is_none()
                 && let Some(items) =
                     variant_completions(&state, &path, &current_source, offset, &prefix)
             {

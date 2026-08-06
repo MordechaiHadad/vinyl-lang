@@ -363,16 +363,16 @@ fn resolve_imports(
             continue;
         }
 
-        module_table.insert(
-            import_name.clone(),
-            ModuleExports {
-                import_name,
+        let exports = ModuleExports {
+                import_name: import_name.clone(),
                 import_path: import_display,
                 imported: true,
                 functions: public_functions,
                 types: public_types,
-            },
-        );
+            };
+        module_table.insert(import_name, exports.clone());
+        module_table.insert(module_info.path.join("::"), exports.clone());
+        module_table.insert(exports.import_path.clone(), exports);
 
         let sub_table = resolve_imports(
             &module_items,
@@ -414,16 +414,15 @@ fn add_resolved_modules(
                 _ => None,
             })
             .collect();
-        module_table.insert(
-            info.import_name.clone(),
-            ModuleExports {
+        let exports = ModuleExports {
                 import_name: info.import_name.clone(),
                 import_path: relative_import_path(from, &info.file_path, resolver),
                 imported: false,
                 functions,
                 types,
-            },
-        );
+            };
+        module_table.insert(info.import_name.clone(), exports.clone());
+        module_table.insert(info.path.join("::"), exports);
     }
     Ok(())
 }

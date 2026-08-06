@@ -72,22 +72,24 @@ impl<'a> Lowerer<'a> {
             }
             "match_expression" => self.lower_match(node),
             "scoped_value_expression" => {
-                let module = node_text(&self.child_by_field(node, "module")?, self.source);
-                let function = node_text(&self.child_by_field(node, "function")?, self.source);
+                let path = node_text(&self.child_by_field(node, "path")?, self.source);
                 Ok(Expression::ValuePath {
                     span: span(),
-                    segments: vec![module, function],
+                    segments: path.split("::").map(str::to_string).collect(),
                 })
             }
+            "qualified_value_path" => Ok(Expression::ValuePath {
+                span: span(),
+                segments: node_text(node, self.source)
+                    .split("::")
+                    .map(str::to_string)
+                    .collect(),
+            }),
             "scoped_type_expression" => {
-                let module = child_by_field_opt(node, "module")
-                    .map(|module_node| node_text(&module_node, self.source));
-                let type_name = node_text(&self.child_by_field(node, "type")?, self.source);
-                let variant_name = node_text(&self.child_by_field(node, "variant")?, self.source);
-                let full_type_name = match module {
-                    Some(module) => format!("{module}::{type_name}"),
-                    None => type_name,
-                };
+                let path = node_text(&self.child_by_field(node, "path")?, self.source);
+                let (type_name, variant_name) = path
+                    .rsplit_once("::")
+                    .ok_or_else(|| self.span_error(node, "invalid enum variant path"))?;
                 let args = if let Some(arg_node) = child_by_field_opt(node, "arguments") {
                     let arg_children: Vec<Expression> = children(&arg_node)
                         .iter()
@@ -99,8 +101,8 @@ impl<'a> Lowerer<'a> {
                 };
                 Ok(Expression::EnumVariant {
                     span: span(),
-                    type_name: full_type_name,
-                    variant_name,
+                    type_name: type_name.to_string(),
+                    variant_name: variant_name.to_string(),
                     args,
                 })
             }

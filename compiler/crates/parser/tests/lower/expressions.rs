@@ -95,6 +95,56 @@ fn module_function_call_is_not_enum_variant() {
 }
 
 #[test]
+fn module_qualified_struct_literal() {
+    let items = common::do_lower("fn f(): unit { math::Point { x: 1, y: 2 } }");
+    let function = match &items[0] {
+        Item::Function(function) => function,
+        other => panic!("expected function, got {other:?}"),
+    };
+    match &function.body[0] {
+        Statement::Value(
+            Expression::Struct {
+                type_name, fields, ..
+            },
+            _,
+        ) => {
+            assert_eq!(type_name, "math::Point");
+            assert_eq!(fields.len(), 2);
+        }
+        other => panic!("expected struct literal, got {other:?}"),
+    }
+}
+
+#[test]
+fn deeply_qualified_paths_lower() {
+    let items = common::do_lower(
+        "fn f(x: int32): unit {\n\
+         parent::one::two::three::call(x);\n\
+         let point = parent::one::two::three::Point { x: 1, y: 2 };\n\
+         match x { parent::one::two::three::Shape::Circle(value) => value, _ => 0 }\n\
+         }",
+    );
+    let function = match &items[0] {
+        Item::Function(function) => function,
+        other => panic!("expected function, got {other:?}"),
+    };
+    assert!(matches!(
+        &function.body[0],
+        Statement::Expression(
+            Expression::Call {
+                function,
+                ..
+            },
+        ) if matches!(function.as_ref(), Expression::ValuePath { segments, .. } if segments == &["parent", "one", "two", "three", "call"])
+    ));
+    assert!(matches!(
+        &function.body[1],
+        Statement::Let { value: Expression::Struct { type_name, .. }, .. }
+            if type_name == "parent::one::two::three::Point"
+    ));
+}
+
+#[test]
 fn module_qualified_enum_variant() {
     let items = common::do_lower("fn f(): unit { math::Shape::Circle }");
     let function = match &items[0] {

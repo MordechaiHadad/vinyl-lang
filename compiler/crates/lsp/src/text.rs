@@ -140,7 +140,11 @@ pub(crate) fn extract_type_from_span(
     length: usize,
     is_let: bool,
 ) -> Option<String> {
-    let text = &source[offset..(offset + length)];
+    let end = offset.checked_add(length)?;
+    if !source.is_char_boundary(offset) || !source.is_char_boundary(end) {
+        return None;
+    }
+    let text = source.get(offset..end)?;
     let type_text = if is_let {
         let colon = text.find(':')?;
         let after_colon = &text[colon + 1..];
@@ -175,4 +179,19 @@ pub(crate) fn current_imports(source: &str) -> HashSet<String> {
         .filter_map(|line| line.trim().strip_prefix("import "))
         .map(|s| s.trim_end_matches(';').trim().to_string())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_type_from_span;
+
+    #[test]
+    fn stale_type_span_returns_none() {
+        assert_eq!(extract_type_from_span("fn main() {}", 71, 4, false), None);
+    }
+
+    #[test]
+    fn non_character_boundary_returns_none() {
+        assert_eq!(extract_type_from_span("é: int", 1, 3, false), None);
+    }
 }
