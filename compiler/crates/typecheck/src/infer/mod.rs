@@ -112,10 +112,10 @@ impl InferState {
         let Some((module_len, exports)) = resolve_module(&self.module_table, &segments) else {
             if segments.len() > 1 {
                 let module = segments[..segments.len() - 1].join("::");
-                return Err(Box::new(self.source.error(
-                    span,
-                    TypeDiagnosticKind::UndefinedModule { name: module },
-                )));
+                return Err(Box::new(
+                    self.source
+                        .error(span, TypeDiagnosticKind::UndefinedModule { name: module }),
+                ));
             }
             return Ok(name.to_string());
         };
@@ -316,11 +316,10 @@ fn validate_named_types(state: &mut InferState, items: &[Item]) {
     fn check_type(state: &mut InferState, type_: &AstType, span: SourceSpan) {
         match type_ {
             AstType::Named(name) if !name.contains("::") && !state.types.contains_key(name) => {
-                state.errors.push(
-                    state
-                        .source
-                        .error(span, TypeDiagnosticKind::UndefinedType { name: name.clone() }),
-                );
+                state.errors.push(state.source.error(
+                    span,
+                    TypeDiagnosticKind::UndefinedType { name: name.clone() },
+                ));
             }
             AstType::Ref(inner) => check_type(state, inner, span),
             AstType::Array { element, .. } => check_type(state, element, span),
@@ -572,8 +571,10 @@ pub fn validate_main_return_type(
         .as_ref()
         .is_some_and(|return_type| !matches!(return_type, AstType::Primitive(Primitive::Unit)))
     {
-        return Err(Box::new(SourceContext::new(source, source_name)
-            .error(function.span, TypeDiagnosticKind::MainReturnType)));
+        return Err(Box::new(
+            SourceContext::new(source, source_name)
+                .error(function.span, TypeDiagnosticKind::MainReturnType),
+        ));
     }
     Ok(())
 }

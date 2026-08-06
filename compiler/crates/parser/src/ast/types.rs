@@ -140,7 +140,10 @@ impl Primitive {
     }
 
     pub fn is_float(&self) -> bool {
-        matches!(self, Primitive::Float | Primitive::Float32 | Primitive::Float64)
+        matches!(
+            self,
+            Primitive::Float | Primitive::Float32 | Primitive::Float64
+        )
     }
 
     pub fn is_numeric(&self) -> bool {

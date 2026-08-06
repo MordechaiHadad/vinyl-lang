@@ -3,8 +3,7 @@ use vinyl_typecheck::module::ModuleTable;
 fn positions(source: &str) -> std::collections::BTreeMap<usize, String> {
     let items = vinyl_parser::parse_and_lower(source).unwrap();
     let table = ModuleTable::new();
-    let (result, _) =
-        vinyl_typecheck::typeck_with_index(&items, source, "<test>", &table).unwrap();
+    let (result, _) = vinyl_typecheck::typeck_with_index(&items, source, "<test>", &table).unwrap();
     result.type_positions
 }
 

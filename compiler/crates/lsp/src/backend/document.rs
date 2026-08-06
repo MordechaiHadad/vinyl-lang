@@ -3,7 +3,7 @@ use vinyl_typecheck::hir::HirItemKind;
 
 use crate::backend::definition::{definition_detail, function_signature};
 use crate::backend::state::Backend;
-use crate::backend::symbol::{resolve_symbol, target_definition, SymbolRef};
+use crate::backend::symbol::{SymbolRef, resolve_symbol, target_definition};
 use crate::position::{offset_at, span_range};
 use crate::text::word_prefix;
 

@@ -629,7 +629,10 @@ fn completion_module_ref_with_struct_does_not_crash() {
         }
     }));
     let response = lsp.response(2);
-    assert!(response["result"].is_array(), "completion response: {response}");
+    assert!(
+        response["result"].is_array(),
+        "completion response: {response}"
+    );
 }
 
 #[test]
@@ -3146,9 +3149,9 @@ fn hover_shows_primitive_type_tokens() {
     lsp.progress_end("vinyl-lsp-update-1");
 
     for (line, character, expected) in [
-        (1, 11, "int"),  // int in Circle(int)
-        (3, 17, "int"),  // int in (r: int)
-        (3, 23, "int"),  // return type int
+        (1, 11, "int"), // int in Circle(int)
+        (3, 17, "int"), // int in (r: int)
+        (3, 23, "int"), // return type int
     ] {
         lsp.send(json!({
             "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
@@ -3249,13 +3252,23 @@ fn completion_local_scope_no_match_pollution() {
         "params": { "textDocument": { "uri": main_uri }, "position": { "line": 42, "character": 4 } }
     }));
     let items = lsp.response(2)["result"].as_array().unwrap().clone();
-    for present in ["local_value", "classify", "classify_signed", "point_quadrant", "tuple_sum", "Shape", "Point"] {
+    for present in [
+        "local_value",
+        "classify",
+        "classify_signed",
+        "point_quadrant",
+        "tuple_sum",
+        "Shape",
+        "Point",
+    ] {
         assert!(
             items.iter().any(|item| item["label"] == present),
             "`{present}` should be suggested in main scope, got: {items:#?}"
         );
     }
-    for leaked in ["x", "y", "bucket", "p", "r", "w", "h", "a", "b", "n", "pair", "shape"] {
+    for leaked in [
+        "x", "y", "bucket", "p", "r", "w", "h", "a", "b", "n", "pair", "shape",
+    ] {
         assert!(
             !items.iter().any(|item| item["label"] == leaked),
             "match binding `{leaked}` should not leak out of its scope, got: {items:#?}"

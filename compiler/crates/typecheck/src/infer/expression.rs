@@ -85,7 +85,8 @@ impl InferState {
             }
             Expression::ValuePath { segments, span } => {
                 if segments.len() >= 2 {
-                    if let Some((module_len, exports)) = resolve_module(&self.module_table, segments)
+                    if let Some((module_len, exports)) =
+                        resolve_module(&self.module_table, segments)
                     {
                         let module_name = segments[..module_len].join("::");
                         let item_name = segments[module_len..].join("::");
@@ -594,7 +595,8 @@ impl InferState {
                 variant_name,
                 args,
             } => {
-                let type_segments: Vec<String> = type_name.split("::").map(str::to_string).collect();
+                let type_segments: Vec<String> =
+                    type_name.split("::").map(str::to_string).collect();
                 if let Some((_, module)) = resolve_module(&self.module_table, &type_segments)
                     && let Some(function) = module
                         .functions
@@ -632,7 +634,7 @@ impl InferState {
                         kind: HirExpressionKind::Call {
                             span: *span,
                             function: Box::new(HirExpression {
-                            kind: HirExpressionKind::Ident(
+                                kind: HirExpressionKind::Ident(
                                     format!("{module_name}::{variant_name}"),
                                     *span,
                                 ),
@@ -646,8 +648,12 @@ impl InferState {
                             .unwrap_or(Type::Primitive(Primitive::Unit)),
                     });
                 }
-                if let Some((module_len, module)) = resolve_module(&self.module_table, &type_segments)
-                    && !module.types.iter().any(|name| name == &type_segments[module_len..].join("::"))
+                if let Some((module_len, module)) =
+                    resolve_module(&self.module_table, &type_segments)
+                    && !module
+                        .types
+                        .iter()
+                        .any(|name| name == &type_segments[module_len..].join("::"))
                 {
                     return Err(Box::new(self.source.error(
                         *span,
@@ -754,7 +760,8 @@ impl InferState {
                 let mut hir_fields = Vec::new();
                 for (name, expr) in fields {
                     let hir = self.infer_expr(expr, signatures)?;
-                    if let Some(HirItemKind::Struct(s)) = resolve_named_type(&type_name, &self.types)
+                    if let Some(HirItemKind::Struct(s)) =
+                        resolve_named_type(&type_name, &self.types)
                     {
                         if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
                             if self.type_origins.contains_key(&type_name) && !field.public {

@@ -6,9 +6,9 @@ use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
 use vinyl_parser::ast::item::Item;
 use vinyl_resolver::resolver::{Resolver, ResolverMode};
+use vinyl_typecheck::DefinitionKind;
 use vinyl_typecheck::index::types::Definition;
 use vinyl_typecheck::module::ModuleTable;
-use vinyl_typecheck::DefinitionKind;
 
 use crate::backend::definition::definition_detail;
 use crate::backend::state::{Analysis, Backend, State};
@@ -69,15 +69,9 @@ impl Backend {
                 return Ok(Some(CompletionResponse::Array(items)));
             }
             if let Some(dot_index) = field_access_dot {
-                let items = field_completions(
-                    &state,
-                    &path,
-                    &current_source,
-                    offset,
-                    dot_index,
-                    &prefix,
-                )
-                .unwrap_or_default();
+                let items =
+                    field_completions(&state, &path, &current_source, offset, dot_index, &prefix)
+                        .unwrap_or_default();
                 drop(state);
                 return Ok(Some(CompletionResponse::Array(items)));
             }
@@ -207,7 +201,10 @@ fn analyze_completion_source_with_imports(
     let mut resolver = Resolver::detect_with(workspace_root, fs).ok()?;
     if let ResolverMode::Script = resolver.mode() {
         for file_path in state.vfs.files().keys() {
-            if file_path.extension().is_some_and(|extension| extension == "vn") {
+            if file_path
+                .extension()
+                .is_some_and(|extension| extension == "vn")
+            {
                 resolver.register_module(file_path);
             }
         }
@@ -529,7 +526,8 @@ fn local_completions(analysis: &Analysis, prefix: &str, offset: usize) -> Vec<Co
             continue;
         };
         let function_span = function.span;
-        if offset < function_span.offset() || offset >= function_span.offset() + function_span.len() {
+        if offset < function_span.offset() || offset >= function_span.offset() + function_span.len()
+        {
             continue;
         }
         for parameter in &function.params {

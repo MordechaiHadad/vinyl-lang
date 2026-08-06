@@ -40,7 +40,11 @@ fn split_segments(source: &str, span: SourceSpan) -> Option<(usize, String, Stri
         .split(|character: char| !character.is_alphanumeric() && character != '_')
         .next()
         .unwrap_or("");
-    Some((item_start - 2, text[..item_start - 2].to_string(), item.to_string()))
+    Some((
+        item_start - 2,
+        text[..item_start - 2].to_string(),
+        item.to_string(),
+    ))
 }
 
 pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {

@@ -131,7 +131,9 @@ impl crate::CodegenBackend for CraneliftBackend {
                     && (crate::layout::size_of(&func.return_type, &self.types, ptr_size) > 8
                         || matches!(
                             func.return_type,
-                            Type::Primitive(Primitive::Float32 | Primitive::Float64 | Primitive::Float)
+                            Type::Primitive(
+                                Primitive::Float32 | Primitive::Float64 | Primitive::Float
+                            )
                         ))
                 {
                     return Err(CraneliftError::Msg(

@@ -161,10 +161,9 @@ impl IndexBuilder {
         let mut iter = stmts.iter().map(Self::statement_span);
         let first = iter.next()?;
         let start = first.offset();
-        let end = iter.fold(
-            first.offset() + first.len(),
-            |acc, span| acc.max(span.offset() + span.len()),
-        );
+        let end = iter.fold(first.offset() + first.len(), |acc, span| {
+            acc.max(span.offset() + span.len())
+        });
         Some(SourceSpan::from(start..end))
     }
 

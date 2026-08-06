@@ -364,12 +364,12 @@ fn resolve_imports(
         }
 
         let exports = ModuleExports {
-                import_name: import_name.clone(),
-                import_path: import_display,
-                imported: true,
-                functions: public_functions,
-                types: public_types,
-            };
+            import_name: import_name.clone(),
+            import_path: import_display,
+            imported: true,
+            functions: public_functions,
+            types: public_types,
+        };
         module_table.insert(import_name, exports.clone());
         module_table.insert(module_info.path.join("::"), exports.clone());
         module_table.insert(exports.import_path.clone(), exports);
@@ -415,12 +415,12 @@ fn add_resolved_modules(
             })
             .collect();
         let exports = ModuleExports {
-                import_name: info.import_name.clone(),
-                import_path: relative_import_path(from, &info.file_path, resolver),
-                imported: false,
-                functions,
-                types,
-            };
+            import_name: info.import_name.clone(),
+            import_path: relative_import_path(from, &info.file_path, resolver),
+            imported: false,
+            functions,
+            types,
+        };
         module_table.insert(info.import_name.clone(), exports.clone());
         module_table.insert(info.path.join("::"), exports);
     }
