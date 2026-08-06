@@ -1,16 +1,19 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
 use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
-use vinyl_resolver::resolver::Resolver;
+use vinyl_parser::ast::item::Item;
+use vinyl_resolver::resolver::{Resolver, ResolverMode};
+use vinyl_typecheck::module::ModuleTable;
 use vinyl_typecheck::DefinitionKind;
 
 use crate::backend::definition::definition_detail;
 use crate::backend::state::{Analysis, Backend, State};
 use crate::backend::workspace::{
-    analyze_with_diagnostics, is_imported, is_public_symbol, non_canonical_key,
-    parse_file_with_diagnostics, relative_import_path, same_file,
+    add_resolved_modules, analyze_with_diagnostics, collect_modules, is_imported, is_public_symbol,
+    non_canonical_key, parse_file_with_diagnostics, relative_import_path, same_file,
 };
 use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
@@ -18,6 +21,7 @@ use crate::text::{
     current_imports, detect_import_prefix, import_edit_range, module_ref_prefix, word_before_colon,
     word_prefix,
 };
+use crate::vfs::LspFileSystem;
 
 impl Backend {
     pub(crate) async fn completion(
@@ -184,7 +188,47 @@ fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option
     let name = path.to_string_lossy();
     let tree = vinyl_parser::parse_with_name(&name, source).ok()?;
     let items = vinyl_parser::lower::lower(&tree, source, &name).ok()?;
+    if let Some(analysis) = analyze_completion_source_with_imports(state, path, source, &items) {
+        return Some(analysis);
+    }
     analyze_with_diagnostics(path, source, &items, &state.module_table).ok()
+}
+
+fn analyze_completion_source_with_imports(
+    state: &State,
+    path: &Path,
+    source: &str,
+    items: &[Item],
+) -> Option<Arc<Analysis>> {
+    let workspace_root = state.workspace_root.as_deref()?;
+    let fs = Box::new(LspFileSystem::new(state.vfs.files().clone()));
+    let mut resolver = Resolver::detect_with(workspace_root, fs).ok()?;
+    if let ResolverMode::Script = resolver.mode() {
+        for file_path in state.vfs.files().keys() {
+            if file_path.extension().is_some_and(|extension| extension == "vn") {
+                resolver.register_module(file_path);
+            }
+        }
+    }
+    let mut all_items = items.to_vec();
+    let mut module_table = ModuleTable::new();
+    let mut visited = HashSet::new();
+    let mut bare_imported_symbols = HashSet::new();
+    let mut diagnostics = HashMap::new();
+    collect_modules(
+        &state.vfs,
+        &mut resolver,
+        workspace_root,
+        path,
+        items,
+        &mut all_items,
+        &mut module_table,
+        &mut visited,
+        &mut bare_imported_symbols,
+        &mut diagnostics,
+    );
+    add_resolved_modules(&state.vfs, &resolver, path, &mut module_table);
+    analyze_with_diagnostics(path, source, &all_items, &module_table).ok()
 }
 
 fn field_access_context(source: &str, offset: usize) -> Option<usize> {

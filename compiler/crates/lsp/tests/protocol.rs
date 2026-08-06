@@ -3123,3 +3123,60 @@ fn hover_shows_primitive_type_tokens() {
 
     let _ = lsp;
 }
+
+#[test]
+fn completion_field_access_imported_struct() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "public struct Point {\n    public x: int,\n    public y: int\n}\n\npublic fn origin(): Point {\n    Point { x: 0, y: 0 }\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &project.main,
+        "import parent::math;\nfn main() {\n    let p = math::origin();\n    p.\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+            "text": "public struct Point {\n    public x: int,\n    public y: int\n}\n\npublic fn origin(): Point {\n    Point { x: 0, y: 0 }\n}\n" } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": "import parent::math;\nfn main() {\n    let p = math::origin();\n    p.\n}\n" } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 6 } }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    for expected in ["x", "y"] {
+        assert!(
+            items.iter().any(|item| item["label"] == expected),
+            "field `{expected}` should be suggested after `.` on an imported struct, got: {items:#?}"
+        );
+    }
+    for forbidden in ["double", "p", "Point", "main", "math", "origin"] {
+        assert!(
+            !items.iter().any(|item| item["label"] == forbidden),
+            "`{forbidden}` should not appear after `.`, got: {items:#?}"
+        );
+    }
+
+    let _ = lsp;
+}

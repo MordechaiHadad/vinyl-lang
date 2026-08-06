@@ -341,7 +341,7 @@ fn collect_publics(items: &[Item], path: &Path, publics: &mut HashMap<String, Pu
     }
 }
 
-fn add_resolved_modules(
+pub(crate) fn add_resolved_modules(
     vfs: &Vfs,
     resolver: &Resolver,
     from: &Path,
@@ -523,7 +523,7 @@ fn push_import_diagnostic(
 /// shared (`diagnostics`) and per-call (`all_items`, `module_table`, `visited`)
 /// lifetimes, so grouping them into a struct would not reduce the surface.
 #[allow(clippy::too_many_arguments)]
-fn collect_modules(
+pub(crate) fn collect_modules(
     vfs: &Vfs,
     resolver: &mut Resolver,
     workspace_root: &Path,
