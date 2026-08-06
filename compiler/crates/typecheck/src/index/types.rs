@@ -24,6 +24,7 @@ pub struct Definition {
     pub kind: DefinitionKind,
     pub span: SourceSpan,
     pub scope_depth: usize,
+    pub scope: Option<SourceSpan>,
     pub type_name: Option<String>,
 }
 

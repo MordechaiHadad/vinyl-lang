@@ -66,6 +66,7 @@ fn main() {
     let j = classify_signed(0);
     let k = classify_signed(-5);
     let l = classify_signed(7);
-
+    let x = Point { x: 10, y: 10 };
+    
     println(a + b + c + d + e + f + g + h + i + j + k + l);
 }

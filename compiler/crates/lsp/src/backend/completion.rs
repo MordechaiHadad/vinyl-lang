@@ -6,6 +6,7 @@ use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
 use vinyl_parser::ast::item::Item;
 use vinyl_resolver::resolver::{Resolver, ResolverMode};
+use vinyl_typecheck::index::types::Definition;
 use vinyl_typecheck::module::ModuleTable;
 use vinyl_typecheck::DefinitionKind;
 
@@ -84,7 +85,7 @@ impl Backend {
         let mut items = if !in_import_context && module_ref_simple.is_none() {
             analysis
                 .as_deref()
-                .map(|analysis| local_completions(analysis, &prefix))
+                .map(|analysis| local_completions(analysis, &prefix, offset))
                 .unwrap_or_default()
         } else {
             Vec::new()
@@ -481,13 +482,24 @@ fn is_imported_type(state: &State, type_name: &str) -> bool {
         .any(|exports| exports.imported && exports.types.iter().any(|name| name == type_name))
 }
 
-fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
+fn definition_in_scope(definition: &Definition, offset: usize) -> bool {
+    definition.scope.is_none_or(|span| {
+        let start = span.offset();
+        offset >= start && offset < start + span.len()
+    })
+}
+
+fn local_completions(analysis: &Analysis, prefix: &str, offset: usize) -> Vec<CompletionItem> {
     let mut items = Vec::new();
     for (name, definitions) in &analysis.result.definitions {
         if !name.starts_with(prefix) {
             continue;
         }
-        let Some(definition) = definitions.first() else {
+        let Some(definition) = definitions
+            .iter()
+            .filter(|definition| definition_in_scope(definition, offset))
+            .max_by_key(|definition| definition.scope_depth)
+        else {
             continue;
         };
         if definition.name == "main" && matches!(definition.kind, DefinitionKind::Function) {
@@ -515,6 +527,10 @@ fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
         let vinyl_typecheck::hir::HirItemKind::Function(function) = &item.kind else {
             continue;
         };
+        let function_span = function.span;
+        if offset < function_span.offset() || offset >= function_span.offset() + function_span.len() {
+            continue;
+        }
         for parameter in &function.params {
             if parameter.name.starts_with(prefix)
                 && !items.iter().any(|item| item.label == parameter.name)
@@ -532,6 +548,7 @@ fn local_completions(analysis: &Analysis, prefix: &str) -> Vec<CompletionItem> {
     for definition in analysis.result.references.values() {
         if !matches!(definition.kind, DefinitionKind::Parameter)
             || !definition.name.starts_with(prefix)
+            || !definition_in_scope(definition, offset)
             || items.iter().any(|item| item.label == definition.name)
         {
             continue;

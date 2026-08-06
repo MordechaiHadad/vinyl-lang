@@ -223,6 +223,7 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                             kind: DefinitionKind::Variable,
                             span: field.span,
                             scope_depth: 1,
+                            scope: None,
                             type_name: Some(field.type_.to_string()),
                         }),
                     _ => None,
@@ -245,6 +246,7 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                         kind: DefinitionKind::Enum,
                         span: variant.span,
                         scope_depth: 1,
+                        scope: None,
                         type_name: None,
                     }),
                 _ => None,
@@ -255,6 +257,7 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
             kind: DefinitionKind::Struct,
             span: SourceSpan::from(0..0),
             scope_depth: 1,
+            scope: None,
             type_name: None,
         }),
     }

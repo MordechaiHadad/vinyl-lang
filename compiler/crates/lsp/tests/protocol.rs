@@ -3180,3 +3180,75 @@ fn completion_field_access_imported_struct() {
 
     let _ = lsp;
 }
+
+#[test]
+fn completion_local_scope_no_match_pollution() {
+    let project = TestProject::new();
+    let main_text = "enum Shape { Empty, Circle(int), Rect(int,int) }\n\nstruct Point {\n    x:int,\n    y:int,\n}\n\nfn classify(shape: Shape): int {\n    match shape {\n        Shape::Circle(r) if r > 10 => 100\n        Shape::Circle(_) => 0\n        Shape::Rect(w,h) if w == h => 50\n        Shape::Rect(_,_) => 10\n        Shape::Empty() => 1\n    }\n}\n\nfn classify_signed(n: int): int {\n    let bucket = match n {\n        0 => 0\n        x if x < 0 => 1\n        _ => 2\n    };\n    bucket\n}\n\nfn point_quadrant(p: Point): int {\n    match p {\n        Point{x,y} if x > 0 && y > 0 => 1\n        _ => 0\n    }\n}\n\nfn tuple_sum(pair: (int, int)): int {\n    match pair {\n        (a,b) => a + b\n        _ => 0\n    }\n}\n\nfn main() {\n    let local_value = 5;\n    \n}\n";
+    std::fs::write(&project.main, main_text).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": main_text } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 42, "character": 4 } }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    for present in ["local_value", "classify", "classify_signed", "point_quadrant", "tuple_sum", "Shape", "Point"] {
+        assert!(
+            items.iter().any(|item| item["label"] == present),
+            "`{present}` should be suggested in main scope, got: {items:#?}"
+        );
+    }
+    for leaked in ["x", "y", "bucket", "p", "r", "w", "h", "a", "b", "n", "pair", "shape"] {
+        assert!(
+            !items.iter().any(|item| item["label"] == leaked),
+            "match binding `{leaked}` should not leak out of its scope, got: {items:#?}"
+        );
+    }
+    let _ = lsp;
+}
+
+#[test]
+fn completion_local_scope_match_arm_binding() {
+    let project = TestProject::new();
+    let main_text = "fn classify_signed(n: int): int {\n    let bucket = match n {\n        0 => 0\n        x if x < 0 => 1\n        _ => 2\n    };\n    bucket\n}\n";
+    std::fs::write(&project.main, main_text).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": main_text } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 9 } }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    assert!(
+        items.iter().any(|item| item["label"] == "x"),
+        "arm binding `x` should be suggested inside its own arm, got: {items:#?}"
+    );
+    let _ = lsp;
+}

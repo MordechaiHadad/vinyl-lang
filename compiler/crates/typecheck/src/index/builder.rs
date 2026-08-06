@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
+use miette::SourceSpan;
+
 use crate::hir::{
     HirExpression, HirExpressionKind, HirItem, HirItemKind, HirPattern, HirPatternKind,
     HirStatement, HirStatementKind,
@@ -11,6 +13,7 @@ pub struct IndexBuilder {
     definitions: HashMap<String, Vec<Definition>>,
     references: BTreeMap<usize, Definition>,
     scopes: Vec<HashMap<String, usize>>,
+    scope_extents: Vec<Option<SourceSpan>>,
     next_definition_id: usize,
     field_accesses: BTreeMap<usize, FieldAccessRef>,
 }
@@ -22,6 +25,7 @@ impl Default for IndexBuilder {
             definitions: HashMap::new(),
             references: BTreeMap::new(),
             scopes: vec![HashMap::new()],
+            scope_extents: vec![None],
             next_definition_id: 0,
             field_accesses: BTreeMap::new(),
         }
@@ -90,6 +94,7 @@ impl IndexBuilder {
             kind,
             span,
             scope_depth: self.scopes.len(),
+            scope: self.scope_extents.last().copied().flatten(),
             type_name,
         };
         self.next_definition_id += 1;
@@ -129,13 +134,47 @@ impl IndexBuilder {
         }
     }
 
+    fn push_scope(&mut self, extent: Option<SourceSpan>) {
+        self.scopes.push(HashMap::new());
+        self.scope_extents.push(extent);
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+        self.scope_extents.pop();
+    }
+
+    fn statement_span(stmt: &HirStatement) -> SourceSpan {
+        match &stmt.kind {
+            HirStatementKind::Let { span, .. } => *span,
+            HirStatementKind::Expr(_, span) => *span,
+            HirStatementKind::Return(_, span) => *span,
+            HirStatementKind::Value(_, span) => *span,
+            HirStatementKind::Loop { span, .. } => *span,
+            HirStatementKind::Break(span) => *span,
+            HirStatementKind::Continue(span) => *span,
+            HirStatementKind::Assign { span, .. } => *span,
+        }
+    }
+
+    fn statement_extent(stmts: &[HirStatement]) -> Option<SourceSpan> {
+        let mut iter = stmts.iter().map(Self::statement_span);
+        let first = iter.next()?;
+        let start = first.offset();
+        let end = iter.fold(
+            first.offset() + first.len(),
+            |acc, span| acc.max(span.offset() + span.len()),
+        );
+        Some(SourceSpan::from(start..end))
+    }
+
     fn walk_item(&mut self, item: &HirItem) {
         match &item.kind {
             HirItemKind::Function(f) => {
                 if f.name.contains("::") {
                     return;
                 }
-                self.scopes.push(HashMap::new());
+                self.push_scope(Some(f.span));
                 for param in &f.params {
                     self.add_definition(
                         &param.name,
@@ -145,7 +184,7 @@ impl IndexBuilder {
                     );
                 }
                 self.walk_stmts(&f.body);
-                self.scopes.pop();
+                self.pop_scope();
             }
             HirItemKind::Struct(_)
             | HirItemKind::TupleStruct(_)
@@ -184,10 +223,10 @@ impl IndexBuilder {
                 }
             }
             HirStatementKind::Value(expr, _) => self.walk_expr(expr),
-            HirStatementKind::Loop { body, .. } => {
-                self.scopes.push(HashMap::new());
+            HirStatementKind::Loop { span, body, .. } => {
+                self.push_scope(Some(*span));
                 self.walk_stmts(body);
-                self.scopes.pop();
+                self.pop_scope();
             }
             HirStatementKind::Break(_) | HirStatementKind::Continue(_) => {}
             HirStatementKind::Assign { target, value, .. } => {
@@ -223,12 +262,12 @@ impl IndexBuilder {
                     self.walk_expr(arg);
                 }
             }
-            HirExpressionKind::Block(stmts, _) => {
-                self.scopes.push(HashMap::new());
+            HirExpressionKind::Block(stmts, span) => {
+                self.push_scope(Some(*span));
                 for stmt in stmts {
                     self.walk_stmt(stmt);
                 }
-                self.scopes.pop();
+                self.pop_scope();
             }
             HirExpressionKind::Index { array, index, .. } => {
                 self.walk_expr(array);
@@ -247,25 +286,25 @@ impl IndexBuilder {
                 ..
             } => {
                 self.walk_expr(condition);
-                self.scopes.push(HashMap::new());
+                self.push_scope(Self::statement_extent(then_block));
                 for stmt in then_block {
                     self.walk_stmt(stmt);
                 }
-                self.scopes.pop();
+                self.pop_scope();
                 for (c, b) in else_if {
                     self.walk_expr(c);
-                    self.scopes.push(HashMap::new());
+                    self.push_scope(Self::statement_extent(b));
                     for stmt in b {
                         self.walk_stmt(stmt);
                     }
-                    self.scopes.pop();
+                    self.pop_scope();
                 }
                 if let Some(b) = else_block {
-                    self.scopes.push(HashMap::new());
+                    self.push_scope(Self::statement_extent(b));
                     for stmt in b {
                         self.walk_stmt(stmt);
                     }
-                    self.scopes.pop();
+                    self.pop_scope();
                 }
             }
             HirExpressionKind::Ref(inner, _) => self.walk_expr(inner),
@@ -298,7 +337,7 @@ impl IndexBuilder {
             HirExpressionKind::Match { value, arms, .. } => {
                 self.walk_expr(value);
                 for arm in arms {
-                    self.scopes.push(HashMap::new());
+                    self.push_scope(Some(arm.span));
                     self.walk_pattern(&arm.pattern);
                     if let Some(guard) = &arm.guard {
                         self.walk_expr(guard);
@@ -306,7 +345,7 @@ impl IndexBuilder {
                     for stmt in &arm.body {
                         self.walk_stmt(stmt);
                     }
-                    self.scopes.pop();
+                    self.pop_scope();
                 }
             }
             HirExpressionKind::Int(_, _)
