@@ -617,7 +617,7 @@ fn completion_module_ref_with_struct_does_not_crash() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "import parent::math;\nfn main() {\n    let x = math::Point { x: 69, y: 69 };\n    69 |> math::\n}\n" }
+                "text": "import parent::math\nfn main() {\n    math::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -625,13 +625,131 @@ fn completion_module_ref_with_struct_does_not_crash() {
         "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
         "params": {
             "textDocument": { "uri": main_uri },
-            "position": { "line": 3, "character": 21 }
+            "position": { "line": 2, "character": 10 }
         }
     }));
     let response = lsp.response(2);
     assert!(
         response["result"].is_array(),
         "completion response: {response}"
+    );
+    assert!(
+        response["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["label"] == "Point"),
+        "completion should resolve module members before import is terminated: {response}"
+    );
+}
+
+#[test]
+fn parent_qualified_module_type_resolves_without_import() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    std::fs::write(
+        &project.math,
+        "public struct Point { public x: int, public y: int }\n",
+    )
+    .unwrap();
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import parent::math::double;\nfn main() { let point = parent::math::Point { x: 10, y: 69 }; double(21); }\n" }
+        }
+    }));
+    let diagnostics = lsp.diagnostics_for(&main_uri);
+    assert!(
+        diagnostics["params"]["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|diagnostic| !diagnostic["message"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("undefined module `parent::math`")),
+        "parent-qualified module should resolve: {diagnostics}"
+    );
+}
+
+#[test]
+fn parent_module_completion_works_without_import() {
+    let project = TestProject::new();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": math_uri, "languageId": "vinyl", "version": 1,
+                "text": "public struct Point { public x: int, public y: int }\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "fn main() {\n    parent::\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 1, "character": 12 }
+        }
+    }));
+    let response = lsp.response(2);
+    assert!(
+        response["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["label"] == "math::")
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 2 },
+            "contentChanges": [{ "text": "fn main() {\n    parent::math::\n}\n" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 1, "character": 18 }
+        }
+    }));
+    let response = lsp.response(3);
+    assert!(
+        response["result"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item["label"] == "Point")
     );
 }
 
@@ -1766,6 +1884,7 @@ fn imported_file_change_clears_parent_diagnostic() {
     }));
     lsp.response(1);
     lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    let _ = lsp.notification("textDocument/publishDiagnostics");
 
     lsp.send(json!({
         "jsonrpc": "2.0", "method": "textDocument/didOpen",

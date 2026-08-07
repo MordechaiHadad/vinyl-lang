@@ -3,11 +3,11 @@ use tree_sitter::Node;
 
 use crate::{
     ParserDiagnostic,
-    error::ParserDiagnosticKind,
     ast::item::{
         Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, ImportDef,
         Item, StructDef, StructField, TupleDef, TypeAliasDef,
     },
+    error::ParserDiagnosticKind,
     lower::{Lowerer, helpers::node_text},
 };
 
@@ -167,11 +167,7 @@ impl<'a> Lowerer<'a> {
         } else {
             None
         };
-        Ok(EnumVariant {
-            span,
-            name,
-            data,
-        })
+        Ok(EnumVariant { span, name, data })
     }
 
     pub(super) fn lower_function(

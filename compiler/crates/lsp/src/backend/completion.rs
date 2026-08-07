@@ -99,6 +99,19 @@ impl Backend {
         if let Some(resolver) = &state.resolver {
             let existing_imports = current_imports(&current_source);
 
+            if !in_import_context
+                && let Some(module_items) = expression_module_completions(
+                    resolver,
+                    &path,
+                    &current_source,
+                    &current_line_index,
+                    offset,
+                )
+            {
+                drop(state);
+                return Ok(Some(CompletionResponse::Array(module_items)));
+            }
+
             if is_colon_trigger && !in_import_context && module_ref_simple.is_none() {
                 let has_pending_module =
                     word_before_colon(&current_source, offset).is_some_and(|word| {
@@ -226,7 +239,13 @@ fn analyze_completion_source_with_imports(
         &mut bare_imported_symbols,
         &mut diagnostics,
     );
-    add_resolved_modules(&state.vfs, &resolver, path, &mut module_table);
+    add_resolved_modules(
+        &state.vfs,
+        &resolver,
+        path,
+        &mut all_items,
+        &mut module_table,
+    );
     analyze_with_diagnostics(path, source, &all_items, &module_table).ok()
 }
 
@@ -420,7 +439,7 @@ fn variant_completions(
                 {
                     Some(
                         enumeration
-                        .variants
+                            .variants
                             .iter()
                             .map(|variant| variant.name.clone())
                             .collect::<Vec<_>>(),
@@ -440,7 +459,7 @@ fn variant_completions(
                 {
                     Some(
                         enumeration
-                        .variants
+                            .variants
                             .iter()
                             .map(|variant| variant.name.clone())
                             .collect::<Vec<_>>(),
@@ -605,13 +624,22 @@ fn module_ref_completions(
 ) -> Vec<CompletionItem> {
     let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
     let mut items = Vec::new();
+    let mut found_module = false;
     for info in resolver.all_modules().values() {
         if info.import_name != module_name {
             continue;
         }
+        found_module = true;
         let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
         let Some(module_analysis) = state.cache.get(&cache_key) else {
-            continue;
+            return module_ref_file_completions(
+                state,
+                &info.file_path,
+                module_name,
+                partial,
+                current_line_index,
+                offset,
+            );
         };
         for (name, definitions) in &module_analysis.result.definitions {
             if !name.starts_with(partial) || name.contains("::") {
@@ -657,7 +685,126 @@ fn module_ref_completions(
             });
         }
     }
+    if !found_module {
+        let file_path = resolver.root().join(module_name).with_extension("vn");
+        return module_ref_file_completions(
+            state,
+            &file_path,
+            module_name,
+            partial,
+            current_line_index,
+            offset,
+        );
+    }
     items
+}
+
+fn module_ref_file_completions(
+    state: &State,
+    file_path: &Path,
+    module_name: &str,
+    partial: &str,
+    current_line_index: &LineIndex,
+    offset: usize,
+) -> Vec<CompletionItem> {
+    let Ok((_, module_items)) = parse_file_with_diagnostics(&state.vfs, file_path) else {
+        return Vec::new();
+    };
+    let edit_range = Range::new(
+        position_at(current_line_index, offset.saturating_sub(partial.len())),
+        position_at(current_line_index, offset),
+    );
+    module_items
+        .into_iter()
+        .filter_map(|item| {
+            let (name, kind) = match item {
+                Item::Function(function) if function.public => {
+                    (function.name, CompletionItemKind::FUNCTION)
+                }
+                Item::Struct(structure) if structure.public => {
+                    (structure.name, CompletionItemKind::STRUCT)
+                }
+                Item::TupleStruct(tuple) if tuple.public => {
+                    (tuple.name, CompletionItemKind::STRUCT)
+                }
+                Item::Enum(enumeration) if enumeration.public => {
+                    (enumeration.name, CompletionItemKind::ENUM)
+                }
+                Item::TypeAlias(alias) if alias.public => (alias.name, CompletionItemKind::STRUCT),
+                _ => return None,
+            };
+            name.starts_with(partial).then_some(CompletionItem {
+                label: name.clone(),
+                kind: Some(kind),
+                detail: Some(format!("from {module_name}")),
+                text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(edit_range, name))),
+                ..CompletionItem::default()
+            })
+        })
+        .collect()
+}
+
+fn expression_module_completions(
+    resolver: &Resolver,
+    path: &Path,
+    source: &str,
+    line_index: &LineIndex,
+    offset: usize,
+) -> Option<Vec<CompletionItem>> {
+    let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
+    let line = &source[line_start..offset];
+    let token_start = line
+        .rfind(|character: char| character.is_whitespace() || "=({[,;>|".contains(character))
+        .map_or(0, |index| index + 1);
+    let token = &line[token_start..];
+    if !token.contains("::") {
+        return None;
+    }
+    let segments: Vec<&str> = token.split("::").collect();
+    if segments.first().copied() != Some("parent") {
+        return None;
+    }
+    let partial = if token.ends_with("::") {
+        ""
+    } else {
+        segments.last().copied().unwrap_or_default()
+    };
+    let module_segments = if partial.is_empty() {
+        &segments[1..segments.len().saturating_sub(1)]
+    } else {
+        &segments[1..segments.len() - 1]
+    };
+    if module_segments.len() > 1 {
+        return None;
+    }
+    let mut directory = path.parent()?.to_path_buf();
+    for segment in module_segments {
+        directory.push(segment);
+    }
+    let files = resolver.list_vn_files(&directory).ok()?;
+    let edit_range = Range::new(
+        position_at(line_index, offset.saturating_sub(partial.len())),
+        position_at(line_index, offset),
+    );
+    let items: Vec<_> = files
+        .into_iter()
+        .filter(|file| file.parent() == Some(directory.as_path()))
+        .filter_map(|file| {
+            file.file_stem()
+                .map(|stem| stem.to_string_lossy().to_string())
+        })
+        .filter(|stem| stem.starts_with(partial))
+        .map(|stem| CompletionItem {
+            label: format!("{stem}::"),
+            kind: Some(CompletionItemKind::MODULE),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                edit_range,
+                format!("{stem}::"),
+            ))),
+            ..CompletionItem::default()
+        })
+        .collect();
+    (!items.is_empty()).then_some(items)
 }
 
 fn auto_import_completions(

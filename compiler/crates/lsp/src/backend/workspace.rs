@@ -179,9 +179,17 @@ pub(crate) fn analyze_workspace(
     let mut resolver = Resolver::detect_with(root, fs).map_err(|e| eyre!("resolver error: {e}"))?;
 
     if let ResolverMode::Script = resolver.mode() {
-        for file_path in vfs.files().keys() {
-            if file_path.extension().is_some_and(|ext| ext == "vn") {
-                resolver.register_module(file_path);
+        if vfs.source(entry_path).is_some() {
+            let root = resolver.root().to_path_buf();
+            let mut files = resolver.list_vn_files(&root).unwrap_or_default();
+            files.extend(
+                vfs.files()
+                    .keys()
+                    .filter(|file_path| file_path.extension().is_some_and(|ext| ext == "vn"))
+                    .cloned(),
+            );
+            for file_path in files {
+                resolver.register_module(&file_path);
             }
         }
     }
@@ -209,7 +217,13 @@ pub(crate) fn analyze_workspace(
                 &mut bare_imported_symbols,
                 &mut diagnostics,
             );
-            add_resolved_modules(vfs, &resolver, entry_path, &mut entry_module_table);
+            add_resolved_modules(
+                vfs,
+                &resolver,
+                entry_path,
+                &mut all_items,
+                &mut entry_module_table,
+            );
             match vinyl_typecheck::validate_main_return_type(
                 &entry_items,
                 &entry_source,
@@ -285,7 +299,7 @@ pub(crate) fn analyze_workspace(
             &mut file_bare_imported_symbols,
             &mut diagnostics,
         );
-        add_resolved_modules(vfs, &resolver, file, &mut module_table);
+        add_resolved_modules(vfs, &resolver, file, &mut all_items, &mut module_table);
         collect_publics(&items, file, &mut publics);
         match analyze_with_diagnostics(file, &source, &all_items, &module_table) {
             Ok(analysis) => {
@@ -345,6 +359,7 @@ pub(crate) fn add_resolved_modules(
     vfs: &Vfs,
     resolver: &Resolver,
     from: &Path,
+    all_items: &mut Vec<Item>,
     module_table: &mut ModuleTable,
 ) {
     for info in resolver.all_modules().values() {
@@ -354,6 +369,13 @@ pub(crate) fn add_resolved_modules(
         let Ok((_, items)) = parse_file_with_diagnostics(vfs, &info.file_path) else {
             continue;
         };
+        all_items.extend(items.iter().filter_map(|item| match item {
+            Item::Struct(structure) if structure.public => Some(item.clone()),
+            Item::TupleStruct(tuple) if tuple.public => Some(item.clone()),
+            Item::Enum(enumeration) if enumeration.public => Some(item.clone()),
+            Item::TypeAlias(alias) if alias.public => Some(item.clone()),
+            _ => None,
+        }));
         let functions = items
             .iter()
             .filter_map(|item| match item {
@@ -378,7 +400,12 @@ pub(crate) fn add_resolved_modules(
             types,
         };
         module_table.insert(info.import_name.clone(), exports.clone());
-        module_table.insert(info.path.join("::"), exports);
+        module_table.insert(info.path.join("::"), exports.clone());
+        let inline_exports = ModuleExports {
+            imported: true,
+            ..exports.clone()
+        };
+        module_table.insert(exports.import_path.clone(), inline_exports);
     }
 }
 
@@ -654,6 +681,7 @@ pub(crate) fn collect_modules(
             }
         }
         if let Some(symbol_name) = symbol {
+            all_items.extend(type_items.iter().cloned());
             let found = functions
                 .iter()
                 .find(|function| function.name == symbol_name)
@@ -747,7 +775,8 @@ pub(crate) fn collect_modules(
             types,
         };
         module_table.insert(info.import_name.clone(), exports.clone());
-        module_table.insert(info.path.join("::"), exports);
+        module_table.insert(info.path.join("::"), exports.clone());
+        module_table.insert(exports.import_path.clone(), exports);
         collect_modules(
             vfs,
             resolver,

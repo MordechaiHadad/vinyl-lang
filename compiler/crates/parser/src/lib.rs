@@ -97,7 +97,8 @@ mod statement_range_tests {
     fn removes_incomplete_statement_around_cursor() {
         let pipe = "struct Name { public first: int, last: int }\nfn main() {\n    let x = Name { first: 1, last: 2 };\n    x. |> math::double()\n}\n";
         let plain = "fn main() {\n    let p = Point { x: 1, y: 2 };\n    p.\n}\n";
-        let enumeration = "enum Shape { Circle, Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n";
+        let enumeration =
+            "enum Shape { Circle, Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n";
         let if_brace = "fn main() {\n    if true { x. }\n}\n";
 
         let pipe_clean = assert_clean_parses(pipe, pipe.find("x. |>").unwrap() + 2);
