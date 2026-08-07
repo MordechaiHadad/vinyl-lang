@@ -8,6 +8,7 @@ public struct Point {
     public y: int
 }
 
+@doc("A color enum with 2 variants red and blue")
 public enum Color {
     Red,
     Blue
