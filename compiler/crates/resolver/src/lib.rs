@@ -2,11 +2,25 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub mod error;
+pub mod module_graph;
 pub mod resolver;
 pub mod structs;
 pub mod traits;
 use crate::resolver::{ImportPrefix, ModuleInfo};
 pub use error::ResolveDiagnostic;
+
+/// Strips the Windows `\\?\` verbatim prefix so that canonicalized paths
+/// (`std::fs::canonicalize` always adds it on Windows) compare equal to the
+/// plain paths produced by `read_dir`/`std::path::absolute`. Filesystem
+/// operations re-add the prefix internally, so plain paths are safe to store.
+fn strip_verbatim_prefix(path: &Path) -> PathBuf {
+    if let Some(s) = path.to_str()
+        && let Some(stripped) = s.strip_prefix(r"\\?\")
+    {
+        return PathBuf::from(stripped);
+    }
+    path.to_path_buf()
+}
 
 fn find_manifest_dir(start: &Path) -> Option<PathBuf> {
     let mut dir = Some(start.to_path_buf());
@@ -20,7 +34,7 @@ fn find_manifest_dir(start: &Path) -> Option<PathBuf> {
 }
 
 fn compute_target_path(prefix: &ImportPrefix, path: &[&str], from: &Path) -> PathBuf {
-    let mut base = from.parent().unwrap_or(Path::new("")).to_path_buf();
+    let mut base = strip_verbatim_prefix(from.parent().unwrap_or(Path::new("")));
 
     if let ImportPrefix::Parent(n) = prefix {
         for _ in 0..*n {

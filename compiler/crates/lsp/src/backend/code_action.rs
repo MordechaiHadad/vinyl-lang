@@ -5,7 +5,7 @@ use tower_lsp::lsp_types::*;
 
 use crate::backend::state::Backend;
 use crate::backend::workspace::{
-    is_imported, is_public_symbol, non_canonical_key, relative_import_path, same_file,
+    is_imported, is_public_symbol, non_canonical_key, same_file,
 };
 use crate::position::{full_range, offset_at};
 use crate::text::{current_imports, import_edit_range, module_ref_prefix, word_prefix};
@@ -51,7 +51,7 @@ impl Backend {
                 if definitions.is_empty() || !is_public_symbol(module_analysis, symbol_name) {
                     continue;
                 }
-                let import_path = relative_import_path(&path, &info.file_path, resolver);
+                let import_path = resolver.relative_import_path(&path, &info.file_path);
                 actions.push(add_import_action(
                     &uri,
                     &source,
@@ -81,7 +81,7 @@ impl Backend {
                     };
                     let import_path = current_path
                         .as_ref()
-                        .map(|p| relative_import_path(p, &info.file_path, resolver))
+                        .map(|p| resolver.relative_import_path(p, &info.file_path))
                         .unwrap_or_else(|| info.import_name.clone());
                     if is_imported(&existing_imports, &info.import_name) {
                         continue;

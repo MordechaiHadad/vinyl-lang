@@ -51,16 +51,29 @@ fn main_must_return_unit() {
 }
 
 #[test]
-fn compiles_public_script_module_without_import() {
+fn compiles_public_script_module_with_import() {
     let root = script_project(
-        "missing_import_diagnostic",
+        "public_script_module",
+        &[
+            ("main.vn", "import math; fn main() { math::double() }\n"),
+            ("math.vn", "public fn double(): int { 2 }\n"),
+        ],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn rejects_bare_module_ref_without_import() {
+    let root = script_project(
+        "bare_module_ref_without_import",
         &[
             ("main.vn", "fn main() { math::double() }\n"),
             ("math.vn", "public fn double(): int { 2 }\n"),
         ],
     );
     let result = compile_entry(&root.join("main.vn"), None);
-    assert!(result.is_ok(), "{result:?}");
+    assert!(result.is_err(), "bare `math::` refs require an explicit import");
 }
 
 #[test]
@@ -126,13 +139,13 @@ fn compiles_script_project_with_import() {
 }
 
 #[test]
-fn compiles_script_parent_qualified_module_without_import() {
+fn compiles_script_module_with_import() {
     let root = script_project(
         "script_parent_qualified_module",
         &[
             (
                 "main.vn",
-                "fn main() { let x = parent::math::Point { x: 10, y: 69 }; 69 |> math::double() }",
+                "import math; fn main() { let x = parent::math::Point { x: 10, y: 69 }; 69 |> math::double() }",
             ),
             (
                 "math.vn",

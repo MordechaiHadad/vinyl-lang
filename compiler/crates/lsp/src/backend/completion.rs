@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -8,13 +7,12 @@ use vinyl_parser::ast::item::Item;
 use vinyl_resolver::resolver::{Resolver, ResolverMode};
 use vinyl_typecheck::DefinitionKind;
 use vinyl_typecheck::index::types::Definition;
-use vinyl_typecheck::module::ModuleTable;
 
 use crate::backend::definition::definition_detail;
 use crate::backend::state::{Analysis, Backend, State};
 use crate::backend::workspace::{
-    add_resolved_modules, analyze_with_diagnostics, collect_modules, is_imported, is_public_symbol,
-    non_canonical_key, parse_file_with_diagnostics, relative_import_path, same_file,
+    analyze_with_diagnostics, is_imported, is_public_symbol, non_canonical_key,
+    parse_file_with_diagnostics, same_file,
 };
 use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
@@ -159,7 +157,7 @@ impl Backend {
                     drop(state);
                     return Ok(Some(CompletionResponse::Array(items)));
                 };
-                let import_path = relative_import_path(&path, &info.file_path, resolver);
+                let import_path = resolver.relative_import_path(&path, &info.file_path);
                 let imported = is_imported(&existing_imports, module_name);
                 items.extend(module_ref_completions(
                     &state,
@@ -264,31 +262,14 @@ fn analyze_completion_source_with_imports(
             }
         }
     }
-    let mut all_items = items.to_vec();
-    let mut module_table = ModuleTable::new();
-    let mut visited = HashSet::new();
-    let mut bare_imported_symbols = HashSet::new();
-    let mut diagnostics = HashMap::new();
-    collect_modules(
-        &state.vfs,
-        &mut resolver,
-        workspace_root,
-        path,
-        items,
-        &mut all_items,
-        &mut module_table,
-        &mut visited,
-        &mut bare_imported_symbols,
-        &mut diagnostics,
-    );
-    add_resolved_modules(
-        &state.vfs,
-        &resolver,
-        path,
-        &mut all_items,
-        &mut module_table,
-    );
-    analyze_with_diagnostics(path, source, &all_items, &module_table).ok()
+    let mut read_source = |path: &Path| {
+        state
+            .vfs
+            .source(path)
+            .ok_or_else(|| format!("could not read {}", path.display()))
+    };
+    let graph = resolver.build_module_graph(path, items, &mut read_source);
+    analyze_with_diagnostics(path, source, &graph.all_items, &graph.module_table).ok()
 }
 
 fn field_access_context(source: &str, offset: usize) -> Option<usize> {
@@ -887,7 +868,7 @@ fn auto_import_completions(
         let Some(module_analysis) = state.cache.get(&cache_key) else {
             continue;
         };
-        let import_path = relative_import_path(path, &info.file_path, resolver);
+        let import_path = resolver.relative_import_path(path, &info.file_path);
         let already_imported = is_imported(&existing_imports, &info.import_name);
         if already_imported {
             continue;

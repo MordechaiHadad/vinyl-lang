@@ -35,7 +35,7 @@ pub struct Resolver {
 
 impl Resolver {
     pub fn detect_with(entry: &Path, fs: Box<dyn FileSystem>) -> Result<Self, ResolveDiagnostic> {
-        let entry = std::path::absolute(entry)?;
+        let entry = crate::strip_verbatim_prefix(&std::path::absolute(entry)?);
 
         if entry.is_file() && entry.extension().is_some_and(|e| e != "vn") {
             return Err(ResolveDiagnostic::NotFound {
@@ -72,7 +72,7 @@ impl Resolver {
         root: &Path,
         fs: Box<dyn FileSystem>,
     ) -> Result<Self, ResolveDiagnostic> {
-        let root = std::path::absolute(root)?;
+        let root = crate::strip_verbatim_prefix(&std::path::absolute(root)?);
         let src = root.join("src");
         if !src.is_dir() {
             return Err(ResolveDiagnostic::MissingSrcDir { root });
@@ -95,7 +95,7 @@ impl Resolver {
     pub fn for_script_with(root: &Path, fs: Box<dyn FileSystem>) -> Self {
         Resolver {
             mode: ResolverMode::Script,
-            root: root.to_path_buf(),
+            root: crate::strip_verbatim_prefix(root),
             modules: HashMap::new(),
             fs,
         }
@@ -122,7 +122,7 @@ impl Resolver {
             ResolverMode::Manifest => self.root.join("src"),
             ResolverMode::Script => self.root.clone(),
         };
-        crate::add_module_path(file_path, &source_root, &mut self.modules);
+        crate::add_module_path(&crate::strip_verbatim_prefix(file_path), &source_root, &mut self.modules);
     }
 
     pub fn resolve_module_path(
