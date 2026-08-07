@@ -472,28 +472,37 @@ pub fn compile_entry(
     };
     if matches!(
         resolver.mode(),
+        vinyl_resolver::resolver::ResolverMode::Manifest
+    ) {
+        return Err(vec![CompileError::Module(ModuleError {
+            message: "manifest mode is not supported yet; use script mode without vinyl.toml"
+                .to_string(),
+        })]);
+    }
+    if matches!(
+        resolver.mode(),
         vinyl_resolver::resolver::ResolverMode::Script
     ) {
         let root = resolver.root().to_path_buf();
         register_script_modules(&mut resolver, root);
     }
 
-    let (entry_source, entry_source_name, mut all_items) = if file_path.is_dir() {
-        let entry = find_entry_file(file_path).ok_or_else(|| {
+    let entry_path = if file_path.is_dir() {
+        find_entry_file(file_path).ok_or_else(|| {
             vec![CompileError::Module(ModuleError {
                 message: format!(
                     "no entry file found in `{}` (looked for main.vn, lib.vn)",
                     file_path.display()
                 ),
             })]
-        })?;
-        parse_file(&entry)?
+        })?
     } else {
-        parse_file(file_path)?
+        file_path.to_path_buf()
     };
+    let (entry_source, entry_source_name, mut all_items) = parse_file(&entry_path)?;
 
     let mut visited = HashSet::new();
-    if let Ok(canonical) = file_path.canonicalize() {
+    if let Ok(canonical) = entry_path.canonicalize() {
         visited.insert(canonical);
     }
 
@@ -505,13 +514,13 @@ pub fn compile_entry(
     }
     let module_table = resolve_imports(
         &entry_items,
-        file_path,
+        &entry_path,
         &mut resolver,
         &mut all_items,
         &mut visited,
     )?;
     let mut module_table = module_table;
-    add_resolved_modules(&mut module_table, &resolver, file_path, &mut all_items)?;
+    add_resolved_modules(&mut module_table, &resolver, &entry_path, &mut all_items)?;
 
     let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,

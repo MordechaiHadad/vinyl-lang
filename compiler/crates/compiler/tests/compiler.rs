@@ -22,7 +22,6 @@ fn project(name: &str, files: &[(&str, &str)]) -> PathBuf {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, source).unwrap();
     }
-    fs::write(root.join("vinyl.toml"), "").unwrap();
     root
 }
 
@@ -35,7 +34,7 @@ fn compiles_public_import() {
             ("src/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -73,7 +72,7 @@ fn rejects_private_import() {
             ("src/math.vn", "fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_err());
 }
 
@@ -83,7 +82,7 @@ fn import_not_found_errors() {
         "import_not_found",
         &[("src/main.vn", "import math; fn main() { 0 }")],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_err());
 }
 
@@ -102,14 +101,14 @@ fn nested_module_import() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
 #[test]
 fn entry_without_main_or_lib() {
     let root = project("no_entry", &[("src/foo.vn", "fn foo(): int { 1 }")]);
-    let result = compile_entry(&root, Some(&root));
+    let result = compile_entry(&root, None);
     assert!(result.is_err());
 }
 
@@ -146,6 +145,25 @@ fn compiles_script_parent_qualified_module_without_import() {
 }
 
 #[test]
+fn compiles_script_directory_with_parent_qualified_module_without_import() {
+    let root = script_project(
+        "script_directory_parent_qualified_module",
+        &[
+            (
+                "main.vn",
+                "fn main() { let x = parent::math::Point { x: 10, y: 69 }; println(x.x); }",
+            ),
+            (
+                "math.vn",
+                "public struct Point { public x: int, public y: int }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root, None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
 fn compiles_nested_module_symbols() {
     let root = project(
         "nested_module_symbols",
@@ -160,7 +178,7 @@ fn compiles_nested_module_symbols() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -179,21 +197,19 @@ fn compiles_deep_nested_module_symbols() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
 #[test]
-fn compiles_manifest_via_detect() {
-    let root = project(
-        "manifest_detect",
-        &[
-            ("src/main.vn", "import math; fn main() { math::answer() }"),
-            ("src/math.vn", "public fn answer(): int { 42 }"),
-        ],
-    );
+fn rejects_manifest_mode() {
+    let root = project("manifest_detect", &[("src/main.vn", "fn main() {}")]);
+    fs::write(root.join("vinyl.toml"), "").unwrap();
     let result = compile_entry(&root.join("src/main.vn"), None);
-    assert!(result.is_ok(), "{result:?}");
+    assert!(
+        result.is_err(),
+        "manifest mode should be rejected: {result:?}"
+    );
 }
 
 #[test]
@@ -205,7 +221,7 @@ fn resolves_directory_module() {
             ("src/math/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -273,7 +289,7 @@ fn manifest_self_prefix_errors() {
         "manifest_self_errors",
         &[("src/main.vn", "import self::helper; fn main() { 0 }")],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_err(), "self:: should error in imports");
 }
 
@@ -289,7 +305,7 @@ fn manifest_parent_prefix_same_dir() {
             ("src/sub/helper.vn", "public fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/sub/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/sub/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -305,12 +321,12 @@ fn manifest_parent_parent_prefix() {
             ("src/helper.vn", "public fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/sub/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/sub/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
 #[test]
-fn manifest_package_prefix() {
+fn package_prefix_rejected_in_script_mode() {
     let root = project(
         "manifest_package_prefix",
         &[
@@ -321,8 +337,11 @@ fn manifest_package_prefix() {
             ("src/helper.vn", "public fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
-    assert!(result.is_ok(), "{result:?}");
+    let result = compile_entry(&root.join("src/main.vn"), None);
+    assert!(
+        result.is_err(),
+        "package:: should be rejected in script mode"
+    );
 }
 
 #[test]
@@ -337,7 +356,7 @@ fn symbol_import_function_bare_call() {
             ("src/math.vn", "public fn double(n: int): int { n * 2 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -350,7 +369,7 @@ fn symbol_import_private_errors() {
             ("src/math.vn", "fn hidden(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_err(), "importing a private symbol should error");
 }
 
@@ -363,7 +382,7 @@ fn wildcard_import_bare_call() {
             ("src/math.vn", "public fn answer(): int { 42 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -382,7 +401,7 @@ fn grouped_symbol_import_bare_calls() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -399,7 +418,7 @@ fn symbol_import_conflict_errors() {
             ("src/b.vn", "public fn foo(): int { 2 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_err(), "conflicting symbol imports should error");
 }
 
@@ -418,7 +437,7 @@ fn scoped_type_public_field_access() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -434,7 +453,7 @@ fn scoped_type_private_field_errors() {
             ("src/math.vn", "public struct Shape { radius: float64 }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(
         result.is_err(),
         "cross-module private field access should error"
@@ -453,7 +472,7 @@ fn scoped_private_type_errors() {
             ("src/math.vn", "struct Hidden {}"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(
         result.is_err(),
         "referencing a private type from another module should error"
@@ -475,7 +494,7 @@ fn module_qualified_enum_variant_construction() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -491,7 +510,7 @@ fn module_qualified_variants_are_public() {
             ("src/math.vn", "public enum Shape { Circle }"),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(
         result.is_ok(),
         "cross-module enum variants are public: {result:?}"
@@ -513,7 +532,7 @@ fn imported_type_public_field_access() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(result.is_ok(), "{result:?}");
 }
 
@@ -532,7 +551,7 @@ fn imported_type_private_field_errors() {
             ),
         ],
     );
-    let result = compile_entry(&root.join("src/main.vn"), Some(&root));
+    let result = compile_entry(&root.join("src/main.vn"), None);
     assert!(
         result.is_err(),
         "cross-module private field access should error"
