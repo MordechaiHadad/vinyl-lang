@@ -106,9 +106,9 @@ fn make(): unit { math::Shape::Circle }
     body: (block
       (scoped_type_expression
         path: (qualified_type_path
-          (value_identifier)
-          (type_identifier)
-          (type_identifier))))))
+          module: (value_identifier)
+          module: (type_identifier)
+          type: (type_identifier))))))
 
 ==================
 Module qualified enum variant with arguments
@@ -128,9 +128,9 @@ fn make(): unit { math::Shape::Square(2.0) }
     body: (block
       (scoped_type_expression
         path: (qualified_type_path
-          (value_identifier)
-          (type_identifier)
-          (type_identifier))
+          module: (value_identifier)
+          module: (type_identifier)
+          type: (type_identifier))
         arguments: (arguments
           (float_literal))))))
 
@@ -204,12 +204,12 @@ fn call(x: int32): unit { parent::mod1::mod2::mod3::infinite::function(x) }
     body: (block
       (call_expression
         function: (qualified_value_path
-          (value_identifier)
-          (value_identifier)
-          (value_identifier)
-          (value_identifier)
-          (value_identifier)
-          (value_identifier))
+          module: (value_identifier)
+          module: (value_identifier)
+          module: (value_identifier)
+          module: (value_identifier)
+          module: (value_identifier)
+          function: (value_identifier))
         arguments: (arguments
           (value_identifier))))))
 
@@ -231,12 +231,12 @@ fn make(): unit { parent::mod1::mod2::mod3::infinite::Struct { x: 1, y: 2 } }
     body: (block
       (struct_literal_expression
         name: (qualified_type_path
-          (value_identifier)
-          (value_identifier)
-          (value_identifier)
-          (value_identifier)
-          (value_identifier)
-          (type_identifier))
+          module: (value_identifier)
+          module: (value_identifier)
+          module: (value_identifier)
+          module: (value_identifier)
+          module: (value_identifier)
+          type: (type_identifier))
         fields: (struct_literal_fields
           name: (value_identifier)
           value: (integer_literal)

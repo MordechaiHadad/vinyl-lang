@@ -27,8 +27,6 @@ export default grammar({
     [$.unary_expression, $.index_expression],
     [$.scoped_type_expression],
     [$.import_name],
-    [$._expression, $.struct_literal_expression],
-    [$.enum_variant_pattern, $._path_segment],
   ],
 
   rules: {
@@ -499,12 +497,12 @@ export default grammar({
     _path_segment: $ => choice($.value_identifier, $.type_identifier),
 
     qualified_value_path: $ => seq(
-      repeat1(seq($._path_segment, "::")),
-      $.value_identifier,
+      repeat1(seq(field("module", $._path_segment), "::")),
+      field("function", $.value_identifier),
     ),
     qualified_type_path: $ => seq(
-      repeat1(seq($._path_segment, "::")),
-      $.type_identifier,
+      repeat1(seq(field("module", $._path_segment), "::")),
+      field("type", $.type_identifier),
     ),
   },
 });

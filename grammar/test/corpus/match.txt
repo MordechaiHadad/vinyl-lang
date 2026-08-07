@@ -277,8 +277,8 @@ fn area(s: Shape): int32 {
           pattern: (pattern
             (enum_variant_pattern
               path: (qualified_type_path
-                (type_identifier)
-                (type_identifier))
+                module: (type_identifier)
+                type: (type_identifier))
               arguments: (pattern_arguments
                 (pattern
                   (identifier_pattern
@@ -288,8 +288,8 @@ fn area(s: Shape): int32 {
           pattern: (pattern
             (enum_variant_pattern
               path: (qualified_type_path
-                (type_identifier)
-                (type_identifier))
+                module: (type_identifier)
+                type: (type_identifier))
               arguments: (pattern_arguments
                 (pattern
                   (identifier_pattern
@@ -304,8 +304,8 @@ fn area(s: Shape): int32 {
           pattern: (pattern
             (enum_variant_pattern
               path: (qualified_type_path
-                (type_identifier)
-                (type_identifier))
+                module: (type_identifier)
+                type: (type_identifier))
               arguments: (pattern_arguments)))
           body: (integer_literal))))))
 
@@ -341,13 +341,13 @@ fn area(s: Enum): int32 {
           pattern: (pattern
             (enum_variant_pattern
               path: (qualified_type_path
-                (value_identifier)
-                (value_identifier)
-                (value_identifier)
-                (value_identifier)
-                (value_identifier)
-                (type_identifier)
-                (type_identifier))))
+                module: (value_identifier)
+                module: (value_identifier)
+                module: (value_identifier)
+                module: (value_identifier)
+                module: (value_identifier)
+                module: (type_identifier)
+                type: (type_identifier))))
           body: (integer_literal))
         (match_arm
           pattern: (pattern
