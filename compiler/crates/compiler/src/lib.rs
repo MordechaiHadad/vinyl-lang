@@ -499,6 +499,9 @@ pub fn compile_entry(
     } else {
         file_path.to_path_buf()
     };
+    let entry_path = entry_path
+        .canonicalize()
+        .map_err(|error| vec![CompileError::Io(error)])?;
     let (entry_source, entry_source_name, mut all_items) = parse_file(&entry_path)?;
 
     let mut visited = HashSet::new();
