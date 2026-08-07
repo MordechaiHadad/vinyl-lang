@@ -646,7 +646,6 @@ pub fn typeck_with_modules(
                         .iter()
                         .map(|v| HirEnumVariant {
                             span: v.span,
-                            public: v.public,
                             name: v.name.clone(),
                             data: v.data.as_ref().map(|d| match d {
                                 EnumVariantData::Tuple(types) => {

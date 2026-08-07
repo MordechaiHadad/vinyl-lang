@@ -2635,6 +2635,44 @@
     "fields": {}
   },
   {
+    "type": "qualified_type_path",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "type_identifier",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "qualified_value_path",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "type_identifier",
+          "named": true
+        },
+        {
+          "type": "value_identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "reference_type",
     "named": true,
     "fields": {},
@@ -3918,14 +3956,6 @@
   {
     "type": "public",
     "named": false
-  },
-  {
-    "type": "qualified_type_path",
-    "named": true
-  },
-  {
-    "type": "qualified_value_path",
-    "named": true
   },
   {
     "type": "raw_string_literal",

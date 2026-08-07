@@ -64,7 +64,6 @@ pub struct HirField {
 #[derive(Debug, Clone)]
 pub struct HirEnumVariant {
     pub span: SourceSpan,
-    pub public: bool,
     pub name: String,
     pub data: Option<HirEnumVariantData>,
 }

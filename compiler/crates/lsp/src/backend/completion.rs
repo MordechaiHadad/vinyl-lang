@@ -420,9 +420,8 @@ fn variant_completions(
                 {
                     Some(
                         enumeration
-                            .variants
+                        .variants
                             .iter()
-                            .filter(|variant| variant.public)
                             .map(|variant| variant.name.clone())
                             .collect::<Vec<_>>(),
                     )
@@ -441,9 +440,8 @@ fn variant_completions(
                 {
                     Some(
                         enumeration
-                            .variants
+                        .variants
                             .iter()
-                            .filter(|variant| !is_imported_type(state, enum_name) || variant.public)
                             .map(|variant| variant.name.clone())
                             .collect::<Vec<_>>(),
                     )

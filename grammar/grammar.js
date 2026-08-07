@@ -498,8 +498,14 @@ export default grammar({
 
     _path_segment: $ => choice($.value_identifier, $.type_identifier),
 
-    qualified_value_path: $ => token(/[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*::[a-z_][a-zA-Z0-9_]*/),
-    qualified_type_path: $ => token(/[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*::[A-Z][a-zA-Z0-9_]*/),
+    qualified_value_path: $ => seq(
+      repeat1(seq($._path_segment, "::")),
+      $.value_identifier,
+    ),
+    qualified_type_path: $ => seq(
+      repeat1(seq($._path_segment, "::")),
+      $.type_identifier,
+    ),
   },
 });
 

@@ -1,8 +1,9 @@
-use miette::SourceSpan;
+use miette::{NamedSource, SourceSpan};
 use tree_sitter::Node;
 
 use crate::{
     ParserDiagnostic,
+    error::ParserDiagnosticKind,
     ast::item::{
         Attribute, EnumDef, EnumVariant, EnumVariantData, FunctionDef, FunctionParam, ImportDef,
         Item, StructDef, StructField, TupleDef, TypeAliasDef,
@@ -132,6 +133,13 @@ impl<'a> Lowerer<'a> {
 
     pub(super) fn lower_enum_variant(&self, node: &Node) -> Result<EnumVariant, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
+        if has_public(node) {
+            return Err(ParserDiagnostic {
+                kind: ParserDiagnosticKind::EnumVariantPublicModifier,
+                source_code: NamedSource::new(self.source_name, self.source.to_string()),
+                span,
+            });
+        }
         let name = node_text(&self.child_by_field(node, "name")?, self.source);
         let child_count = node.named_child_count();
         let data = if child_count > 1 {
@@ -161,7 +169,6 @@ impl<'a> Lowerer<'a> {
         };
         Ok(EnumVariant {
             span,
-            public: has_public(node),
             name,
             data,
         })

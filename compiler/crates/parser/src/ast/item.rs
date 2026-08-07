@@ -82,7 +82,6 @@ pub struct EnumDef {
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub span: SourceSpan,
-    pub public: bool,
     pub name: String,
     pub data: Option<EnumVariantData>,
 }

@@ -2,6 +2,7 @@ use vinyl_parser::ast::{
     item::{EnumVariantData, Item},
     types::{Primitive, Type},
 };
+use vinyl_parser::error::ParserDiagnosticKind;
 
 use super::common;
 
@@ -41,15 +42,10 @@ fn enum_definition_lower() {
 }
 
 #[test]
-fn enum_variant_public_lower() {
-    let items = common::do_lower("enum Shape {\n    public Circle,\n    Square(float64),\n}");
-    let e = match &items[0] {
-        Item::Enum(e) => e,
-        other => panic!("expected enum, got {other:?}"),
-    };
-    assert!(
-        e.variants[0].public,
-        "public variant should be marked public"
-    );
-    assert!(!e.variants[1].public, "bare variant should stay private");
+fn enum_variant_public_modifier_is_rejected() {
+    let errors = vinyl_parser::parse_and_lower("enum Shape { public Circle }").unwrap_err();
+    assert!(matches!(
+        errors.first().map(|error| &error.kind),
+        Some(ParserDiagnosticKind::EnumVariantPublicModifier)
+    ));
 }

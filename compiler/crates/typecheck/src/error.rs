@@ -122,13 +122,6 @@ pub enum TypeDiagnosticKind {
         variant_name: String,
     },
 
-    #[error("item `{type_name}::{variant_name}` is private or not found")]
-    #[diagnostic(code(typeck::variant_private))]
-    VariantPrivate {
-        type_name: String,
-        variant_name: String,
-    },
-
     #[error("variant `{type_name}::{variant_name}` expects {expected} arguments, got {found}")]
     #[diagnostic(code(typeck::variant_arg_count_mismatch))]
     VariantArgCountMismatch {

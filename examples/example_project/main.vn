@@ -1,7 +1,4 @@
-import parent::math;
-
-
 fn main() {
-    let x = math::Point { x: 10, y: 69 };
+    let x = parent::math::Point { x: 10, y: 69 };
     69 |> math::double()
 }

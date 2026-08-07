@@ -52,7 +52,7 @@ fn main_must_return_unit() {
 }
 
 #[test]
-fn missing_module_import_is_a_type_diagnostic() {
+fn compiles_public_script_module_without_import() {
     let root = script_project(
         "missing_import_diagnostic",
         &[
@@ -60,13 +60,8 @@ fn missing_module_import_is_a_type_diagnostic() {
             ("math.vn", "public fn double(): int { 2 }\n"),
         ],
     );
-    let errors = compile_entry(&root.join("main.vn"), None).unwrap_err();
-    let message = errors
-        .iter()
-        .map(ToString::to_string)
-        .find(|message| message.contains("missing import"))
-        .expect("missing import diagnostic");
-    assert!(message.contains("import parent::math"), "{message}");
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
 }
 
 #[test]
@@ -132,6 +127,25 @@ fn compiles_script_project_with_import() {
 }
 
 #[test]
+fn compiles_script_parent_qualified_module_without_import() {
+    let root = script_project(
+        "script_parent_qualified_module",
+        &[
+            (
+                "main.vn",
+                "fn main() { let x = parent::math::Point { x: 10, y: 69 }; 69 |> math::double() }",
+            ),
+            (
+                "math.vn",
+                "public fn double(n: int): int { n * 2 } public struct Point { public x: int, public y: int }",
+            ),
+        ],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
 fn compiles_nested_module_symbols() {
     let root = project(
         "nested_module_symbols",
@@ -161,7 +175,7 @@ fn compiles_deep_nested_module_symbols() {
             ),
             (
                 "src/mod1/mod2/mod3/infinite.vn",
-                "public fn function(n: int): int { n * 2 } public struct Struct { public x: int, public y: int } public enum Enum { public Variant }",
+                "public fn function(n: int): int { n * 2 } public struct Struct { public x: int, public y: int } public enum Enum { Variant }",
             ),
         ],
     );
@@ -457,7 +471,7 @@ fn module_qualified_enum_variant_construction() {
             ),
             (
                 "src/math.vn",
-                "public enum Shape { public Circle, Square(float64) }",
+                "public enum Shape { Circle, Square(float64) }",
             ),
         ],
     );
@@ -466,7 +480,7 @@ fn module_qualified_enum_variant_construction() {
 }
 
 #[test]
-fn module_qualified_private_variant_errors() {
+fn module_qualified_variants_are_public() {
     let root = project(
         "module_qualified_private_variant",
         &[
@@ -478,7 +492,10 @@ fn module_qualified_private_variant_errors() {
         ],
     );
     let result = compile_entry(&root.join("src/main.vn"), Some(&root));
-    assert!(result.is_err(), "cross-module private variant should error");
+    assert!(
+        result.is_ok(),
+        "cross-module enum variants are public: {result:?}"
+    );
 }
 
 #[test]

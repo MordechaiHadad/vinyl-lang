@@ -144,17 +144,6 @@ impl InferState {
                                 .position(|v| v.name == *variant_name)
                                 .map(|idx| {
                                     let variant = &e.variants[idx];
-                                    if self.type_origins.contains_key(&canonical_type_name)
-                                        && !variant.public
-                                    {
-                                        self.errors.push(self.source.error(
-                                            *span,
-                                            TypeDiagnosticKind::VariantPrivate {
-                                                type_name: canonical_type_name.clone(),
-                                                variant_name: variant_name.clone(),
-                                            },
-                                        ));
-                                    }
                                     let expected_types = match &variant.data {
                                         Some(HirEnumVariantData::Tuple(types)) => types.clone(),
                                         Some(HirEnumVariantData::Struct(fields)) => {

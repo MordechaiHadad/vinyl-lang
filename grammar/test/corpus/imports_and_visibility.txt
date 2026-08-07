@@ -105,7 +105,10 @@ fn make(): unit { math::Shape::Circle }
         (primitive_type)))
     body: (block
       (scoped_type_expression
-        path: (qualified_type_path)))))
+        path: (qualified_type_path
+          (value_identifier)
+          (type_identifier)
+          (type_identifier))))))
 
 ==================
 Module qualified enum variant with arguments
@@ -124,7 +127,10 @@ fn make(): unit { math::Shape::Square(2.0) }
         (primitive_type)))
     body: (block
       (scoped_type_expression
-        path: (qualified_type_path)
+        path: (qualified_type_path
+          (value_identifier)
+          (type_identifier)
+          (type_identifier))
         arguments: (arguments
           (float_literal))))))
 
@@ -172,8 +178,8 @@ import math::{answer, Point};
       path: (import_name
         (value_identifier))
       symbols: (import_group
-       (value_identifier)
-       (type_identifier)))))
+        (value_identifier)
+        (type_identifier)))))
 
 ==================
 Deeply qualified function call
@@ -197,7 +203,13 @@ fn call(x: int32): unit { parent::mod1::mod2::mod3::infinite::function(x) }
         (primitive_type)))
     body: (block
       (call_expression
-        function: (qualified_value_path)
+        function: (qualified_value_path
+          (value_identifier)
+          (value_identifier)
+          (value_identifier)
+          (value_identifier)
+          (value_identifier)
+          (value_identifier))
         arguments: (arguments
           (value_identifier))))))
 
@@ -218,7 +230,13 @@ fn make(): unit { parent::mod1::mod2::mod3::infinite::Struct { x: 1, y: 2 } }
         (primitive_type)))
     body: (block
       (struct_literal_expression
-        name: (qualified_type_path)
+        name: (qualified_type_path
+          (value_identifier)
+          (value_identifier)
+          (value_identifier)
+          (value_identifier)
+          (value_identifier)
+          (type_identifier))
         fields: (struct_literal_fields
           name: (value_identifier)
           value: (integer_literal)

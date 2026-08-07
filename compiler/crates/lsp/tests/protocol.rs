@@ -2980,7 +2980,7 @@ fn completion_enum_variant_after_colon() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "enum Shape { public Circle, public Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n",
+        "enum Shape { Circle, Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -3010,7 +3010,7 @@ fn completion_enum_variant_after_colon() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "enum Shape { public Circle, public Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n" }
+                "text": "enum Shape { Circle, Square(float64) }\nfn main(): unit {\n    let s = Shape::\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");

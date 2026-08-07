@@ -17,6 +17,10 @@ pub struct ParserDiagnostic {
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum ParserDiagnosticKind {
+    #[error("enum variants are public by default; remove the `public` modifier")]
+    #[diagnostic(code(parser::enum_variant_public_modifier))]
+    EnumVariantPublicModifier,
+
     #[error("expected `{expected}`")]
     #[diagnostic(code(parser::missing_token))]
     #[help("add `{expected}` here")]

@@ -648,21 +648,6 @@ impl InferState {
                             .unwrap_or(Type::Primitive(Primitive::Unit)),
                     });
                 }
-                if let Some((module_len, module)) =
-                    resolve_module(&self.module_table, &type_segments)
-                    && !module
-                        .types
-                        .iter()
-                        .any(|name| name == &type_segments[module_len..].join("::"))
-                {
-                    return Err(Box::new(self.source.error(
-                        *span,
-                        TypeDiagnosticKind::VariantPrivate {
-                            type_name: type_name.clone(),
-                            variant_name: variant_name.clone(),
-                        },
-                    )));
-                }
                 let canonical_type_name = self.canonicalize_scoped_name(type_name, *span)?;
                 let variant_info =
                     resolve_named_type(&canonical_type_name, &self.types).and_then(|kind| {
@@ -672,17 +657,6 @@ impl InferState {
                                 .position(|v| v.name == *variant_name)
                                 .map(|idx| {
                                     let variant = &e.variants[idx];
-                                    if self.type_origins.contains_key(&canonical_type_name)
-                                        && !variant.public
-                                    {
-                                        self.errors.push(self.source.error(
-                                            *span,
-                                            TypeDiagnosticKind::VariantPrivate {
-                                                type_name: canonical_type_name.clone(),
-                                                variant_name: variant_name.clone(),
-                                            },
-                                        ));
-                                    }
                                     let expected: Vec<Type> = match &variant.data {
                                         Some(HirEnumVariantData::Tuple(types)) => types.clone(),
                                         Some(HirEnumVariantData::Struct(fields)) => {

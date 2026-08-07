@@ -391,12 +391,20 @@ fn add_resolved_modules(
     module_table: &mut ModuleTable,
     resolver: &Resolver,
     from: &Path,
+    all_items: &mut Vec<Item>,
 ) -> Result<(), Vec<CompileError>> {
     for info in resolver.all_modules().values() {
         if module_table.contains_key(&info.import_name) {
             continue;
         }
         let (_, _, items) = parse_file(&info.file_path)?;
+        all_items.extend(items.iter().filter_map(|item| match item {
+            Item::Struct(structure) if structure.public => Some(item.clone()),
+            Item::TupleStruct(tuple) if tuple.public => Some(item.clone()),
+            Item::Enum(enumeration) if enumeration.public => Some(item.clone()),
+            Item::TypeAlias(alias) if alias.public => Some(item.clone()),
+            _ => None,
+        }));
         let functions = items
             .iter()
             .filter_map(|item| match item {
@@ -417,12 +425,13 @@ fn add_resolved_modules(
         let exports = ModuleExports {
             import_name: info.import_name.clone(),
             import_path: relative_import_path(from, &info.file_path, resolver),
-            imported: false,
+            imported: true,
             functions,
             types,
         };
         module_table.insert(info.import_name.clone(), exports.clone());
-        module_table.insert(info.path.join("::"), exports);
+        module_table.insert(info.path.join("::"), exports.clone());
+        module_table.insert(exports.import_path.clone(), exports);
     }
     Ok(())
 }
@@ -502,7 +511,7 @@ pub fn compile_entry(
         &mut visited,
     )?;
     let mut module_table = module_table;
-    add_resolved_modules(&mut module_table, &resolver, file_path)?;
+    add_resolved_modules(&mut module_table, &resolver, file_path, &mut all_items)?;
 
     let (hir, warnings) = vinyl_typecheck::typeck_with_modules(
         &all_items,
