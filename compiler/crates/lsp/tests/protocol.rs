@@ -1870,6 +1870,62 @@ fn goto_definition_parent_import_through_pipe() {
 }
 
 #[test]
+fn hover_on_qualified_struct_path_shows_full_detail() {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("examples")
+        .join("example_project");
+    let main = root.join("main.vn");
+    let math = root.join("math.vn");
+    let main_uri = TestProject::uri(&main);
+    let math_uri = TestProject::uri(&math.canonicalize().unwrap());
+    let root_uri = TestProject::uri(&root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (
+            main_uri.clone(),
+            "import parent::math;\n\nfn main() {\n    let point = parent::math::Point { x: 10, y: 69 };\n}\n",
+        ),
+        (
+            math_uri,
+            "@doc(\"A point with 2 coordinates y and x\")\npublic struct Point {\n    public x: int,\n    public y: int\n}\n",
+        ),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+
+    for (id, character) in [(2, 17), (3, 25), (4, 31)] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "id": id, "method": "textDocument/hover",
+            "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": character } }
+        }));
+        let hover = lsp.response(id);
+        let hover_text = hover["result"]["contents"].as_str().unwrap();
+        assert!(
+            hover_text.contains("struct Point"),
+            "hover on qualified path segment should show the struct signature, got: {hover_text}"
+        );
+        assert!(
+            hover_text.contains("A point with 2 coordinates y and x"),
+            "hover on qualified path segment should show documentation, got: {hover_text}"
+        );
+    }
+}
+
+#[test]
 fn imported_file_change_clears_parent_diagnostic() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")

@@ -129,7 +129,11 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
             HirExpressionKind::Struct {
                 span, type_name, ..
             } => {
-                let type_end = span.offset() + type_name.len();
+                let source_text = source.get(span.offset()..)?;
+                let type_end = source_text
+                    .find('{')
+                    .map(|index| span.offset() + index)
+                    .unwrap_or_else(|| span.offset() + type_name.len());
                 if offset < type_end {
                     Some(SymbolRef::Type {
                         name: type_name.clone(),
