@@ -84,7 +84,7 @@ pub(crate) fn definition_detail(
     result: &TypeckResult,
     source: &str,
 ) -> Option<String> {
-    match definition.kind {
+    let detail = match definition.kind {
         DefinitionKind::Function => result.items.iter().find_map(|item| match &item.kind {
             HirItemKind::Function(f) if f.name == definition.name => {
                 let module = definition
@@ -154,7 +154,42 @@ pub(crate) fn definition_detail(
             .or_else(|| definition.type_name.clone());
             type_text.map(|type_name| format!("{}: {}", definition.name, type_name))
         }
-    }
+    };
+    let documentation = result
+        .items
+        .iter()
+        .find_map(|item| match (&definition.kind, &item.kind) {
+            (DefinitionKind::Function, HirItemKind::Function(function))
+                if function.name == definition.name =>
+            {
+                function.documentation.as_deref()
+            }
+            (DefinitionKind::Struct, HirItemKind::Struct(structure))
+                if structure.name == definition.name =>
+            {
+                structure.documentation.as_deref()
+            }
+            (DefinitionKind::TupleStruct, HirItemKind::TupleStruct(tuple_struct))
+                if tuple_struct.name == definition.name =>
+            {
+                tuple_struct.documentation.as_deref()
+            }
+            (DefinitionKind::Enum, HirItemKind::Enum(enumeration))
+                if enumeration.name == definition.name =>
+            {
+                enumeration.documentation.as_deref()
+            }
+            (DefinitionKind::TypeAlias, HirItemKind::TypeAlias(alias))
+                if alias.name == definition.name =>
+            {
+                alias.documentation.as_deref()
+            }
+            _ => None,
+        });
+    detail.map(|detail| match documentation {
+        Some(documentation) => format!("{detail}\n\n{documentation}"),
+        None => detail,
+    })
 }
 
 pub(crate) fn function_signature(function: &HirFunction, source: &str) -> String {

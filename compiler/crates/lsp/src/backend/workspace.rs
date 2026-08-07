@@ -178,19 +178,19 @@ pub(crate) fn analyze_workspace(
     let fs = Box::new(LspFileSystem::new(vfs_map));
     let mut resolver = Resolver::detect_with(root, fs).map_err(|e| eyre!("resolver error: {e}"))?;
 
-    if let ResolverMode::Script = resolver.mode() {
-        if vfs.source(entry_path).is_some() {
-            let root = resolver.root().to_path_buf();
-            let mut files = resolver.list_vn_files(&root).unwrap_or_default();
-            files.extend(
-                vfs.files()
-                    .keys()
-                    .filter(|file_path| file_path.extension().is_some_and(|ext| ext == "vn"))
-                    .cloned(),
-            );
-            for file_path in files {
-                resolver.register_module(&file_path);
-            }
+    if let ResolverMode::Script = resolver.mode()
+        && vfs.source(entry_path).is_some()
+    {
+        let root = resolver.root().to_path_buf();
+        let mut files = resolver.list_vn_files(&root).unwrap_or_default();
+        files.extend(
+            vfs.files()
+                .keys()
+                .filter(|file_path| file_path.extension().is_some_and(|ext| ext == "vn"))
+                .cloned(),
+        );
+        for file_path in files {
+            resolver.register_module(&file_path);
         }
     }
 

@@ -24,8 +24,11 @@ impl<'a> Lowerer<'a> {
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i as u32) {
                 match child.kind() {
-                    "simple_type" | "generic_type" | "array_type" | "reference_type"
-                    | "scoped_type" => {
+                    "simple_type"
+                    | "generic_type"
+                    | "array_type"
+                    | "reference_type"
+                    | "qualified_type_path" => {
                         return self.lower_type(&child);
                     }
                     _ => {}
@@ -42,7 +45,7 @@ impl<'a> Lowerer<'a> {
             "array_type" => return self.lower_array_type(node),
             "reference_type" => return self.lower_reference_type(node),
             "tuple_type" => return self.lower_tuple_type(node),
-            "scoped_type" => return self.lower_scoped_type(node),
+            "qualified_type_path" => return self.lower_qualified_type_path(node),
             _ => {}
         }
         for i in 0..node.named_child_count() {
@@ -53,7 +56,7 @@ impl<'a> Lowerer<'a> {
                     "array_type" => self.lower_array_type(&child),
                     "reference_type" => self.lower_reference_type(&child),
                     "tuple_type" => self.lower_tuple_type(&child),
-                    "scoped_type" => self.lower_scoped_type(&child),
+                    "qualified_type_path" => self.lower_qualified_type_path(&child),
                     kind => Err(self.invalid_kind(node, kind, "type")),
                 };
             }
@@ -61,10 +64,8 @@ impl<'a> Lowerer<'a> {
         Err(self.invalid_kind(node, node.kind(), "type"))
     }
 
-    pub(super) fn lower_scoped_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
-        let module = node_text(&self.child_by_field(node, "module")?, self.source);
-        let name = node_text(&self.child_by_field(node, "name")?, self.source);
-        Ok(Type::Named(format!("{module}::{name}")))
+    pub(super) fn lower_qualified_type_path(&self, node: &Node) -> Result<Type, ParserDiagnostic> {
+        Ok(Type::Named(node_text(node, self.source)))
     }
 
     pub(super) fn lower_reference_type(&self, node: &Node) -> Result<Type, ParserDiagnostic> {

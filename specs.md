@@ -319,6 +319,15 @@ References cannot escape their lexical scope. Attempting to point an outer-scope
 
 Attributes are metadata annotations placed before definitions. Syntax: `@name` or `@name(expr, ...)`. They have no effect on runtime semantics — the compiler uses them for code generation hints, documentation, or derive macros.
 
+The `@doc` attribute adds documentation to a function, struct, tuple, enum, or type alias. It accepts one string argument, and the documentation is available to the language server through hover:
+
+```
+@doc("Adds two numbers")
+public fn add(a: int, b: int): int { a + b }
+```
+
+Documentation is propagated from the AST into HIR and is shown below the definition signature in hover results, including for imported public definitions.
+
 ### Control Flow
 ```
 if condition { } else if condition { } else { }

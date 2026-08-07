@@ -1835,7 +1835,7 @@ fn goto_definition_parent_import_through_pipe() {
         ),
         (
             math_uri.clone(),
-            "public fn double(n: int): int {\n    n * 2\n}\n",
+            "@doc(\"Doubles a number\")\npublic fn double(n: int): int {\n    n * 2\n}\n",
         ),
     ] {
         lsp.send(json!({
@@ -1860,6 +1860,12 @@ fn goto_definition_parent_import_through_pipe() {
             .as_str()
             .unwrap()
             .contains("fn double")
+    );
+    assert!(
+        hover["result"]["contents"]
+            .as_str()
+            .unwrap()
+            .contains("Doubles a number")
     );
 }
 
@@ -2327,7 +2333,7 @@ fn hover_on_local_function_shows_signature() {
     let project = TestProject::new();
     std::fs::write(
         &project.main,
-        "fn helper(): int { 42 }\n\nfn main() {\n    helper()\n}\n",
+        "@doc(\"Returns the answer\")\nfn helper(): int { 42 }\n\nfn main() {\n    helper()\n}\n",
     )
     .unwrap();
     let main_uri = TestProject::uri(&project.main);
@@ -2347,7 +2353,7 @@ fn hover_on_local_function_shows_signature() {
         "jsonrpc": "2.0", "method": "textDocument/didOpen",
         "params": {
             "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
-                "text": "fn helper(): int { 42 }\n\nfn main() {\n    helper()\n}\n" }
+                "text": "@doc(\"Returns the answer\")\nfn helper(): int { 42 }\n\nfn main() {\n    helper()\n}\n" }
         }
     }));
     lsp.notification("textDocument/publishDiagnostics");
@@ -2356,7 +2362,7 @@ fn hover_on_local_function_shows_signature() {
         "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
         "params": {
             "textDocument": { "uri": main_uri },
-            "position": { "line": 3, "character": 4 }
+            "position": { "line": 4, "character": 4 }
         }
     }));
     let hover = lsp.response(2);
@@ -2364,6 +2370,10 @@ fn hover_on_local_function_shows_signature() {
     assert!(
         hover_text.contains("fn helper(): int"),
         "hover on a local function call should show its signature, got: {hover_text}"
+    );
+    assert!(
+        hover_text.contains("Returns the answer"),
+        "hover on a local function call should show its documentation, got: {hover_text}"
     );
 }
 

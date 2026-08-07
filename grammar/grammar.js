@@ -33,8 +33,8 @@ export default grammar({
     source_file: $ => repeat($._definition),
 
     _definition: $ => seq(
-      optional("public"),
       repeat($.attribute),
+      optional("public"),
       choice(
         $.function_definition,
         $.struct_definition,
@@ -116,13 +116,7 @@ export default grammar({
       $.array_type,
       $.reference_type,
       $.tuple_type,
-      $.scoped_type,
-    ),
-
-    scoped_type: $ => seq(
-      field("module", choice($.value_identifier, $.type_identifier)),
-      "::",
-      field("name", $.type_identifier),
+      $.qualified_type_path,
     ),
 
     tuple_type: $ => seq(

@@ -88,3 +88,16 @@ fn scoped_type() {
     };
     assert_eq!(func.params[0].type_, Type::Named("math::Shape".to_string()));
 }
+
+#[test]
+fn qualified_type() {
+    let items = common::do_lower("fn f(v: self::collections::Vector) {}");
+    let func = match &items[0] {
+        Item::Function(f) => f,
+        _ => panic!("expected function"),
+    };
+    assert_eq!(
+        func.params[0].type_,
+        Type::Named("self::collections::Vector".to_string())
+    );
+}

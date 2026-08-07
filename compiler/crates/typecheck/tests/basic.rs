@@ -8,6 +8,16 @@ fn simple_let() {
 }
 
 #[test]
+fn documentation_attribute_reaches_hir() {
+    let items = common::compile("@doc(\"Entry point\")\nfn main() {}").unwrap();
+    let function = match &items[0].kind {
+        vinyl_typecheck::hir::HirItemKind::Function(function) => function,
+        _ => panic!("expected function"),
+    };
+    assert_eq!(function.documentation.as_deref(), Some("Entry point"));
+}
+
+#[test]
 fn annotated_let() {
     let source = "fn main() { let x: int32 = 42; }";
     let items = common::compile(source);

@@ -23,6 +23,7 @@ pub struct HirFunction {
     pub span: SourceSpan,
     pub name: String,
     pub public: bool,
+    pub documentation: Option<String>,
     pub params: Vec<HirParam>,
     pub return_type: Type,
     pub body: Vec<HirStatement>,
@@ -33,6 +34,7 @@ pub struct HirStruct {
     pub span: SourceSpan,
     pub name: String,
     pub public: bool,
+    pub documentation: Option<String>,
     pub repr_c: bool,
     pub fields: Vec<HirField>,
 }
@@ -42,6 +44,7 @@ pub struct HirTupleStruct {
     pub span: SourceSpan,
     pub name: String,
     pub public: bool,
+    pub documentation: Option<String>,
     pub types: Vec<Type>,
 }
 
@@ -50,6 +53,7 @@ pub struct HirEnum {
     pub span: SourceSpan,
     pub name: String,
     pub public: bool,
+    pub documentation: Option<String>,
     pub variants: Vec<HirEnumVariant>,
 }
 
@@ -73,6 +77,7 @@ pub struct HirTypeAlias {
     pub span: SourceSpan,
     pub name: String,
     pub public: bool,
+    pub documentation: Option<String>,
     pub type_: Type,
 }
 

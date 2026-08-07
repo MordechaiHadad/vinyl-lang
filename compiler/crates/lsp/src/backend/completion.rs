@@ -44,6 +44,10 @@ impl Backend {
         let offset = offset_at(&current_line_index, params.text_document_position.position)
             .min(current_source.len());
         let prefix = word_prefix(&current_source, offset);
+        if let Some(items) = attribute_completions(&current_source, &current_line_index, offset) {
+            drop(state);
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
         let import_prefix_info = detect_import_prefix(&current_source, offset);
         let in_import_context = import_prefix_info.is_some();
         let module_ref_simple = module_ref_prefix(&current_source, offset)
@@ -191,6 +195,44 @@ fn clean_completion_source(source: &str, offset: usize) -> String {
         Some((start, end)) => format!("{}{}", &source[..start], &source[end..]),
         None => source.to_string(),
     }
+}
+
+fn attribute_completions(
+    source: &str,
+    line_index: &LineIndex,
+    offset: usize,
+) -> Option<Vec<CompletionItem>> {
+    let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
+    let line = &source[line_start..offset];
+    let at_index = line.rfind('@')?;
+    let before_at = &line[..at_index];
+    let partial = &line[at_index + 1..];
+    if !before_at.trim().is_empty()
+        || !partial
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric())
+        || !"doc".starts_with(partial)
+    {
+        return None;
+    }
+    let range = Range::new(
+        position_at(line_index, offset.saturating_sub(partial.len())),
+        position_at(line_index, offset),
+    );
+    Some(vec![CompletionItem {
+        label: "doc".to_string(),
+        kind: Some(CompletionItemKind::KEYWORD),
+        detail: Some("documentation attribute".to_string()),
+        documentation: Some(Documentation::MarkupContent(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: "Attach Markdown documentation to a function, struct, tuple, enum, or type alias.\n\n```vinyl\n@doc(\"Adds two numbers\")\nfn add() {}\n```\n\nThe documentation is shown in LSP hover results.".to_string(),
+        })),
+        text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+            range,
+            "doc".to_string(),
+        ))),
+        ..CompletionItem::default()
+    }])
 }
 
 fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option<Arc<Analysis>> {
@@ -595,7 +637,10 @@ fn keyword_completions(prefix: &str) -> Vec<CompletionItem> {
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::keyword_completions;
+    use line_index::LineIndex;
+    use tower_lsp::lsp_types::{Documentation, MarkupContent, MarkupKind};
+
+    use super::{attribute_completions, keyword_completions};
 
     #[test]
     fn includes_type_and_value_keywords() {
@@ -610,6 +655,21 @@ mod tests {
         ] {
             assert!(labels.iter().any(|label| label == keyword));
         }
+    }
+
+    #[test]
+    fn suggests_doc_attribute_after_at() {
+        let source = "@d";
+        let line_index = LineIndex::new(source);
+        let items = attribute_completions(source, &line_index, source.len()).unwrap();
+        assert_eq!(items[0].label, "doc");
+        assert!(matches!(
+            items[0].documentation,
+            Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                ..
+            }))
+        ));
     }
 }
 

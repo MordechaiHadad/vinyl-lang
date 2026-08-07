@@ -90,6 +90,7 @@ impl InferState {
             span: func.span,
             name: func.name.clone(),
             public: func.public,
+            documentation: None,
             params,
             return_type,
             body,

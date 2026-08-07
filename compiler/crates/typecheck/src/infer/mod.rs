@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::expression::Expression;
-use vinyl_parser::ast::item::{EnumVariantData, FunctionDef, Item};
+use vinyl_parser::ast::item::{Attribute, EnumVariantData, FunctionDef, Item};
 use vinyl_parser::ast::statement::Statement;
 use vinyl_parser::ast::types::{Primitive, Type as AstType};
 
@@ -78,6 +78,18 @@ struct InferState {
     errors: Vec<TypeDiagnostic>,
     module_table: ModuleTable,
     type_origins: HashMap<String, String>,
+}
+
+fn documentation(attrs: &[Attribute]) -> Option<String> {
+    attrs.iter().find_map(|attribute| {
+        if attribute.name != "doc" {
+            return None;
+        }
+        match attribute.args.as_slice() {
+            [Expression::String(value, _)] => Some(value.clone()),
+            _ => None,
+        }
+    })
 }
 
 impl InferState {
@@ -613,6 +625,7 @@ pub fn typeck_with_modules(
                     span: s.span,
                     name: s.name.clone(),
                     public: s.public,
+                    documentation: documentation(&s.attrs),
                     repr_c: s.attrs.iter().any(|a| a.name == "repr_c"),
                     fields: s
                         .fields
@@ -632,6 +645,7 @@ pub fn typeck_with_modules(
                     span: t.span,
                     name: t.name.clone(),
                     public: t.public,
+                    documentation: documentation(&t.attrs),
                     types: t.types.clone(),
                 }),
             }),
@@ -641,6 +655,7 @@ pub fn typeck_with_modules(
                     span: e.span,
                     name: e.name.clone(),
                     public: e.public,
+                    documentation: documentation(&e.attrs),
                     variants: e
                         .variants
                         .iter()
@@ -673,6 +688,7 @@ pub fn typeck_with_modules(
                     span: a.span,
                     name: a.name.clone(),
                     public: a.public,
+                    documentation: documentation(&a.attrs),
                     type_: a.type_.clone(),
                 }),
             }),
@@ -711,10 +727,13 @@ pub fn typeck_with_modules(
     for item in &owned_items {
         if let Item::Function(f) = item {
             match state.infer_function(f, &signatures) {
-                Ok(hir) => hir_items.push(HirItem {
-                    span: f.span,
-                    kind: HirItemKind::Function(hir),
-                }),
+                Ok(mut hir) => {
+                    hir.documentation = documentation(&f.attrs);
+                    hir_items.push(HirItem {
+                        span: f.span,
+                        kind: HirItemKind::Function(hir),
+                    });
+                }
                 Err(e) => state.errors.push(*e),
             }
         }

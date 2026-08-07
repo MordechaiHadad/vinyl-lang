@@ -2,6 +2,7 @@ public fn double(n: int): int {
     n * 2
 }
 
+@doc("A point with 2 coordinates y and x")
 public struct Point {
     public x: int,
     public y: int
