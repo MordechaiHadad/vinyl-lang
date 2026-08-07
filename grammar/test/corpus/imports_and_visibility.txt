@@ -57,9 +57,9 @@ fn area(s: math::Shape): float64 { 0.0 }
       (parameter
         name: (value_identifier)
         type: (type_annotation
-          (scoped_type
+          (qualified_type_path
             module: (value_identifier)
-            name: (type_identifier)))))
+            type: (type_identifier)))))
     return_type: (type_annotation
       (simple_type
         (primitive_type)))
@@ -83,9 +83,9 @@ fn f(s: Foo<math::Shape>) {}
         type: (type_annotation
           (generic_type
             (type_identifier)
-            (scoped_type
+            (qualified_type_path
               module: (value_identifier)
-              name: (type_identifier))))))
+              type: (type_identifier))))))
     body: (block)))
 
 ==================

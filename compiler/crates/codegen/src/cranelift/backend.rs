@@ -75,7 +75,11 @@ impl crate::CodegenBackend for CraneliftBackend {
                 _ => None,
             };
             if let Some(name) = name {
-                self.types.insert(name, item.kind.clone());
+                let kind = item.kind.clone();
+                self.types.insert(name.clone(), kind.clone());
+                if let Some(short_name) = name.rsplit_once("::").map(|(_, name)| name) {
+                    self.types.entry(short_name.to_string()).or_insert(kind);
+                }
             }
         }
 

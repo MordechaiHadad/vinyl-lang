@@ -1,4 +1,5 @@
 import parent::math;
 fn main() {
     let x = parent::math::Point { x: 10, y: 69 };
+    println(x.x);
 }
