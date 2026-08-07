@@ -356,6 +356,16 @@ fn resolve_imports(
                     }
                     all_items.push(item);
                 }
+                for item in &module_items {
+                    if let Item::Enum(enumeration) = item {
+                        if enumeration.public {
+                            continue;
+                        }
+                        let mut enumeration = enumeration.clone();
+                        enumeration.name = format!("{}::{}", import_name, enumeration.name);
+                        all_items.push(Item::Enum(enumeration));
+                    }
+                }
             }
         }
 
@@ -404,6 +414,17 @@ fn add_resolved_modules(
             Item::Enum(enumeration) if enumeration.public => Some(item.clone()),
             Item::TypeAlias(alias) if alias.public => Some(item.clone()),
             _ => None,
+        }));
+        all_items.extend(items.iter().filter_map(|item| {
+            let Item::Enum(enumeration) = item else {
+                return None;
+            };
+            if enumeration.public {
+                return None;
+            }
+            let mut enumeration = enumeration.clone();
+            enumeration.name = format!("{}::{}", info.import_name, enumeration.name);
+            Some(Item::Enum(enumeration))
         }));
         let functions = items
             .iter()

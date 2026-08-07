@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 
 use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::expression::Expression;
@@ -152,6 +153,41 @@ impl InferState {
                 },
             )))
         }
+    }
+
+    pub(super) fn canonicalize_enum_variant_type_name(
+        &mut self,
+        name: &str,
+        span: SourceSpan,
+    ) -> Result<String, Box<TypeDiagnostic>> {
+        let segments: Vec<String> = name.split("::").map(str::to_string).collect();
+        let Some((module_len, exports)) = resolve_module(&self.module_table, &segments) else {
+            return self.canonicalize_scoped_name(name, span);
+        };
+        let type_name = segments[module_len..].join("::");
+        if exports.types.iter().any(|exported| exported == &type_name) {
+            return Ok(type_name);
+        }
+
+        let current_module = Path::new(&self.source.source_name)
+            .file_stem()
+            .is_some_and(|stem| stem.to_string_lossy() == exports.import_name);
+        if current_module && matches!(self.types.get(&type_name), Some(HirItemKind::Enum(_))) {
+            return Ok(type_name);
+        }
+
+        let qualified_name = format!("{}::{type_name}", exports.import_name);
+        if matches!(self.types.get(&qualified_name), Some(HirItemKind::Enum(_))) {
+            return Ok(qualified_name);
+        }
+
+        Err(Box::new(self.source.error(
+            span,
+            TypeDiagnosticKind::PrivateAccess {
+                module: segments[..module_len].join("::"),
+                name: type_name,
+            },
+        )))
     }
 
     fn canonicalize_type(

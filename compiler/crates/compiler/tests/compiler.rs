@@ -518,6 +518,35 @@ fn module_qualified_variants_are_public() {
 }
 
 #[test]
+fn qualified_enum_variant_in_current_module_is_allowed() {
+    let root = project(
+        "qualified_current_module_variant",
+        &[(
+            "src/main.vn",
+            "fn main(): unit { let color = parent::main::Color::Red; } enum Color { Red }",
+        )],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn private_enum_variant_is_constructible() {
+    let root = project(
+        "private_enum_variant",
+        &[
+            (
+                "src/main.vn",
+                "import math; fn main(): unit { let color = math::Color::Red; }",
+            ),
+            ("src/math.vn", "enum Color { Red }"),
+        ],
+    );
+    let result = compile_entry(&root.join("src/main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
 fn imported_type_public_field_access() {
     let root = project(
         "imported_type_public_field",

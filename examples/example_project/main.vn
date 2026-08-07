@@ -1,4 +1,5 @@
 fn main() {
     let x = parent::math::Point { x: 10, y: 69 };
+    let y = parent::main::Color::Red;
     println(x.x);
 }

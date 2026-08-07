@@ -8,6 +8,11 @@ public struct Point {
     public y: int
 }
 
+public enum Color {
+    Red,
+    Blue
+}
+
 fn square(n: int): int {
     n * n
 }

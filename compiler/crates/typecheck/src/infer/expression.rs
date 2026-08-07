@@ -648,7 +648,8 @@ impl InferState {
                             .unwrap_or(Type::Primitive(Primitive::Unit)),
                     });
                 }
-                let canonical_type_name = self.canonicalize_scoped_name(type_name, *span)?;
+                let canonical_type_name =
+                    self.canonicalize_enum_variant_type_name(type_name, *span)?;
                 let variant_info =
                     resolve_named_type(&canonical_type_name, &self.types).and_then(|kind| {
                         if let HirItemKind::Enum(e) = kind {

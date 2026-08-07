@@ -763,6 +763,16 @@ pub(crate) fn collect_modules(
             for type_item in &type_items {
                 all_items.push(type_item.clone());
             }
+            for module_item in &module_items {
+                if let Item::Enum(enumeration) = module_item {
+                    if enumeration.public {
+                        continue;
+                    }
+                    let mut enumeration = enumeration.clone();
+                    enumeration.name = format!("{}::{}", info.import_name, enumeration.name);
+                    all_items.push(Item::Enum(enumeration));
+                }
+            }
         }
         if already_visited {
             continue;
