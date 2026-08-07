@@ -965,6 +965,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "match_statement"
+        },
+        {
+          "type": "SYMBOL",
           "name": "while_statement"
         },
         {
@@ -2397,6 +2401,27 @@
         }
       ]
     },
+    "match_statement": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "match_expression"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": ";"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
     "struct_literal_expression": {
       "type": "PREC",
       "value": 16,
@@ -3165,6 +3190,10 @@
   "conflicts": [
     [
       "_statement",
+      "_expression"
+    ],
+    [
+      "match_statement",
       "_expression"
     ],
     [

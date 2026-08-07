@@ -24,6 +24,7 @@ export default grammar({
 
   conflicts: $ => [
     [$._statement, $._expression],
+    [$.match_statement, $._expression],
     [$.unary_expression, $.index_expression],
     [$.scoped_type_expression],
     [$.import_name],
@@ -176,6 +177,7 @@ export default grammar({
       $.expression_statement,
       $.return_statement,
       $.if_expression,
+      $.match_statement,
       $.while_statement,
       $.loop_statement,
       $.break_statement,
@@ -378,6 +380,11 @@ export default grammar({
       "{",
       repeat($.match_arm),
       "}",
+    ),
+
+    match_statement: $ => seq(
+      $.match_expression,
+      optional(";"),
     ),
 
     struct_literal_expression: $ => prec(PREC.FIELD + 1, seq(

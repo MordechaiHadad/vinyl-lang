@@ -198,6 +198,42 @@ fn let_statements() {
 }
 
 #[test]
+fn bare_match_is_a_statement_without_a_semicolon() {
+    let items = common::do_lower("fn f(x: int32) { match x { _ => 0 } let value = 1; }");
+    let func = match &items[0] {
+        Item::Function(function) => function,
+        _ => panic!("expected function"),
+    };
+    assert!(matches!(
+        func.body.first(),
+        Some(Statement::Expression(Expression::Match { .. }))
+    ));
+
+    let items = common::do_lower("fn f(x: int32) { match x { _ => 0 }; let value = 1; }");
+    let func = match &items[0] {
+        Item::Function(function) => function,
+        _ => panic!("expected function"),
+    };
+    assert!(matches!(
+        func.body.first(),
+        Some(Statement::Expression(Expression::Match { .. }))
+    ));
+}
+
+#[test]
+fn match_expression_in_let_requires_a_semicolon() {
+    let items = common::do_lower("fn f(x: int32) { let value = match x { _ => 0 }; }");
+    let func = match &items[0] {
+        Item::Function(function) => function,
+        _ => panic!("expected function"),
+    };
+    assert!(matches!(func.body.first(), Some(Statement::Let { .. })));
+    assert!(
+        vinyl_parser::parse_and_lower("fn f(x: int32) { let value = match x { _ => 0 } }").is_err()
+    );
+}
+
+#[test]
 fn return_statement() {
     let items = common::do_lower("fn f(): int32 { return 42; }");
     let func = match &items[0] {

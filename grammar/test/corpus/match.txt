@@ -155,24 +155,25 @@ fn f(): int32 {
         (tuple_expression
           (integer_literal)
           (integer_literal)))
-      (match_expression
-        (value_identifier)
-        (match_arm
-          (pattern
-            (tuple_pattern
-              (pattern
-                (identifier_pattern
-                  (value_identifier)))
-              (pattern
-                (identifier_pattern
-                  (value_identifier)))))
-          (binary_expression
-            (value_identifier)
-            (value_identifier)))
-        (match_arm
-          (pattern
-            (wildcard_pattern))
-          (integer_literal))))))
+      (match_statement
+        (match_expression
+          (value_identifier)
+          (match_arm
+            (pattern
+              (tuple_pattern
+                (pattern
+                  (identifier_pattern
+                    (value_identifier)))
+                (pattern
+                  (identifier_pattern
+                    (value_identifier)))))
+            (binary_expression
+              (value_identifier)
+              (value_identifier)))
+          (match_arm
+            (pattern
+              (wildcard_pattern))
+            (integer_literal)))))))
 
 ==================
 Match with multiple arms

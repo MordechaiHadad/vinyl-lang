@@ -1,5 +1,9 @@
 fn main() {
     let x = parent::math::Point { x: 10, y: 69 };
     let y = parent::main::Color::Red;
+    match x {
+        parent::math::Point::Red => println(x.x),
+        _ => println(10)
+    } 
     println(x.x);
 }

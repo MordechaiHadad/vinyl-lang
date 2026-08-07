@@ -25,15 +25,14 @@ impl<'a> Lowerer<'a> {
                 match self.lower_statement(&child) {
                     Ok(Some(stmt)) => {
                         if is_last {
-                            if let Statement::Expression(Expression::If {
-                                span: if_span,
-                                condition,
-                                then_block,
-                                else_if,
-                                else_block,
-                            }) = stmt
-                            {
-                                stmts.push(Statement::Value(
+                            match stmt {
+                                Statement::Expression(Expression::If {
+                                    span: if_span,
+                                    condition,
+                                    then_block,
+                                    else_if,
+                                    else_block,
+                                }) => stmts.push(Statement::Value(
                                     Expression::If {
                                         span: if_span,
                                         condition,
@@ -42,9 +41,11 @@ impl<'a> Lowerer<'a> {
                                         else_block,
                                     },
                                     if_span,
-                                ));
-                            } else {
-                                stmts.push(stmt);
+                                )),
+                                Statement::Expression(
+                                    expression @ Expression::Match { span, .. },
+                                ) => stmts.push(Statement::Value(expression, span)),
+                                _ => stmts.push(stmt),
                             }
                         } else {
                             stmts.push(stmt);
@@ -82,6 +83,13 @@ impl<'a> Lowerer<'a> {
                 Err(self.span_error(node, "empty expression statement"))
             }
             "if_expression" => self.lower_if(node).map(|e| Some(Statement::Expression(e))),
+            "match_statement" => self
+                .lower_match(
+                    &node
+                        .named_child(0)
+                        .ok_or_else(|| self.span_error(node, "incomplete match statement"))?,
+                )
+                .map(|e| Some(Statement::Expression(e))),
             "while_statement" => {
                 let span = SourceSpan::from(node.start_byte()..node.end_byte());
                 let named = children(node);
