@@ -76,6 +76,8 @@ pub(crate) fn validate_with_name(
                 source_code: shared_source.clone(),
                 span,
             });
+
+            return;
         }
 
         if cursor.goto_first_child() {

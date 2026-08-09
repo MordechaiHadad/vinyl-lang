@@ -394,7 +394,11 @@ export default grammar({
 
     struct_literal_fields: $ => seq(
       "{",
-      commaSep(seq(field("name", $.value_identifier), ":", field("value", $._expression))),
+      commaSep(seq(
+        field("name", $.value_identifier),
+        optional(seq(":", field("value", $._expression))),
+      )),
+      optional(","),
       "}",
     ),
 

@@ -110,15 +110,27 @@ impl<'a> Lowerer<'a> {
                 let type_name = node_text(&self.child_by_field(node, "name")?, self.source);
                 let fields_node = self.child_by_field(node, "fields")?;
                 let mut fields = Vec::new();
-                let mut current_key: Option<String> = None;
+                let mut current_field: Option<(String, SourceSpan)> = None;
                 for i in 0..fields_node.named_child_count() as u32 {
                     if let Some(child) = fields_node.named_child(i) {
                         match fields_node.field_name_for_named_child(i) {
                             Some("name") => {
-                                current_key = Some(node_text(&child, self.source));
+                                if let Some((name, name_span)) = current_field.take() {
+                                    fields.push((
+                                        name.clone(),
+                                        Expression::Ident(
+                                            name,
+                                            name_span,
+                                        ),
+                                    ));
+                                }
+                                current_field = Some((
+                                    node_text(&child, self.source),
+                                    SourceSpan::from(child.start_byte()..child.end_byte()),
+                                ));
                             }
                             Some("value") => {
-                                if let Some(key) = current_key.take() {
+                                if let Some((key, _)) = current_field.take() {
                                     let value = self.lower_expression(&child)?;
                                     fields.push((key, value));
                                 }
@@ -126,6 +138,15 @@ impl<'a> Lowerer<'a> {
                             _ => {}
                         }
                     }
+                }
+                if let Some((name, name_span)) = current_field {
+                    fields.push((
+                        name.clone(),
+                        Expression::Ident(
+                            name,
+                            name_span,
+                        ),
+                    ));
                 }
                 Ok(Expression::Struct {
                     span: span(),

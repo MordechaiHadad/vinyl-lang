@@ -377,6 +377,16 @@ impl Backend {
         kind: MemberKind,
     ) -> Option<Location> {
         let others = self.analyses().await;
+        let local_type_name = type_name.rsplit("::").next().unwrap_or(type_name);
+        let module_name = type_name
+            .rsplit_once("::")
+            .and_then(|(module, _)| module.rsplit("::").next())
+            .map(str::to_string);
+        let module_path = if let Some(module_name) = module_name {
+            self.state.read().await.modules.get(&module_name).cloned()
+        } else {
+            None
+        };
         let mut candidates = vec![analysis];
         for candidate in &others {
             if candidate.path != analysis.path {
@@ -384,13 +394,18 @@ impl Backend {
             }
         }
         for candidate in candidates {
+            if let Some(module_path) = &module_path {
+                if !crate::backend::workspace::same_file(&candidate.path, module_path) {
+                    continue;
+                }
+            }
             let (span_offset, span_len) = match kind {
                 MemberKind::Field => candidate
                     .result
                     .items
                     .iter()
                     .find_map(|item| match &item.kind {
-                        HirItemKind::Struct(structure) if structure.name == type_name => {
+                        HirItemKind::Struct(structure) if structure.name == local_type_name => {
                             structure.fields.iter().find(|field| field.name == name)
                         }
                         _ => None,
@@ -401,7 +416,7 @@ impl Backend {
                     .items
                     .iter()
                     .find_map(|item| match &item.kind {
-                        HirItemKind::Enum(enumeration) if enumeration.name == type_name => {
+                        HirItemKind::Enum(enumeration) if enumeration.name == local_type_name => {
                             enumeration.variants.iter().find(|variant| variant.name == name)
                         }
                         _ => None,

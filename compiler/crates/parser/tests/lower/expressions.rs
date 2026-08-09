@@ -195,6 +195,23 @@ fn module_qualified_enum_variant_with_args() {
 }
 
 #[test]
+fn struct_literal_supports_shorthand_and_trailing_comma() {
+    let items = common::do_lower(
+        "struct Point { x: int32, y: int32 }\nfn f(x: int32, y: int32): Point { Point { x, y, } }",
+    );
+    let function = match &items[1] {
+        Item::Function(function) => function,
+        other => panic!("expected function, got {other:?}"),
+    };
+    let Statement::Value(Expression::Struct { fields, .. }, _) = &function.body[0] else {
+        panic!("expected struct literal")
+    };
+    assert_eq!(fields.len(), 2);
+    assert!(matches!(&fields[0].1, Expression::Ident(name, _) if name == "x"));
+    assert!(matches!(&fields[1].1, Expression::Ident(name, _) if name == "y"));
+}
+
+#[test]
 fn match_expression_lower() {
     let items = common::do_lower("fn f(x: int32): int32 { match x { 1 => 10, _ => 0 } }");
     let func = match &items[0] {

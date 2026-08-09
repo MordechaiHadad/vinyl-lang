@@ -91,7 +91,10 @@ impl Backend {
             )
         {
             drop(state);
-            return Ok(Some(CompletionResponse::Array(items)));
+            return Ok(Some(CompletionResponse::List(CompletionList {
+                is_incomplete: true,
+                items,
+            })));
         }
 
         let mut items = if !is_import_context && !is_module_ref {
@@ -347,7 +350,11 @@ fn struct_literal_field_completions(
             }
             _ => None,
         })?;
-    let brace = source[..offset].rfind('{')?;
+    let brace = if source.as_bytes().get(offset) == Some(&b'{') {
+        offset
+    } else {
+        source[..offset].rfind('{')?
+    };
     let written: Vec<&str> = source[brace + 1..offset]
         .split(',')
         .filter_map(|part| {

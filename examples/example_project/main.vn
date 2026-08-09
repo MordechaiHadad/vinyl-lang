@@ -1,6 +1,6 @@
 import parent::math;
 fn main() {
-    let y = math::Bombo::Red;
+    let y = math::Color::Red;
     match y {
         math::Color::Red => println(214),
         math::Color::Blue => println(10)

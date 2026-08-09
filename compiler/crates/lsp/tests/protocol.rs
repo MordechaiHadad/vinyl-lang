@@ -156,6 +156,11 @@ fn serves_core_lsp_features_over_stdio() {
         initialize["result"]["capabilities"]["definitionProvider"],
         true
     );
+    assert!(initialize["result"]["capabilities"]["completionProvider"]["triggerCharacters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|character| character == "{"));
 
     lsp.send(json!({
         "jsonrpc": "2.0",
@@ -3619,7 +3624,7 @@ fn completion_struct_literal_fields() {
             "position": { "line": 2, "character": 19 }
         }
     }));
-    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    let items = lsp.response(2)["result"]["items"].as_array().unwrap().clone();
     for expected in ["x", "y"] {
         assert!(
             items.iter().any(|item| item["label"] == expected),
@@ -3642,7 +3647,7 @@ fn completion_struct_literal_fields() {
             "position": { "line": 2, "character": 27 }
         }
     }));
-    let items = lsp.response(3)["result"].as_array().unwrap().clone();
+    let items = lsp.response(3)["result"]["items"].as_array().unwrap().clone();
     assert!(
         items.iter().any(|item| item["label"] == "y"),
         "struct literal should still suggest `y`, got: {items:#?}"
@@ -3652,6 +3657,31 @@ fn completion_struct_literal_fields() {
         "struct literal should not re-suggest already-written `x`, got: {items:#?}"
     );
     let _ = lsp;
+}
+
+#[test]
+fn incomplete_struct_literal_reports_one_parse_diagnostic() {
+    let project = TestProject::new();
+    let source = "struct Point { public x: int32, public y: int32 }\nfn main() {\n    let x = Point { x }\n    match true {\n        true => 1,\n        false => 0\n    }\n}\n";
+    std::fs::write(&project.main, source).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1, "text": source } }
+    }));
+    let diagnostics = lsp.diagnostics_for(&main_uri)["params"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert!(diagnostics.len() <= 2, "missing semicolon cascaded: {diagnostics:#?}");
 }
 
 #[test]

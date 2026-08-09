@@ -42,7 +42,12 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                    trigger_characters: Some(
+                        [".", ":", "{", ","]
+                            .into_iter()
+                            .map(str::to_string)
+                            .collect(),
+                    ),
                     ..CompletionOptions::default()
                 }),
                 references_provider: Some(OneOf::Left(true)),
