@@ -22,37 +22,30 @@ impl Backend {
             &analysis.line_index,
             params.text_document_position_params.position,
         );
-        let (detail, type_symbol) = match resolve_symbol(&analysis, offset) {
-            Some(target) => {
-                let detail = match target_definition(&analysis, &target) {
-                    Some(definition) => {
-                        let source = self
-                            .definition_source(&definition)
-                            .await
-                            .unwrap_or_else(|| analysis.source.clone());
-                        definition_detail(&definition, &analysis.result, &source)
-                    }
-                    None => None,
-                };
-                (detail, Some(target))
-            }
-            None => (None, None),
-        };
-        let content = if let Some(detail) = detail {
-            detail
-        } else if let Some(SymbolRef::Type { name }) = type_symbol {
-            name
-        } else if let Some(expression) = analysis
-            .result
-            .expr_at_pos
-            .range(..=offset)
-            .next_back()
-            .map(|(_, expression)| expression)
-            .filter(|expression| offset < expression.span.offset() + expression.span.len())
-        {
-            format!("type: {}", expression.type_)
-        } else {
+        let Some(target) = resolve_symbol(&analysis, offset) else {
             return Ok(None);
+        };
+        let content = match target_definition(&analysis, &target) {
+            Some(definition) => {
+                let source = self
+                    .definition_source(&definition)
+                    .await
+                    .unwrap_or_else(|| analysis.source.clone());
+                let Some(detail) = definition_detail(&definition, &analysis.result, &source)
+                else {
+                    return Ok(None);
+                };
+                detail
+            }
+            None => {
+                let SymbolRef::Type { name } = &target else {
+                    return Ok(None);
+                };
+                if !is_primitive_type(name) {
+                    return Ok(None);
+                }
+                name.clone()
+            }
         };
         Ok(Some(Hover {
             contents: HoverContents::Scalar(MarkedString::String(content)),
@@ -60,7 +53,7 @@ impl Backend {
         }))
     }
 
-    pub(crate) async fn document_symbol(
+pub(crate) async fn document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> tower_lsp::jsonrpc::Result<Option<DocumentSymbolResponse>> {
@@ -146,4 +139,30 @@ impl Backend {
             active_parameter: Some(0),
         }))
     }
+}
+
+fn is_primitive_type(name: &str) -> bool {
+    matches!(
+        name,
+        "unit"
+            | "int"
+            | "int8"
+            | "int16"
+            | "int32"
+            | "int64"
+            | "int128"
+            | "isize"
+            | "uint8"
+            | "uint16"
+            | "uint32"
+            | "uint64"
+            | "uint128"
+            | "usize"
+            | "float"
+            | "float32"
+            | "float64"
+            | "bool"
+            | "char"
+            | "string"
+    )
 }

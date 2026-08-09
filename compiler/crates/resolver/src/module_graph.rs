@@ -438,12 +438,34 @@ impl<'a> Collector<'a> {
                 }
             };
             self.push_file(&info.file_path, module_source, module_items.clone());
-            self.all_items.extend(module_items.iter().filter_map(|item| match item {
-                Item::Struct(structure) if structure.public => Some(item.clone()),
-                Item::TupleStruct(tuple) if tuple.public => Some(item.clone()),
-                Item::Enum(enumeration) if enumeration.public => Some(item.clone()),
-                Item::TypeAlias(alias) if alias.public => Some(item.clone()),
-                _ => None,
+            self.all_items.extend(module_items.iter().filter_map(|item| {
+                let mut item = item.clone();
+                let is_public = match &mut item {
+                    Item::Struct(structure) => structure.public,
+                    Item::TupleStruct(tuple) => tuple.public,
+                    Item::Enum(enumeration) => enumeration.public,
+                    Item::TypeAlias(alias) => alias.public,
+                    _ => return None,
+                };
+                if !is_public {
+                    return None;
+                }
+                match &mut item {
+                    Item::Struct(structure) => {
+                        structure.name = format!("{}::{}", info.import_name, structure.name)
+                    }
+                    Item::TupleStruct(tuple) => {
+                        tuple.name = format!("{}::{}", info.import_name, tuple.name)
+                    }
+                    Item::Enum(enumeration) => {
+                        enumeration.name = format!("{}::{}", info.import_name, enumeration.name)
+                    }
+                    Item::TypeAlias(alias) => {
+                        alias.name = format!("{}::{}", info.import_name, alias.name)
+                    }
+                    _ => unreachable!(),
+                }
+                Some(item)
             }));
             self.all_items.extend(module_items.iter().filter_map(|item| {
                 let Item::Enum(enumeration) = item else {

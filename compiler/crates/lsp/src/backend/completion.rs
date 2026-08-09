@@ -17,8 +17,8 @@ use crate::backend::workspace::{
 use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
 use crate::text::{
-    current_imports, detect_import_prefix, import_edit_range, module_ref_prefix, word_before_colon,
-    word_prefix,
+    current_imports, import_edit_range, module_path_context, word_before_colon, word_prefix,
+    ModulePathContext,
 };
 use crate::vfs::LspFileSystem;
 
@@ -46,10 +46,7 @@ impl Backend {
             drop(state);
             return Ok(Some(CompletionResponse::Array(items)));
         }
-        let import_prefix_info = detect_import_prefix(&current_source, offset);
-        let in_import_context = import_prefix_info.is_some();
-        let module_ref_simple = module_ref_prefix(&current_source, offset)
-            .map(|(module_name, _)| (module_name, prefix.clone()));
+        let module_context = module_path_context(&current_source, offset);
         let is_colon_trigger =
             params.context.and_then(|c| c.trigger_character).as_deref() == Some(":");
 
@@ -61,9 +58,14 @@ impl Backend {
                     && offset < source_bytes.len()
                     && source_bytes[offset - 1] == b':'
                     && source_bytes[offset] == b':');
-        if !in_import_context {
+        let is_import_context = matches!(
+            &module_context,
+            Some(ModulePathContext::ImportPath { .. } | ModulePathContext::ImportSymbol { .. })
+        );
+        let is_module_ref = matches!(&module_context, Some(ModulePathContext::ModuleRef { .. }));
+        if !is_import_context {
             if variant_trigger
-                && module_ref_simple.is_none()
+                && !is_module_ref
                 && let Some(items) =
                     variant_completions(&state, &path, &current_source, offset, &prefix)
             {
@@ -78,8 +80,21 @@ impl Backend {
                 return Ok(Some(CompletionResponse::Array(items)));
             }
         }
+        if let Some(struct_type) = struct_literal_context(&current_source, offset)
+            && let Some(items) = struct_literal_field_completions(
+                &state,
+                &path,
+                &current_source,
+                offset,
+                &struct_type,
+                &prefix,
+            )
+        {
+            drop(state);
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
 
-        let mut items = if !in_import_context && module_ref_simple.is_none() {
+        let mut items = if !is_import_context && !is_module_ref {
             analysis
                 .as_deref()
                 .map(|analysis| local_completions(analysis, &prefix, offset))
@@ -87,10 +102,10 @@ impl Backend {
         } else {
             Vec::new()
         };
-        if !in_import_context && module_ref_simple.is_none() {
+        if !is_import_context && !is_module_ref {
             items.extend(keyword_completions(&prefix));
         }
-        if !in_import_context && module_ref_simple.is_none() {
+        if !is_import_context && !is_module_ref {
             items.extend(module_prefix_completions(
                 &prefix,
                 &current_line_index,
@@ -101,7 +116,7 @@ impl Backend {
         if let Some(resolver) = &state.resolver {
             let existing_imports = current_imports(&current_source);
 
-            if !in_import_context
+            if !is_import_context
                 && let Some(module_items) = expression_module_completions(
                     resolver,
                     &path,
@@ -114,7 +129,7 @@ impl Backend {
                 return Ok(Some(CompletionResponse::Array(module_items)));
             }
 
-            if is_colon_trigger && !in_import_context && module_ref_simple.is_none() {
+            if is_colon_trigger && !is_import_context && !is_module_ref {
                 let has_pending_module =
                     word_before_colon(&current_source, offset).is_some_and(|word| {
                         resolver
@@ -127,57 +142,74 @@ impl Backend {
                 }
             }
 
-            if in_import_context {
-                items.extend(auto_import_completions(
-                    &state,
-                    resolver,
-                    &path,
-                    &prefix,
-                    &current_source,
-                    &current_line_index,
-                    offset,
-                ));
-                if let Some((prefix_count, partial)) = import_prefix_info {
-                    items.extend(import_prefix_completions(
+            match &module_context {
+                Some(ModulePathContext::ImportPath { segments, partial }) => {
+                    if segments.is_empty() {
+                        items.extend(module_prefix_completions(
+                            &prefix,
+                            &current_line_index,
+                            offset,
+                        ));
+                    } else {
+                        items.extend(import_prefix_completions(
+                            resolver,
+                            &path,
+                            segments.len(),
+                            partial,
+                            &current_line_index,
+                            offset,
+                        ));
+                    }
+                }
+                Some(ModulePathContext::ImportSymbol { module_name, partial }) => {
+                    items.extend(module_ref_completions(
+                        &state,
+                        resolver,
+                        module_name,
+                        partial,
+                        &current_line_index,
+                        offset,
+                        None,
+                    ));
+                }
+                Some(ModulePathContext::ModuleRef {
+                    module_name,
+                    partial,
+                    scope_qualified,
+                }) => {
+                    let Some(info) = resolver
+                        .all_modules()
+                        .values()
+                        .find(|info| info.import_name == *module_name)
+                    else {
+                        items.clear();
+                        drop(state);
+                        return Ok(Some(CompletionResponse::Array(items)));
+                    };
+                    let import_path = resolver.relative_import_path(&path, &info.file_path);
+                    let imported = is_imported(&existing_imports, module_name);
+                    items.extend(module_ref_completions(
+                        &state,
+                        resolver,
+                        module_name,
+                        partial,
+                        &current_line_index,
+                        offset,
+                        (!imported && !scope_qualified)
+                            .then_some((current_source.as_str(), import_path.as_str())),
+                    ));
+                }
+                None => {
+                    items.extend(auto_import_completions(
+                        &state,
                         resolver,
                         &path,
-                        prefix_count,
-                        &partial,
+                        &prefix,
+                        &current_source,
                         &current_line_index,
                         offset,
                     ));
                 }
-            } else if let Some((module_name, partial)) = module_ref_simple.as_ref() {
-                let Some(info) = resolver
-                    .all_modules()
-                    .values()
-                    .find(|info| info.import_name == *module_name)
-                else {
-                    items.clear();
-                    drop(state);
-                    return Ok(Some(CompletionResponse::Array(items)));
-                };
-                let import_path = resolver.relative_import_path(&path, &info.file_path);
-                let imported = is_imported(&existing_imports, module_name);
-                items.extend(module_ref_completions(
-                    &state,
-                    resolver,
-                    module_name,
-                    partial,
-                    &current_line_index,
-                    offset,
-                    (!imported).then_some((current_source.as_str(), import_path.as_str())),
-                ));
-            } else {
-                items.extend(auto_import_completions(
-                    &state,
-                    resolver,
-                    &path,
-                    &prefix,
-                    &current_source,
-                    &current_line_index,
-                    offset,
-                ));
             }
         }
         drop(state);
@@ -270,6 +302,88 @@ fn analyze_completion_source_with_imports(
     };
     let graph = resolver.build_module_graph(path, items, &mut read_source);
     analyze_with_diagnostics(path, source, &graph.all_items, &graph.module_table).ok()
+}
+
+fn struct_literal_context(source: &str, offset: usize) -> Option<String> {
+    let offset = offset.min(source.len());
+    let before = &source[..offset];
+    let brace = before.rfind('{')?;
+    if before[brace + 1..].contains('}') {
+        return None;
+    }
+    let type_name = before[..brace]
+        .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
+        .find(|chunk| !chunk.is_empty())?;
+    if !type_name
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_uppercase())
+    {
+        return None;
+    }
+    Some(type_name.to_string())
+}
+
+fn struct_literal_field_completions(
+    state: &State,
+    path: &Path,
+    source: &str,
+    offset: usize,
+    type_name: &str,
+    prefix: &str,
+) -> Option<Vec<CompletionItem>> {
+    let offset = offset.min(source.len());
+    let clean_source = clean_completion_source(source, offset);
+    let analysis = analyze_completion_source(state, path, &clean_source)?;
+    let structure = analysis
+        .result
+        .items
+        .iter()
+        .find_map(|item| match &item.kind {
+            vinyl_typecheck::hir::HirItemKind::Struct(structure)
+                if structure.name == type_name =>
+            {
+                Some(structure.clone())
+            }
+            _ => None,
+        })?;
+    let brace = source[..offset].rfind('{')?;
+    let written: Vec<&str> = source[brace + 1..offset]
+        .split(',')
+        .filter_map(|part| {
+            let name = part.split(':').next()?.trim();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name)
+            }
+        })
+        .collect();
+    let line_index = LineIndex::new(source);
+    let edit_range = Range::new(
+        position_at(&line_index, offset.saturating_sub(prefix.len())),
+        position_at(&line_index, offset),
+    );
+    let completions = structure
+        .fields
+        .iter()
+        .filter(|field| {
+            field.name.starts_with(prefix)
+                && field.public
+                && !written.iter().any(|written| *written == field.name)
+        })
+        .map(|field| CompletionItem {
+            label: field.name.clone(),
+            kind: Some(CompletionItemKind::FIELD),
+            detail: Some(field.type_.to_string()),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                edit_range,
+                field.name.clone(),
+            ))),
+            ..CompletionItem::default()
+        })
+        .collect();
+    Some(completions)
 }
 
 fn field_access_context(source: &str, offset: usize) -> Option<usize> {

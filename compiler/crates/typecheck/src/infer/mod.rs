@@ -12,7 +12,7 @@ use crate::hir::{
     HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
     HirTupleStruct, HirTypeAlias, Type,
 };
-use crate::module::{ModuleTable, resolve_module};
+use crate::module::{ModuleExports, ModuleTable, resolve_module};
 
 use crate::index::builder::IndexBuilder;
 pub use crate::index::{Definition, DefinitionKind, HirExprRef, TypeckResult};
@@ -98,8 +98,17 @@ impl InferState {
         let mut type_origins = HashMap::new();
         for (module, exports) in module_table {
             if exports.imported {
+                let bare_available = module_table
+                    .get(&exports.import_name)
+                    .is_some_and(|imported_exports| imported_exports.imported);
                 for type_name in &exports.types {
-                    type_origins.insert(type_name.clone(), module.clone());
+                    if bare_available {
+                        type_origins.insert(type_name.clone(), module.clone());
+                    }
+                    type_origins.insert(
+                        format!("{}::{type_name}", exports.import_name),
+                        module.clone(),
+                    );
                 }
             }
         }
@@ -133,26 +142,36 @@ impl InferState {
             return Ok(name.to_string());
         };
         let type_name = segments[module_len..].join("::");
-        if exports.imported && exports.types.iter().any(|t| t == &type_name) {
-            Ok(type_name)
-        } else if !exports.imported {
-            Err(Box::new(self.source.error(
+        let matched_key = segments[..module_len].join("::");
+        let bare_imported = self.bare_imported(exports);
+        if exports.types.iter().any(|exported| exported == &type_name) {
+            if bare_imported || matched_key != exports.import_name {
+                let canonical = if bare_imported {
+                    type_name
+                } else {
+                    format!("{}::{type_name}", exports.import_name)
+                };
+                return Ok(canonical);
+            }
+            return Err(Box::new(self.source.error(
                 span,
                 TypeDiagnosticKind::MissingImport {
-                    module: segments[..module_len].join("::"),
+                    module: matched_key,
                     name: type_name,
                     import_path: exports.import_path.clone(),
                 },
-            )))
-        } else {
-            Err(Box::new(self.source.error(
-                span,
-                TypeDiagnosticKind::PrivateAccess {
-                    module: segments[..module_len].join("::"),
-                    name: type_name,
-                },
-            )))
+            )));
         }
+        if exports.imported && self.types.contains_key(&type_name) {
+            return Ok(type_name);
+        }
+        Err(Box::new(self.source.error(
+            span,
+            TypeDiagnosticKind::PrivateAccess {
+                module: matched_key,
+                name: type_name,
+            },
+        )))
     }
 
     pub(super) fn canonicalize_enum_variant_type_name(
@@ -165,22 +184,18 @@ impl InferState {
             return self.canonicalize_scoped_name(name, span);
         };
         let type_name = segments[module_len..].join("::");
-        if exports.types.iter().any(|exported| exported == &type_name) {
-            return Ok(type_name);
-        }
-
         let current_module = Path::new(&self.source.source_name)
             .file_stem()
             .is_some_and(|stem| stem.to_string_lossy() == exports.import_name);
-        if current_module && matches!(self.types.get(&type_name), Some(HirItemKind::Enum(_))) {
+        if self.types.contains_key(&type_name)
+            && (exports.imported || (current_module && !self.type_origins.contains_key(&type_name)))
+        {
             return Ok(type_name);
         }
-
         let qualified_name = format!("{}::{type_name}", exports.import_name);
-        if matches!(self.types.get(&qualified_name), Some(HirItemKind::Enum(_))) {
+        if exports.imported && self.types.contains_key(&qualified_name) {
             return Ok(qualified_name);
         }
-
         Err(Box::new(self.source.error(
             span,
             TypeDiagnosticKind::PrivateAccess {
@@ -188,6 +203,14 @@ impl InferState {
                 name: type_name,
             },
         )))
+    }
+
+    /// Whether the module backing `exports` was imported into the current file by
+    /// its bare name, in which case its items are available as bare items.
+    fn bare_imported(&self, exports: &ModuleExports) -> bool {
+        self.module_table
+            .get(&exports.import_name)
+            .is_some_and(|imported_exports| imported_exports.imported)
     }
 
     fn canonicalize_type(

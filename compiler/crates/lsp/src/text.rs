@@ -6,14 +6,88 @@ use tower_lsp::lsp_types::Range;
 use crate::position::position_at;
 
 pub(crate) fn name_range(source: &str, span: (usize, usize), name: &str) -> (usize, usize) {
+    name_span(source, span, name).unwrap_or(span)
+}
+
+pub(crate) fn name_span(source: &str, span: (usize, usize), name: &str) -> Option<(usize, usize)> {
     let (start, end) = span;
-    if let Some(text) = source.get(start..end)
-        && let Some(relative) = find_identifier(text, name)
-    {
-        (start + relative, start + relative + name.len())
-    } else {
-        span
+    let text = source.get(start..end)?;
+    find_identifier(text, name).map(|relative| (start + relative, start + relative + name.len()))
+}
+
+pub(crate) enum ModulePathContext {
+    ImportPath {
+        segments: Vec<String>,
+        partial: String,
+    },
+    ImportSymbol {
+        module_name: String,
+        partial: String,
+    },
+    ModuleRef {
+        module_name: String,
+        partial: String,
+        scope_qualified: bool,
+    },
+}
+
+pub(crate) fn module_path_context(source: &str, offset: usize) -> Option<ModulePathContext> {
+    let offset = offset.min(source.len());
+    let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
+    let line = &source[line_start..offset];
+
+    if let Some(after_import) = line.trim_start().strip_prefix("import ") {
+        let path_end = after_import
+            .find(|character: char| character == ';' || character.is_whitespace())
+            .unwrap_or(after_import.len());
+        let path = &after_import[..path_end];
+        let segments: Vec<&str> = path.split("::").collect();
+        let prefix_count = segments
+            .iter()
+            .take_while(|segment| matches!(**segment, "parent" | "self" | "package"))
+            .count();
+        if segments.len() - prefix_count <= 1 {
+            return Some(ModulePathContext::ImportPath {
+                segments: segments[..prefix_count]
+                    .iter()
+                    .map(|segment| segment.to_string())
+                    .collect(),
+                partial: segments.get(prefix_count).unwrap_or(&"").to_string(),
+            });
+        }
+        let module_name = segments.get(prefix_count)?.to_string();
+        if module_name.is_empty() {
+            return None;
+        }
+        return Some(ModulePathContext::ImportSymbol {
+            module_name,
+            partial: segments[prefix_count + 1..].join("::"),
+        });
     }
+
+    let (module_name, partial) = module_ref_prefix(source, offset)?;
+    Some(ModulePathContext::ModuleRef {
+        module_name,
+        partial,
+        scope_qualified: is_scope_qualified(&source[line_start..offset]),
+    })
+}
+
+fn is_scope_qualified(line: &str) -> bool {
+    let Some(colon_at) = line.rfind("::") else {
+        return false;
+    };
+    let mut chunks = line[..colon_at]
+        .rsplit(|character: char| !character.is_alphanumeric() && character != '_')
+        .filter(|chunk| !chunk.is_empty());
+    let module_name = chunks.next().unwrap_or_default();
+    if matches!(module_name, "parent" | "self" | "package") {
+        return true;
+    }
+    matches!(
+        chunks.next(),
+        Some("parent" | "self" | "package")
+    )
 }
 
 fn find_identifier(text: &str, name: &str) -> Option<usize> {
@@ -35,35 +109,6 @@ pub(crate) fn word_prefix(source: &str, offset: usize) -> String {
         .next()
         .unwrap_or_default()
         .to_string()
-}
-
-pub(crate) fn detect_import_prefix(source: &str, offset: usize) -> Option<(usize, String)> {
-    let before = &source[..offset.min(source.len())];
-    let line_start = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
-    let line_prefix = &before[line_start..];
-    let after_import = line_prefix.trim_start().strip_prefix("import ")?;
-
-    let segments: Vec<&str> = after_import.split("::").collect();
-
-    let mut prefix_count = 0;
-    for segment in &segments {
-        match *segment {
-            "parent" | "self" | "package" => prefix_count += 1,
-            _ => break,
-        }
-    }
-
-    if prefix_count == 0 || segments.len() - prefix_count > 1 {
-        return None;
-    }
-
-    let partial = if prefix_count >= segments.len() {
-        String::new()
-    } else {
-        segments[prefix_count].to_string()
-    };
-
-    Some((prefix_count, partial))
 }
 
 pub(crate) fn word_before_colon(source: &str, offset: usize) -> Option<String> {

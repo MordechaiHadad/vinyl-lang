@@ -7,7 +7,7 @@ use vinyl_typecheck::{Definition, DefinitionKind, SourceSpan};
 
 use crate::backend::state::{Analysis, Backend};
 use crate::position::span_range;
-use crate::text::name_range;
+use crate::text::{name_range, name_span};
 
 #[derive(Debug)]
 pub(crate) enum SymbolRef {
@@ -16,6 +16,12 @@ pub(crate) enum SymbolRef {
     Field { name: String, object_type: Type },
     Variant { type_name: String, name: String },
     Module { name: String },
+}
+
+#[derive(Clone, Copy)]
+enum MemberKind {
+    Field,
+    Variant,
 }
 
 fn span_contains(span: (usize, usize), offset: usize) -> bool {
@@ -59,17 +65,15 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
     for definitions in analysis.result.definitions.values() {
         if let Some(definition) = definitions.iter().find(|definition| {
             !definition.name.contains("::")
-                && span_contains(
-                    name_range(
-                        source,
-                        (
-                            definition.span.offset(),
-                            definition.span.offset() + definition.span.len(),
-                        ),
-                        &definition.name,
+                && name_span(
+                    source,
+                    (
+                        definition.span.offset(),
+                        definition.span.offset() + definition.span.len(),
                     ),
-                    offset,
+                    &definition.name,
                 )
+                .is_some_and(|(start, end)| offset >= start && offset < end)
         }) {
             return Some(SymbolRef::Ident {
                 name: definition.name.clone(),
@@ -111,16 +115,18 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                     })
                 }
             }
-            HirExpressionKind::EnumVariant { span, .. } => {
-                if let Some((colon, type_part, variant)) = split_segments(source, *span) {
-                    let type_end = span.offset() + colon;
-                    if offset >= type_end {
+            HirExpressionKind::EnumVariant { span, type_name, .. } => {
+                if let Some((colon, _, variant)) = split_segments(source, *span) {
+                    let variant_start = span.offset() + colon + 2;
+                    if offset >= variant_start {
                         Some(SymbolRef::Variant {
-                            type_name: type_part,
+                            type_name: type_name.clone(),
                             name: variant,
                         })
                     } else {
-                        Some(SymbolRef::Type { name: type_part })
+                        Some(SymbolRef::Type {
+                            name: type_name.clone(),
+                        })
                     }
                 } else {
                     None
@@ -234,26 +240,20 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                     _ => None,
                 })
         }
-        SymbolRef::Variant {
-            type_name, name, ..
-        } => analysis
+        SymbolRef::Variant { type_name, .. } => analysis
             .result
             .items
             .iter()
             .find_map(|item| match &item.kind {
-                HirItemKind::Enum(enumeration) if enumeration.name == *type_name => enumeration
-                    .variants
-                    .iter()
-                    .find(|variant| variant.name == *name)
-                    .map(|variant| Definition {
-                        id: 0,
-                        name: name.clone(),
-                        kind: DefinitionKind::Enum,
-                        span: variant.span,
-                        scope_depth: 1,
-                        scope: None,
-                        type_name: None,
-                    }),
+                HirItemKind::Enum(enumeration) if enumeration.name == *type_name => Some(Definition {
+                    id: 0,
+                    name: enumeration.name.clone(),
+                    kind: DefinitionKind::Enum,
+                    span: enumeration.span,
+                    scope_depth: 1,
+                    scope: None,
+                    type_name: None,
+                }),
                 _ => None,
             }),
         SymbolRef::Module { name } => Some(Definition {
@@ -306,11 +306,15 @@ impl Backend {
                 object_type, name, ..
             } => {
                 let type_name = type_name(object_type)?;
-                self.field_location(analysis, type_name, name).await
+                self.member_location(analysis, type_name, name, MemberKind::Field)
+                    .await
             }
             SymbolRef::Variant {
                 type_name, name, ..
-            } => self.variant_location(analysis, type_name, name).await,
+            } => {
+                self.member_location(analysis, type_name, name, MemberKind::Variant)
+                    .await
+            }
             SymbolRef::Module { name, .. } => {
                 let path = self.state.read().await.modules.get(name)?.clone();
                 Some(Location::new(
@@ -365,11 +369,12 @@ impl Backend {
         None
     }
 
-    async fn field_location(
+    async fn member_location(
         &self,
         analysis: &Analysis,
         type_name: &str,
         name: &str,
+        kind: MemberKind,
     ) -> Option<Location> {
         let others = self.analyses().await;
         let mut candidates = vec![analysis];
@@ -378,71 +383,44 @@ impl Backend {
                 candidates.push(candidate);
             }
         }
-        if let Some(candidate) = candidates.into_iter().next() {
-            let field = candidate
-                .result
-                .items
-                .iter()
-                .find_map(|item| match &item.kind {
-                    HirItemKind::Struct(structure) if structure.name == type_name => {
-                        structure.fields.iter().find(|field| field.name == name)
-                    }
-                    _ => None,
-                })?;
-            let (start, end) = name_range(
+        for candidate in candidates {
+            let (span_offset, span_len) = match kind {
+                MemberKind::Field => candidate
+                    .result
+                    .items
+                    .iter()
+                    .find_map(|item| match &item.kind {
+                        HirItemKind::Struct(structure) if structure.name == type_name => {
+                            structure.fields.iter().find(|field| field.name == name)
+                        }
+                        _ => None,
+                    })
+                    .map(|field| (field.span.offset(), field.span.len()))?,
+                MemberKind::Variant => candidate
+                    .result
+                    .items
+                    .iter()
+                    .find_map(|item| match &item.kind {
+                        HirItemKind::Enum(enumeration) if enumeration.name == type_name => {
+                            enumeration.variants.iter().find(|variant| variant.name == name)
+                        }
+                        _ => None,
+                    })
+                    .map(|variant| (variant.span.offset(), variant.span.len()))?,
+            };
+            let Some((start, end)) = name_span(
                 &candidate.source,
-                (field.span.offset(), field.span.offset() + field.span.len()),
+                (span_offset, span_offset + span_len),
                 name,
-            );
-            Some(Location::new(
+            ) else {
+                continue;
+            };
+            return Some(Location::new(
                 Url::from_file_path(&candidate.path).ok()?,
                 span_range(&candidate.line_index, start, end - start),
-            ))
-        } else {
-            None
+            ));
         }
-    }
-
-    async fn variant_location(
-        &self,
-        analysis: &Analysis,
-        type_name: &str,
-        name: &str,
-    ) -> Option<Location> {
-        let others = self.analyses().await;
-        let mut candidates = vec![analysis];
-        for candidate in &others {
-            if candidate.path != analysis.path {
-                candidates.push(candidate);
-            }
-        }
-        if let Some(candidate) = candidates.into_iter().next() {
-            let variant = candidate
-                .result
-                .items
-                .iter()
-                .find_map(|item| match &item.kind {
-                    HirItemKind::Enum(enumeration) if enumeration.name == type_name => enumeration
-                        .variants
-                        .iter()
-                        .find(|variant| variant.name == name),
-                    _ => None,
-                })?;
-            let (start, end) = name_range(
-                &candidate.source,
-                (
-                    variant.span.offset(),
-                    variant.span.offset() + variant.span.len(),
-                ),
-                name,
-            );
-            Some(Location::new(
-                Url::from_file_path(&candidate.path).ok()?,
-                span_range(&candidate.line_index, start, end - start),
-            ))
-        } else {
-            None
-        }
+        None
     }
 
     pub(crate) async fn location_for_symbol(

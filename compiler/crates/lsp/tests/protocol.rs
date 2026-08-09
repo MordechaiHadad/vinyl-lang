@@ -3493,3 +3493,369 @@ fn completion_local_scope_match_arm_binding() {
     );
     let _ = lsp;
 }
+
+#[test]
+fn import_parent_completion_scope_limited() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "public fn double(n: int): int { n * 2 }\npublic struct Point { public x: int, public y: int }\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import parent::\nfn main() {\n    let p = parent::math::Point { x: 10, y: 69 };\n    p.x\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 0, "character": 15 }
+        }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    assert!(
+        items.iter().any(|item| item["label"] == "math")
+            && items.iter().any(|item| item["label"] == "main"),
+        "`import parent::` should suggest sibling module labels `math`/`main`, got: {items:#?}"
+    );
+    assert!(
+        !items.iter().any(|item| item["label"].as_str().is_some_and(|l| l.contains("::"))),
+        "`import parent::` should not suggest qualified symbols, got: {items:#?}"
+    );
+    let _ = lsp;
+}
+
+#[test]
+fn import_symbol_completion_single_line() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "public fn double(n: int): int { n * 2 }\npublic struct Point { public x: int, public y: int }\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "import parent::math::Po\nfn main() {\n    let p = parent::math::Point { x: 10, y: 69 };\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 0, "character": 21 }
+        }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    let point = items
+        .iter()
+        .find(|item| item["label"] == "Point")
+        .expect("`import parent::math::Po` should suggest `Point`");
+    assert!(
+        point.get("textEdit").is_some(),
+        "`Point` should have an inline textEdit, got: {point:#?}"
+    );
+    assert!(
+        point.get("additionalTextEdits").is_none(),
+        "`Point` should not attach a duplicate import, got: {point:#?}"
+    );
+    let _ = lsp;
+}
+
+#[test]
+fn completion_struct_literal_fields() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.main,
+        "struct Point { public x: int32, public y: int32 }\nfn main() {\n    let p = Point {\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "struct Point { public x: int32, public y: int32 }\nfn main() {\n    let p = Point {\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 19 }
+        }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    for expected in ["x", "y"] {
+        assert!(
+            items.iter().any(|item| item["label"] == expected),
+            "struct literal should suggest field `{expected}`, got: {items:#?}"
+        );
+    }
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 2 },
+            "contentChanges": [{ "text": "struct Point { public x: int32, public y: int32 }\nfn main() {\n    let p = Point { x: 10, \n}\n" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 2, "character": 27 }
+        }
+    }));
+    let items = lsp.response(3)["result"].as_array().unwrap().clone();
+    assert!(
+        items.iter().any(|item| item["label"] == "y"),
+        "struct literal should still suggest `y`, got: {items:#?}"
+    );
+    assert!(
+        !items.iter().any(|item| item["label"] == "x"),
+        "struct literal should not re-suggest already-written `x`, got: {items:#?}"
+    );
+    let _ = lsp;
+}
+
+#[test]
+fn auto_import_skipped_for_scope_qualified() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "public struct Point { public x: int, public y: int }\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": "fn main() {\n    let p = parent::math::Point { x: 10, y: 69 };\n}\n" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 1, "character": 28 }
+        }
+    }));
+    let items = lsp.response(2)["result"].as_array().unwrap().clone();
+    let point = items
+        .iter()
+        .find(|item| item["label"] == "Point")
+        .expect("parent-qualified `Point` should be suggested");
+    assert!(
+        point.get("additionalTextEdits").is_none(),
+        "parent-qualified `Point` must not auto-import, got: {point:#?}"
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": main_uri, "version": 2 },
+            "contentChanges": [{ "text": "fn main() {\n    let p = math::Point { x: 10, y: 69 };\n}\n" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 1, "character": 20 }
+        }
+    }));
+    let items = lsp.response(3)["result"].as_array().unwrap().clone();
+    let point = items
+        .iter()
+        .find(|item| item["label"] == "Point")
+        .expect("plain `math::Point` should be suggested");
+    assert!(
+        point.get("additionalTextEdits").is_some(),
+        "plain `math::Point` should still auto-import, got: {point:#?}"
+    );
+    let _ = lsp;
+}
+
+#[test]
+fn goto_definition_qualified_enum_variant() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "@doc(\"A color enum with 2 variants red and blue\")\npublic enum Color {\n    Red,\n    Blue\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (
+            math_uri.clone(),
+            "@doc(\"A color enum with 2 variants red and blue\")\npublic enum Color {\n    Red,\n    Blue\n}\n",
+        ),
+        (
+            main_uri.clone(),
+            "import parent::math;\nfn main() {\n    let c = parent::math::Color::Red;\n}\n",
+        ),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 2, "character": 34 } }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"], math_uri,
+        "goto-definition on `Red` should resolve into math.vn, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 2, "character": 4}),
+        "variant definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 2, "character": 7}),
+        "variant definition range end mismatch, got: {}",
+        definition
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/definition",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 2, "character": 28 } }
+    }));
+    let definition = lsp.response(3);
+    assert_eq!(
+        definition["result"]["uri"], math_uri,
+        "goto-definition on `Color` type should resolve into math.vn, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 1, "character": 12}),
+        "enum definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 1, "character": 17}),
+        "enum definition range end mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
+fn hover_qualified_enum_shows_signature_and_doc() {
+    let project = TestProject::new();
+    std::fs::write(
+        &project.math,
+        "@doc(\"A point with 2 coordinates y and x\")\npublic struct Point {\n    public x: int,\n    public y: int\n}\n\n@doc(\"A color enum with 2 variants red and blue\")\npublic enum Color {\n    Red,\n    Blue\n}\n",
+    )
+    .unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let math_uri = TestProject::uri(&project.math);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (
+            math_uri.clone(),
+            "@doc(\"A point with 2 coordinates y and x\")\npublic struct Point {\n    public x: int,\n    public y: int\n}\n\n@doc(\"A color enum with 2 variants red and blue\")\npublic enum Color {\n    Red,\n    Blue\n}\n",
+        ),
+        (
+            main_uri.clone(),
+            "import parent::math;\nfn main() {\n    let c = parent::math::Color::Red;\n}\n",
+        ),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+    for (id, character) in [(2, 14), (3, 21), (4, 28), (5, 34)] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "id": id, "method": "textDocument/hover",
+            "params": { "textDocument": { "uri": main_uri }, "position": { "line": 2, "character": character } }
+        }));
+        let hover = lsp.response(id);
+        let hover_text = hover["result"]["contents"].as_str().unwrap();
+        assert!(
+            hover_text.contains("enum Color"),
+            "hover on qualified enum segment should show the enum signature, got: {hover_text}"
+        );
+        assert!(
+            hover_text.contains("A color enum with 2 variants red and blue"),
+            "hover on qualified enum segment should show documentation, got: {hover_text}"
+        );
+        assert!(
+            !hover_text.contains("Point"),
+            "hover on qualified enum segment must not show the struct, got: {hover_text}"
+        );
+    }
+}

@@ -1,9 +1,8 @@
+import parent::math;
 fn main() {
-    let x = parent::math::Point { x: 10, y: 69 };
-    let y = parent::main::Color::Red;
+    let y = math::Color::Red;
     match y {
-        parent::math::Color::Red => println(214),
-        parent::math::Color::Blue => println(10)
+        math::Color::Red => println(214),
+        math::Color::Blue => println(10)
     } 
-    println(x.x);
 }

@@ -544,6 +544,27 @@ fn qualified_enum_variant_in_current_module_is_allowed() {
 }
 
 #[test]
+fn qualified_enum_variant_missing_from_current_module_is_rejected() {
+    let root = project(
+        "qualified_current_module_missing_variant",
+        &[
+            (
+                "src/main.vn",
+                "fn main(): unit { let color = main::Color::Red; }",
+            ),
+            ("src/math.vn", "public enum Color { Red, Blue }"),
+        ],
+    );
+    let errors = compile_entry(&root.join("src/main.vn"), None).unwrap_err();
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.to_string().contains("is private")),
+        "enum from another module must not resolve as a current-module type: {errors:?}"
+    );
+}
+
+#[test]
 fn private_enum_variant_is_constructible() {
     let root = project(
         "private_enum_variant",
