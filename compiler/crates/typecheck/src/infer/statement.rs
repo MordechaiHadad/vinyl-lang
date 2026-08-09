@@ -139,8 +139,18 @@ impl InferState {
 
                 if let Some(ann) = type_ {
                     let resolved = self.subs.apply(&hir_value.type_);
-                    if let Err(e) = self.subs.unify(&self.source, ann, &resolved, *span) {
-                        self.errors.push(*e);
+                    match self.canonicalize_type(ann, *span) {
+                        Ok(canonical) => {
+                            if let Err(e) = self.subs.unify(
+                                &self.source,
+                                &canonical,
+                                &resolved,
+                                *span,
+                            ) {
+                                self.errors.push(*e);
+                            }
+                        }
+                        Err(error) => self.errors.push(*error),
                     }
                 }
 

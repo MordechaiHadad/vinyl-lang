@@ -559,7 +559,7 @@ fn qualified_enum_variant_missing_from_current_module_is_rejected() {
     assert!(
         errors
             .iter()
-            .any(|error| error.to_string().contains("is private")),
+            .any(|error| error.to_string().contains("undefined type `Color`")),
         "enum from another module must not resolve as a current-module type: {errors:?}"
     );
 }

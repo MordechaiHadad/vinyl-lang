@@ -102,11 +102,18 @@ impl InferState {
                         }
                         let is_public = exports.functions.iter().any(|f| f.name == item_name)
                             || exports.types.iter().any(|t| t == &item_name);
-                        if !is_public {
+                        if !is_public && exports.declares(&item_name) {
                             self.errors.push(self.source.error(
                                 *span,
                                 TypeDiagnosticKind::PrivateAccess {
                                     module: module_name,
+                                    name: item_name,
+                                },
+                            ));
+                        } else if !is_public {
+                            self.errors.push(self.source.error(
+                                *span,
+                                TypeDiagnosticKind::UndefinedVariable {
                                     name: item_name,
                                 },
                             ));
@@ -288,6 +295,24 @@ impl InferState {
                         *function_span,
                         TypeDiagnosticKind::UndefinedFunction { name: name.clone() },
                     )));
+                }
+
+                if let Expression::ValuePath { segments, span: function_span } = function.as_ref()
+                    && let Some((module_len, module)) = resolve_module(&self.module_table, segments)
+                {
+                    let item_name = segments[module_len..].join("::");
+                    if !module.functions.iter().any(|function| function.name == item_name) {
+                        let module_name = segments[..module_len].join("::");
+                        let kind = if module.declares(&item_name) {
+                            TypeDiagnosticKind::PrivateAccess {
+                                module: module_name,
+                                name: item_name,
+                            }
+                        } else {
+                            TypeDiagnosticKind::UndefinedFunction { name: item_name }
+                        };
+                        return Err(Box::new(self.source.error(*function_span, kind)));
+                    }
                 }
 
                 let hir_func = self.infer_expr(function, signatures)?;

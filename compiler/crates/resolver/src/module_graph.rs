@@ -43,6 +43,16 @@ fn item_name(item: &Item) -> &str {
     }
 }
 
+fn all_symbol_names(items: &[Item]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Import(_) => None,
+            _ => Some(item_name(item).to_string()),
+        })
+        .collect()
+}
+
 fn import_display(import: &ImportDef) -> String {
     let mut display = String::new();
     if !import.prefix.is_empty() {
@@ -409,12 +419,14 @@ impl<'a> Collector<'a> {
             if already_visited {
                 continue;
             }
+            let all_symbols = all_symbol_names(&module_items);
             let exports = ModuleExports {
                 import_name: info.import_name.clone(),
                 import_path: self.resolver.relative_import_path(from, &info.file_path),
                 imported: true,
                 functions,
                 types,
+                all_symbols,
             };
             self.module_table.insert(info.import_name.clone(), exports.clone());
             self.module_table.insert(info.path.join("::"), exports.clone());
@@ -497,12 +509,14 @@ impl<'a> Collector<'a> {
                     _ => None,
                 })
                 .collect();
+            let all_symbols = all_symbol_names(&module_items);
             let exports = ModuleExports {
                 import_name: info.import_name.clone(),
                 import_path: self.resolver.relative_import_path(from, &info.file_path),
                 imported: false,
                 functions,
                 types,
+                all_symbols,
             };
             self.module_table.insert(info.import_name.clone(), exports.clone());
             self.module_table.insert(info.path.join("::"), exports.clone());

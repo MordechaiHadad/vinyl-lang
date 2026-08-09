@@ -167,9 +167,13 @@ impl InferState {
         }
         Err(Box::new(self.source.error(
             span,
-            TypeDiagnosticKind::PrivateAccess {
-                module: matched_key,
-                name: type_name,
+            if exports.declares(&type_name) {
+                TypeDiagnosticKind::PrivateAccess {
+                    module: matched_key,
+                    name: type_name,
+                }
+            } else {
+                TypeDiagnosticKind::UndefinedType { name: type_name }
             },
         )))
     }
@@ -198,9 +202,13 @@ impl InferState {
         }
         Err(Box::new(self.source.error(
             span,
-            TypeDiagnosticKind::PrivateAccess {
-                module: segments[..module_len].join("::"),
-                name: type_name,
+            if exports.declares(&type_name) {
+                TypeDiagnosticKind::PrivateAccess {
+                    module: segments[..module_len].join("::"),
+                    name: type_name,
+                }
+            } else {
+                TypeDiagnosticKind::UndefinedType { name: type_name }
             },
         )))
     }
