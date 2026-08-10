@@ -81,7 +81,14 @@ fn formats_public_type_alias() {
 #[test]
 fn formats_struct_def_keyword_once() {
     let input = "struct Point { x: int32, y: int32 }";
-    let expected = "struct Point {\n    x:int32,\n    y:int32\n}";
+    let expected = "struct Point {\n    x: int32,\n    y: int32\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_public_struct_field() {
+    let input = "struct X { public x: int }";
+    let expected = "struct X {\n    public x: int\n}";
     assert_eq!(format_source(input).unwrap(), expected);
 }
 

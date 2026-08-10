@@ -163,3 +163,75 @@ fn bool_array_return_int() {
         "typeck should fail: recieved bool from array, expected int"
     );
 }
+
+#[test]
+fn array_fill_small_clean() {
+    let source = "fn main(): int32 { let arr = [0; 10]; arr[0] }";
+    let (items, warnings) = common::compile_with_warnings(source);
+    assert!(items.is_ok(), "small fill should compile: {:?}", items.err());
+    assert_eq!(warnings.len(), 0, "small array should not warn");
+}
+
+#[test]
+fn array_fill_below_warning_boundary_clean() {
+    let source = "fn main(): int32 { let arr = [0; 4095]; arr[0] }";
+    let (items, warnings) = common::compile_with_warnings(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+    assert_eq!(warnings.len(), 0, "just under 32 KiB should not warn");
+}
+
+#[test]
+fn array_fill_large_warns() {
+    let source = "fn main(): int32 { let arr = [0; 4096]; arr[0] }";
+    let (items, warnings) = common::compile_with_warnings(source);
+    assert!(items.is_ok(), "32 KiB fill should compile: {:?}", items.err());
+    assert_eq!(warnings.len(), 1, "exactly 32 KiB should warn");
+    assert!(
+        warnings[0].to_string().contains("large"),
+        "warning should mention the large array"
+    );
+}
+
+#[test]
+fn array_fill_just_below_error_boundary_warns() {
+    let source = "fn main(): int32 { let arr = [0; 131071]; arr[0] }";
+    let (items, warnings) = common::compile_with_warnings(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+    assert_eq!(warnings.len(), 1, "just under 1 MiB should warn");
+}
+
+#[test]
+fn array_fill_error_boundary_errors() {
+    let source = "fn main(): int32 { let arr = [0; 131072]; arr[0] }";
+    let items = common::compile(source);
+    assert!(
+        items.is_err(),
+        "exactly 1 MiB should fail with array_too_large"
+    );
+}
+
+#[test]
+fn array_fill_huge_errors() {
+    let source = "fn main(): int32 { let arr = [0; 10000000]; arr[0] }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "10M-element fill should fail");
+}
+
+#[test]
+fn allow_large_array_suppresses_error_and_warning() {
+    let source =
+        "@allow(large_array) fn main(): int32 { let arr = [0; 10000000]; arr[0] }";
+    let (items, warnings) = common::compile_with_warnings(source);
+    assert!(items.is_ok(), "suppressed fill should compile: {:?}", items.err());
+    assert_eq!(warnings.len(), 0, "suppressed fill should not warn");
+}
+
+#[test]
+fn array_fill_named_element_not_checked() {
+    let source = "struct Point { x: int32, y: int32 }
+fn main(): int32 { let arr = [Point { x: 1, y: 2 }; 1000000]; arr[0].x }";
+    let (items, warnings) = common::compile_with_warnings(source);
+    // todo(sized): no `Sized` bound yet, named element sizes are not checked
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+    assert_eq!(warnings.len(), 0);
+}

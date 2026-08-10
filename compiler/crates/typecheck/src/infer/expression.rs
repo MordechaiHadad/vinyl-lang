@@ -13,6 +13,7 @@ use crate::hir::{
 };
 use crate::infer::InferState;
 use crate::infer::resolve_named_type;
+use crate::infer::{MAX_STACK_ARRAY_ERROR_BYTES, MAX_STACK_ARRAY_WARNING_BYTES};
 use crate::module::resolve_module;
 
 impl InferState {
@@ -488,6 +489,28 @@ impl InferState {
             } => {
                 let hir_value = self.infer_expr(value, signatures)?;
                 let element_type = self.subs.apply(&hir_value.type_);
+                if let Some(element_size) = self.type_size_of(&element_type) {
+                    let total_size = element_size.saturating_mul(*size as u64);
+                    if !self.is_large_array_suppressed(*span) {
+                        if total_size >= MAX_STACK_ARRAY_ERROR_BYTES {
+                            self.errors.push(self.source.error(
+                                *span,
+                                TypeDiagnosticKind::ArrayTooLarge {
+                                    count: *size,
+                                    size: total_size,
+                                },
+                            ));
+                        } else if total_size >= MAX_STACK_ARRAY_WARNING_BYTES {
+                            self.errors.push(self.source.error(
+                                *span,
+                                TypeDiagnosticKind::LargeArray {
+                                    count: *size,
+                                    size: total_size,
+                                },
+                            ));
+                        }
+                    }
+                }
                 Ok(HirExpression {
                     kind: HirExpressionKind::ArrayFill {
                         span: *span,

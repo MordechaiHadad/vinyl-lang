@@ -237,6 +237,23 @@ fn attribute_completions(
 ) -> Option<Vec<CompletionItem>> {
     let line_start = source[..offset].rfind('\n').map_or(0, |index| index + 1);
     let line = &source[line_start..offset];
+    if let Some(open_paren) = line.rfind('(')
+        && let Some(at_index) = line[..open_paren].rfind('@')
+    {
+        let before_at = &line[..at_index];
+        let attr_name = line[at_index + 1..open_paren].trim();
+        if !before_at.trim().is_empty() || attr_name != "allow" {
+            return None;
+        }
+        let partial = &line[open_paren + 1..];
+        if !partial
+            .chars()
+            .all(|character| character == '_' || character.is_ascii_alphanumeric())
+        {
+            return None;
+        }
+        return attribute_arg_completions(line_index, offset, partial);
+    }
     let at_index = line.rfind('@')?;
     let before_at = &line[..at_index];
     let partial = &line[at_index + 1..];
@@ -244,28 +261,86 @@ fn attribute_completions(
         || !partial
             .chars()
             .all(|character| character == '_' || character.is_ascii_alphanumeric())
-        || !"doc".starts_with(partial)
     {
         return None;
     }
+    attribute_name_completions(line_index, offset, partial)
+}
+
+fn attribute_name_completions(
+    line_index: &LineIndex,
+    offset: usize,
+    partial: &str,
+) -> Option<Vec<CompletionItem>> {
     let range = Range::new(
         position_at(line_index, offset.saturating_sub(partial.len())),
         position_at(line_index, offset),
     );
-    Some(vec![CompletionItem {
-        label: "doc".to_string(),
-        kind: Some(CompletionItemKind::KEYWORD),
-        detail: Some("documentation attribute".to_string()),
-        documentation: Some(Documentation::MarkupContent(MarkupContent {
-            kind: MarkupKind::Markdown,
-            value: "Attach Markdown documentation to a function, struct, tuple, enum, or type alias.\n\n```vinyl\n@doc(\"Adds two numbers\")\nfn add() {}\n```\n\nThe documentation is shown in LSP hover results.".to_string(),
-        })),
-        text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
-            range,
-            "doc".to_string(),
-        ))),
-        ..CompletionItem::default()
-    }])
+    let attributes = [
+        (
+            "doc",
+            "documentation attribute",
+            "Attach Markdown documentation to a function, struct, tuple, enum, or type alias.\n\n```vinyl\n@doc(\"Adds two numbers\")\nfn add() {}\n```\n\nThe documentation is shown in LSP hover results.",
+        ),
+        (
+            "allow",
+            "lint suppression attribute",
+            "Suppress a compiler diagnostic on the attached item.\n\n```vinyl\n@allow(large_array)\nfn main() {}\n```\n\nThe diagnostic name to suppress goes inside the parentheses.",
+        ),
+    ];
+    let items: Vec<CompletionItem> = attributes
+        .iter()
+        .filter(|(name, _, _)| name.starts_with(partial))
+        .map(|(name, detail, docs)| CompletionItem {
+            label: (*name).to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            detail: Some((*detail).to_string()),
+            documentation: Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: (*docs).to_string(),
+            })),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                range,
+                (*name).to_string(),
+            ))),
+            ..CompletionItem::default()
+        })
+        .collect();
+    (!items.is_empty()).then_some(items)
+}
+
+fn attribute_arg_completions(
+    line_index: &LineIndex,
+    offset: usize,
+    partial: &str,
+) -> Option<Vec<CompletionItem>> {
+    let range = Range::new(
+        position_at(line_index, offset.saturating_sub(partial.len())),
+        position_at(line_index, offset),
+    );
+    let args = [(
+        "large_array",
+        "Suppress the `large_array` warning (arrays of 32 KiB or more) and the `array_too_large` error (arrays of 1 MiB or more) for array fills in the attached function.\n\nHeap-allocated arrays are not implemented yet, so large stack arrays are flagged.",
+    )];
+    let items: Vec<CompletionItem> = args
+        .iter()
+        .filter(|(name, _)| name.starts_with(partial))
+        .map(|(name, docs)| CompletionItem {
+            label: (*name).to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            detail: Some("large array diagnostic suppression".to_string()),
+            documentation: Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: (*docs).to_string(),
+            })),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(
+                range,
+                (*name).to_string(),
+            ))),
+            ..CompletionItem::default()
+        })
+        .collect();
+    (!items.is_empty()).then_some(items)
 }
 
 fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option<Arc<Analysis>> {
@@ -772,6 +847,38 @@ mod tests {
                 ..
             }))
         ));
+    }
+
+    #[test]
+    fn suggests_allow_and_doc_after_at() {
+        let source = "@";
+        let line_index = LineIndex::new(source);
+        let items = attribute_completions(source, &line_index, source.len()).unwrap();
+        let labels: Vec<_> = items.iter().map(|item| item.label.as_str()).collect();
+        assert!(labels.contains(&"doc"));
+        assert!(labels.contains(&"allow"));
+    }
+
+    #[test]
+    fn suggests_large_array_inside_allow() {
+        let source = "@allow(large_";
+        let line_index = LineIndex::new(source);
+        let items = attribute_completions(source, &line_index, source.len()).unwrap();
+        assert_eq!(items[0].label, "large_array");
+        assert!(matches!(
+            items[0].documentation,
+            Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                ..
+            }))
+        ));
+    }
+
+    #[test]
+    fn no_completion_inside_doc_args() {
+        let source = "@doc(\"hello";
+        let line_index = LineIndex::new(source);
+        assert!(attribute_completions(source, &line_index, source.len()).is_none());
     }
 }
 

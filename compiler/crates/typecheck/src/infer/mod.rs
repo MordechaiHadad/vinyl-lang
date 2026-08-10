@@ -28,6 +28,9 @@ pub mod unify;
 use scope::ScopeState;
 use unify::SubstitutionState;
 
+const MAX_STACK_ARRAY_WARNING_BYTES: u64 = 32 * 1024;
+const MAX_STACK_ARRAY_ERROR_BYTES: u64 = 1024 * 1024;
+
 #[derive(Debug, Clone)]
 struct TypeScheme {
     type_: Type,
@@ -79,6 +82,7 @@ struct InferState {
     errors: Vec<TypeDiagnostic>,
     module_table: ModuleTable,
     type_origins: HashMap<String, String>,
+    suppress_large_array_spans: Vec<(usize, usize)>,
 }
 
 fn documentation(attrs: &[Attribute]) -> Option<String> {
@@ -122,6 +126,46 @@ impl InferState {
             errors: Vec::new(),
             module_table: module_table.clone(),
             type_origins,
+            suppress_large_array_spans: Vec::new(),
+        }
+    }
+
+    fn is_large_array_suppressed(&self, span: SourceSpan) -> bool {
+        let offset = span.offset();
+        self.suppress_large_array_spans
+            .iter()
+            .any(|(start, end)| offset >= *start && offset < *end)
+    }
+
+    fn type_size_of(&self, type_: &Type) -> Option<u64> {
+        match type_ {
+            Type::Primitive(primitive) => Some(match primitive {
+                Primitive::Int8 | Primitive::UInt8 | Primitive::Bool => 1,
+                Primitive::Int16 | Primitive::UInt16 => 2,
+                Primitive::Int32 | Primitive::UInt32 | Primitive::Float32 | Primitive::Char => 4,
+                Primitive::Int64
+                | Primitive::UInt64
+                | Primitive::Float64
+                | Primitive::Int
+                | Primitive::UInt
+                | Primitive::Float => 8,
+                Primitive::Int128 | Primitive::UInt128 => 16,
+                Primitive::ISize | Primitive::USize | Primitive::String => 8,
+                Primitive::Unit => 0,
+            }),
+            Type::Ref(_) | Type::Generic { .. } | Type::Var(_) => Some(8),
+            Type::Array { element, size } => self
+                .type_size_of(element)
+                .map(|element_size| element_size * (*size as u64)),
+            Type::Tuple(elements) => {
+                let mut total = 0u64;
+                for element in elements {
+                    total += self.type_size_of(element)?;
+                }
+                Some(total)
+            }
+            // todo(sized): requires a `Sized` bound, named element sizes are not checked yet
+            Type::Named(_) => None,
         }
     }
 
@@ -793,6 +837,19 @@ pub fn typeck_with_modules(
 
     for item in &owned_items {
         if let Item::Function(f) = item {
+            if f.attrs.iter().any(|attribute| {
+                attribute.name == "allow"
+                    && attribute.args.iter().any(|arg| {
+                        matches!(
+                            arg,
+                            Expression::Ident(name, _) if name == "large_array"
+                        )
+                    })
+            }) {
+                state
+                    .suppress_large_array_spans
+                    .push((f.span.offset(), f.span.offset() + f.span.len()));
+            }
             match state.infer_function(f, &signatures) {
                 Ok(mut hir) => {
                     hir.documentation = documentation(&f.attrs);
@@ -810,7 +867,10 @@ pub fn typeck_with_modules(
     let mut fatal_errors = Vec::new();
     let mut warnings = Vec::new();
     for diagnostic in all_diagnostics {
-        if matches!(diagnostic.kind, TypeDiagnosticKind::UnreachableStatement) {
+        if matches!(
+            diagnostic.kind,
+            TypeDiagnosticKind::UnreachableStatement | TypeDiagnosticKind::LargeArray { .. }
+        ) {
             warnings.push(diagnostic);
         } else {
             fatal_errors.push(diagnostic);

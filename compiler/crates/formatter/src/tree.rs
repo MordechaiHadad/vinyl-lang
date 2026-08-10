@@ -148,6 +148,7 @@ impl Formatter<'_> {
         match kind.as_str() {
             "function_definition" => self.format_function_def(node),
             "struct_definition" => self.format_struct_def(node),
+            "field_definition" => self.format_field_def(node),
             "tuple_definition" => self.format_tuple_def(node),
             "enum_definition" => self.format_enum_def(node),
             "type_alias_definition" => self.format_type_alias(node),
@@ -244,6 +245,21 @@ impl Formatter<'_> {
                             self.emit(&text);
                         }
                     }
+                }
+            }
+        }
+    }
+
+    fn format_field_def(&mut self, node: Node) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.is_named() {
+                self.format_node(child);
+            } else {
+                match child.kind() {
+                    "public" => self.emit("public "),
+                    ":" => self.emit(": "),
+                    _ => {}
                 }
             }
         }

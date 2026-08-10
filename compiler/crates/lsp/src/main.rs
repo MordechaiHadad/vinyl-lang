@@ -43,7 +43,7 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(
-                        [".", ":", "{", ","]
+                        [".", ":", "{", ",", "@"]
                             .into_iter()
                             .map(str::to_string)
                             .collect(),

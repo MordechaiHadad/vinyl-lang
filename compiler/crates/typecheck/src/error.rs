@@ -196,6 +196,16 @@ pub enum TypeDiagnosticKind {
     #[diagnostic(code(typeck::unreachable_statement), severity(warning))]
     UnreachableStatement,
 
+    #[error("array of {count} elements is large ({size} bytes); it will be allocated on the stack")]
+    #[diagnostic(code(typeck::large_array), severity(warning))]
+    #[help("heap-allocated arrays are not implemented yet; consider using a smaller array")]
+    LargeArray { count: usize, size: u64 },
+
+    #[error("array of {count} elements is too large ({size} bytes) to allocate on the stack")]
+    #[diagnostic(code(typeck::array_too_large))]
+    #[help("heap-allocated arrays are not implemented yet; use a smaller array")]
+    ArrayTooLarge { count: usize, size: u64 },
+
     #[error("cannot assign type `{expected}` to variable of type `{found}`")]
     #[diagnostic(code(typeck::assign_type_mismatch))]
     AssignTypeMismatch {

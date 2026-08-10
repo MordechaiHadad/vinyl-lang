@@ -503,6 +503,86 @@ fn serves_core_lsp_features_over_stdio() {
 }
 
 #[test]
+fn suggests_allow_attribute_completion() {
+    let project = TestProject::new();
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    // attribute name completion after `@`
+    let attrs_vn = project.root.join("attrs.vn");
+    std::fs::write(&attrs_vn, "@").unwrap();
+    let attrs_uri = TestProject::uri(&attrs_vn);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": attrs_uri, "languageId": "vinyl", "version": 1,
+                "text": "@" }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": attrs_uri },
+            "position": { "line": 0, "character": 1 }
+        }
+    }));
+    let completion = lsp.response(2);
+    let items = completion["result"].as_array().unwrap();
+    let allow_item = items
+        .iter()
+        .find(|item| item["label"] == "allow")
+        .expect("allow should be suggested after @");
+    assert!(
+        allow_item["documentation"]["value"].as_str().is_some(),
+        "allow completion should include docs"
+    );
+
+    // sub-attribute completion inside @allow(...)
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didChange",
+        "params": {
+            "textDocument": { "uri": attrs_uri, "version": 2 },
+            "contentChanges": [{ "text": "@allow(large_" }]
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/completion",
+        "params": {
+            "textDocument": { "uri": attrs_uri },
+            "position": { "line": 0, "character": 13 }
+        }
+    }));
+    let completion = lsp.response(3);
+    let items = completion["result"].as_array().unwrap();
+    let large_array = items
+        .iter()
+        .find(|item| item["label"] == "large_array")
+        .expect("large_array should be suggested inside @allow(...)");
+    assert!(
+        large_array["documentation"]["value"].as_str().is_some(),
+        "large_array completion should include docs"
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": null
+    }));
+    assert!(lsp.response(4)["result"].is_null());
+}
+
+#[test]
 fn completion_module_ref() {
     let project = TestProject::new();
     let main_uri = TestProject::uri(&project.main);
