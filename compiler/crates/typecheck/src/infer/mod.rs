@@ -835,6 +835,7 @@ pub fn typeck_with_index(
         TypeckResult {
             items: hir_items,
             expr_at_pos: index.expr_at_pos,
+            patterns_at_pos: index.patterns_at_pos,
             definitions: index.definitions,
             references: index.references,
             unused: index.unused,

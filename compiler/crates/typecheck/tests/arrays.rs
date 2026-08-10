@@ -114,6 +114,20 @@ fn array_nested_type_mismatch() {
 }
 
 #[test]
+fn array_fill_literal() {
+    let source = "fn main(): int32 { let arr = [7; 3]; arr[2] }";
+    let items = common::compile(source);
+    assert!(items.is_ok(), "typeck should succeed: {:?}", items.err());
+}
+
+#[test]
+fn array_fill_size_mismatch() {
+    let source = "fn main() { let arr: [int32; 2] = [7; 3]; }";
+    let items = common::compile(source);
+    assert!(items.is_err(), "typeck should fail: array size mismatch");
+}
+
+#[test]
 fn char_in_array() {
     let source = "fn main(): char { let arr = ['a', 'b', 'c']; arr[1] }";
     let items = common::compile(source);

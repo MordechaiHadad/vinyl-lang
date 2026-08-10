@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use miette::SourceSpan;
 
-use crate::hir::{HirExpressionKind, HirItem, Type};
+use crate::hir::{HirExpressionKind, HirItem, HirPattern, Type};
 
 #[derive(Debug, Clone)]
 pub struct HirExprRef {
@@ -43,6 +43,7 @@ pub enum DefinitionKind {
 pub struct TypeckResult {
     pub items: Vec<HirItem>,
     pub expr_at_pos: BTreeMap<usize, HirExprRef>,
+    pub patterns_at_pos: BTreeMap<usize, HirPattern>,
     pub definitions: HashMap<String, Vec<Definition>>,
     pub references: BTreeMap<usize, Definition>,
     pub unused: Vec<Definition>,
@@ -53,6 +54,7 @@ pub struct TypeckResult {
 #[derive(Debug, Default)]
 pub struct HirIndex {
     pub expr_at_pos: BTreeMap<usize, HirExprRef>,
+    pub patterns_at_pos: BTreeMap<usize, HirPattern>,
     pub definitions: HashMap<String, Vec<Definition>>,
     pub references: BTreeMap<usize, Definition>,
     pub unused: Vec<Definition>,

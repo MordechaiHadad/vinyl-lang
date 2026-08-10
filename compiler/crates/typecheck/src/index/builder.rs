@@ -10,6 +10,7 @@ use crate::index::types::{Definition, DefinitionKind, FieldAccessRef, HirExprRef
 
 pub struct IndexBuilder {
     expr_at_pos: BTreeMap<usize, HirExprRef>,
+    patterns_at_pos: BTreeMap<usize, HirPattern>,
     definitions: HashMap<String, Vec<Definition>>,
     references: BTreeMap<usize, Definition>,
     scopes: Vec<HashMap<String, usize>>,
@@ -22,6 +23,7 @@ impl Default for IndexBuilder {
     fn default() -> Self {
         Self {
             expr_at_pos: BTreeMap::new(),
+            patterns_at_pos: BTreeMap::new(),
             definitions: HashMap::new(),
             references: BTreeMap::new(),
             scopes: vec![HashMap::new()],
@@ -49,6 +51,7 @@ impl IndexBuilder {
             .collect();
         HirIndex {
             expr_at_pos: self.expr_at_pos,
+            patterns_at_pos: self.patterns_at_pos,
             definitions: self.definitions,
             references: self.references,
             unused,
@@ -277,6 +280,9 @@ impl IndexBuilder {
                     self.walk_expr(e);
                 }
             }
+            HirExpressionKind::ArrayFill { value, .. } => {
+                self.walk_expr(value);
+            }
             HirExpressionKind::If {
                 condition,
                 then_block,
@@ -359,6 +365,16 @@ impl IndexBuilder {
     }
 
     fn walk_pattern(&mut self, pattern: &HirPattern) {
+        let span = match &pattern.kind {
+            HirPatternKind::Wildcard(span)
+            | HirPatternKind::Ident { span, .. }
+            | HirPatternKind::Literal { span, .. }
+            | HirPatternKind::Struct { span, .. }
+            | HirPatternKind::Tuple { span, .. }
+            | HirPatternKind::EnumVariant { span, .. } => *span,
+        };
+        self.patterns_at_pos
+            .insert(span.offset(), pattern.clone());
         match &pattern.kind {
             HirPatternKind::Wildcard(_) | HirPatternKind::Literal { .. } => {}
             HirPatternKind::Ident { span, name } => {
@@ -409,7 +425,8 @@ impl IndexBuilder {
             | HirExpressionKind::EnumVariant { span, .. }
             | HirExpressionKind::Struct { span, .. }
             | HirExpressionKind::If { span, .. }
-            | HirExpressionKind::Match { span, .. } => *span,
+            | HirExpressionKind::Match { span, .. }
+            | HirExpressionKind::ArrayFill { span, .. } => *span,
         };
         self.expr_at_pos.insert(
             span.offset(),
@@ -426,8 +443,8 @@ impl IndexBuilder {
 mod tests {
     use super::*;
     use crate::hir::{
-        HirExpression, HirExpressionKind, HirFunction, HirItem, HirItemKind, HirParam,
-        HirStatement, HirStatementKind, Type,
+        HirExpression, HirExpressionKind, HirFunction, HirItem, HirItemKind, HirMatchArm,
+        HirParam, HirPattern, HirPatternKind, HirStatement, HirStatementKind, Type,
     };
     use miette::SourceSpan;
     use vinyl_parser::ast::types::Primitive;
@@ -494,5 +511,98 @@ mod tests {
             index.references[&reference_span.offset()].id,
             inner_definition.id
         );
+    }
+
+    #[test]
+    fn indexes_patterns_for_lsp_resolution() {
+        let enum_pattern_span = SourceSpan::from(10..26);
+        let struct_pattern_span = SourceSpan::from(30..46);
+        let match_span = SourceSpan::from(4..48);
+        let arm_body = |span| HirStatement {
+            kind: HirStatementKind::Value(
+                HirExpression {
+                    kind: HirExpressionKind::Int(0, span),
+                    type_: Type::Primitive(Primitive::Int32),
+                },
+                span,
+            ),
+        };
+        let ident_pattern = |span: SourceSpan, name: &str| HirPattern {
+            kind: HirPatternKind::Ident {
+                span,
+                name: name.to_string(),
+            },
+            type_: Type::Primitive(Primitive::Int32),
+        };
+        let arms = vec![
+            HirMatchArm {
+                span: enum_pattern_span,
+                pattern: HirPattern {
+                    kind: HirPatternKind::EnumVariant {
+                        span: enum_pattern_span,
+                        type_name: "Shape".to_string(),
+                        variant_index: 0,
+                        patterns: vec![ident_pattern(SourceSpan::from(20..21), "r")],
+                    },
+                    type_: Type::Primitive(Primitive::Int32),
+                },
+                guard: None,
+                body: vec![arm_body(SourceSpan::from(24..25))],
+            },
+            HirMatchArm {
+                span: struct_pattern_span,
+                pattern: HirPattern {
+                    kind: HirPatternKind::Struct {
+                        span: struct_pattern_span,
+                        type_name: "Point".to_string(),
+                        fields: vec![
+                            ("x".to_string(), ident_pattern(SourceSpan::from(38..39), "x")),
+                            ("y".to_string(), ident_pattern(SourceSpan::from(41..42), "y")),
+                        ],
+                    },
+                    type_: Type::Primitive(Primitive::Int32),
+                },
+                guard: None,
+                body: vec![arm_body(SourceSpan::from(44..45))],
+            },
+        ];
+        let items = vec![HirItem {
+            span: SourceSpan::from(0..50),
+            kind: HirItemKind::Function(HirFunction {
+                span: SourceSpan::from(0..50),
+                name: "main".to_string(),
+                public: true,
+                documentation: None,
+                params: vec![],
+                return_type: Type::Primitive(Primitive::Int32),
+                body: vec![HirStatement {
+                    kind: HirStatementKind::Expr(
+                        HirExpression {
+                            kind: HirExpressionKind::Match {
+                                span: match_span,
+                                value: Box::new(HirExpression {
+                                    kind: HirExpressionKind::Ident(
+                                        "s".to_string(),
+                                        SourceSpan::from(6..7),
+                                    ),
+                                    type_: Type::Primitive(Primitive::Int32),
+                                }),
+                                arms,
+                            },
+                            type_: Type::Primitive(Primitive::Int32),
+                        },
+                        match_span,
+                    ),
+                }],
+            }),
+        }];
+        let index = IndexBuilder::default().build(&items);
+        assert!(index
+            .patterns_at_pos
+            .contains_key(&enum_pattern_span.offset()));
+        assert!(index
+            .patterns_at_pos
+            .contains_key(&struct_pattern_span.offset()));
+        assert!(index.patterns_at_pos.contains_key(&20));
     }
 }

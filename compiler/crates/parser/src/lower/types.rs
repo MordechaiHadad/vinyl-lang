@@ -153,7 +153,12 @@ impl<'a> Lowerer<'a> {
         let element = self.lower_type(&children[0])?;
         let size_text = node_text(&children[1], self.source);
         let size: usize = size_text.parse().map_err(|_| {
-            self.span_error(&children[1], &format!("invalid array size `{size_text}`"))
+            self.error_at(
+                &children[1],
+                crate::error::ParserDiagnosticKind::InvalidArraySize {
+                    size: size_text.clone(),
+                },
+            )
         })?;
         Ok(Type::Array {
             element: Box::new(element),

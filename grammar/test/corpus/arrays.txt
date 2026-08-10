@@ -35,6 +35,27 @@ fn main() {
             (integer_literal)))))))
 
 ==================
+Array fill expression
+==================
+
+fn main() {
+    let a = [0; 10];
+}
+
+---
+
+(source_file
+  (function_definition
+    (value_identifier)
+    (parameters)
+    (block
+      (let_declaration
+        (value_identifier)
+        (array_expression
+          (integer_literal)
+          (integer_literal))))))
+
+==================
 Index expression
 ==================
 

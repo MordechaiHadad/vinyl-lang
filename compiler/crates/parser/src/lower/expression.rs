@@ -46,10 +46,30 @@ impl<'a> Lowerer<'a> {
             }
             "block" => self.lower_block(node).map(|s| Expression::Block(s, span())),
             "array_expression" => {
+                let mut cursor = node.walk();
+                let is_fill = node.children(&mut cursor).any(|child| child.kind() == ";");
                 let children = children(node);
-                let elements: Result<Vec<Expression>, _> =
-                    children.iter().map(|c| self.lower_expression(c)).collect();
-                elements.map(|e| Expression::Array(e, span()))
+                if is_fill {
+                    let value = self.lower_expression(&children[0])?;
+                    let size_text = node_text(&children[1], self.source);
+                    let size: usize = size_text.parse().map_err(|_| {
+                        self.error_at(
+                            &children[1],
+                            crate::error::ParserDiagnosticKind::InvalidArraySize {
+                                size: size_text.clone(),
+                            },
+                        )
+                    })?;
+                    Ok(Expression::ArrayFill {
+                        value: Box::new(value),
+                        size,
+                        span: span(),
+                    })
+                } else {
+                    let elements: Result<Vec<Expression>, _> =
+                        children.iter().map(|c| self.lower_expression(c)).collect();
+                    elements.map(|e| Expression::Array(e, span()))
+                }
             }
             "tuple_expression" => {
                 let children = children(node);

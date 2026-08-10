@@ -87,25 +87,32 @@ impl Formatter<'_> {
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
         let mut i = 0;
+        let mut prev_end: Option<usize> = None;
         while i < children.len() {
             let child = children[i];
             match child.kind() {
-                "comment" => {
-                    self.format_comment(child);
-                    self.newline();
-                    i += 1;
-                }
                 "public" => {
+                    self.preserve_gap(prev_end, child.start_byte());
                     self.emit("public ");
                     i += 1;
                 }
+                "comment" => {
+                    self.preserve_gap(prev_end, child.start_byte());
+                    self.format_comment(child);
+                    self.newline();
+                    prev_end = Some(child.end_byte());
+                    i += 1;
+                }
                 "attribute" => {
+                    self.preserve_gap(prev_end, child.start_byte());
                     self.emit_node(child);
                     self.newline();
+                    prev_end = Some(child.end_byte());
                     i += 1;
                 }
                 _ if child.is_named() => {
                     self.format_node(child);
+                    prev_end = Some(child.end_byte());
                     i += 1;
                     if i < children.len() {
                         let next_kind = children[i].kind();
@@ -124,6 +131,15 @@ impl Formatter<'_> {
                     i += 1;
                 }
             }
+        }
+    }
+
+    fn preserve_gap(&mut self, prev_end: Option<usize>, start: usize) {
+        if let Some(prev) = prev_end
+            && start > prev
+            && self.source[prev..start].chars().filter(|&c| c == '\n').count() > 1
+        {
+            self.newline();
         }
     }
 

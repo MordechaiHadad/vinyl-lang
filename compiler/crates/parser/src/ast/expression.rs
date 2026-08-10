@@ -54,6 +54,11 @@ pub enum Expression {
     },
     Tuple(Vec<Expression>, SourceSpan),
     Array(Vec<Expression>, SourceSpan),
+    ArrayFill {
+        value: Box<Expression>,
+        size: usize,
+        span: SourceSpan,
+    },
     EnumVariant {
         span: SourceSpan,
         type_name: String,
@@ -100,6 +105,7 @@ impl Expression {
             Expression::Index { span, .. } => *span,
             Expression::Tuple(_, s) => *s,
             Expression::Array(_, s) => *s,
+            Expression::ArrayFill { span, .. } => *span,
             Expression::Paren(_, s) => *s,
             Expression::Ref { span, .. } => *span,
             Expression::If { span, .. } => *span,

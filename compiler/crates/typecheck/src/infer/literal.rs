@@ -155,6 +155,9 @@ impl InferState {
                     self.validate_literal_types_expr(e, errors);
                 }
             }
+            HirExpressionKind::ArrayFill { value, .. } => {
+                self.validate_literal_types_expr(value, errors);
+            }
             HirExpressionKind::If {
                 condition,
                 then_block,

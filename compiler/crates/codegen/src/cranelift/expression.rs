@@ -33,6 +33,18 @@ fn is_unsigned_type(t: &Type) -> bool {
     )
 }
 
+fn is_zero_constant(kind: &HirExpressionKind) -> bool {
+    match kind {
+        HirExpressionKind::Int(value, _) => *value == 0,
+        HirExpressionKind::UInt(value, _) => *value == 0,
+        HirExpressionKind::Float(value, _) => *value == 0.0,
+        HirExpressionKind::Bool(value, _) => !value,
+        HirExpressionKind::Char(value, _) => *value == '\0',
+        HirExpressionKind::Unit(_) => true,
+        _ => false,
+    }
+}
+
 fn print_tag(t: &Type) -> u8 {
     match t {
         Type::Primitive(
@@ -498,39 +510,11 @@ impl<'a> CodegenCtx<'a> {
                 ))
             }
             HirExpressionKind::Array(elements, _) => {
-                let element_type = match &expr.type_ {
-                    Type::Array { element, .. } => element.as_ref(),
-                    _ => &Type::Primitive(Primitive::Int32),
-                };
+                let (base, element_type) = self.array_slot(&expr.type_)?;
                 let elem_size = crate::layout::array_element_stride(
-                    element_type,
+                    &element_type,
                     self.module.types,
                     self.module.pointer_type.bytes(),
-                );
-                let slot = self
-                    .func
-                    .builder
-                    .create_sized_stack_slot(StackSlotData::new(
-                        StackSlotKind::ExplicitSlot,
-                        crate::layout::size_of(
-                            &expr.type_,
-                            self.module.types,
-                            self.module.pointer_type.bytes(),
-                        ),
-                        0,
-                    ));
-                let base = self
-                    .func
-                    .builder
-                    .ins()
-                    .stack_addr(self.module.pointer_type, slot, 0);
-                self.zero_slot(
-                    base,
-                    crate::layout::size_of(
-                        &expr.type_,
-                        self.module.types,
-                        self.module.pointer_type.bytes(),
-                    ),
                 );
                 for (i, element) in elements.iter().enumerate() {
                     let val = self.compile_expr(element)?;
@@ -540,7 +524,30 @@ impl<'a> CodegenCtx<'a> {
                         .ins()
                         .iconst(self.module.pointer_type, (i as i64) * (elem_size as i64));
                     let addr = self.func.builder.ins().iadd(base, offset);
-                    self.store_by_value(element_type, val, addr)?;
+                    self.store_by_value(&element_type, val, addr)?;
+                }
+                Ok(base)
+            }
+            HirExpressionKind::ArrayFill {
+                value, size, ..
+            } => {
+                let (base, element_type) = self.array_slot(&expr.type_)?;
+                if !is_zero_constant(&value.kind) {
+                    let elem_size = crate::layout::array_element_stride(
+                        &element_type,
+                        self.module.types,
+                        self.module.pointer_type.bytes(),
+                    );
+                    let val = self.compile_expr(value)?;
+                    for i in 0..*size {
+                        let offset = self
+                            .func
+                            .builder
+                            .ins()
+                            .iconst(self.module.pointer_type, (i as i64) * (elem_size as i64));
+                        let addr = self.func.builder.ins().iadd(base, offset);
+                        self.store_by_value(&element_type, val, addr)?;
+                    }
                 }
                 Ok(base)
             }
@@ -1675,14 +1682,41 @@ impl<'a> CodegenCtx<'a> {
         Ok(())
     }
 
+    /// Allocates a zero-filled stack slot for an array-typed expression and
+    /// returns the base address together with its element type.
+    pub(super) fn array_slot(
+        &mut self,
+        type_: &Type,
+    ) -> Result<(ir::Value, Type), CraneliftError> {
+        let element_type = match type_ {
+            Type::Array { element, .. } => *element.clone(),
+            _ => Type::Primitive(Primitive::Int32),
+        };
+        let size = crate::layout::size_of(
+            type_,
+            self.module.types,
+            self.module.pointer_type.bytes(),
+        );
+        let slot = self
+            .func
+            .builder
+            .create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, size, 0));
+        let base = self
+            .func
+            .builder
+            .ins()
+            .stack_addr(self.module.pointer_type, slot, 0);
+        self.zero_slot(base, size);
+        Ok((base, element_type))
+    }
+
     /// Zero the first `size` bytes at `base` so padding bytes in aggregate
     /// literal slots are deterministic (equality memcmp and slot copies rely
     /// on them being stable).
     pub(super) fn zero_slot(&mut self, base: ir::Value, size: u32) {
         let pointer_type = self.module.pointer_type;
         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-        let mut offset = 0u32;
-        while offset + 8 <= size {
+        let mut offset = 0u32;        while offset + 8 <= size {
             let addr = if offset == 0 {
                 base
             } else {

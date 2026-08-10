@@ -59,6 +59,7 @@ fn prescan_expr(expr: &HirExpression, refed: &mut HashSet<String>) {
                 prescan_expr(elem, refed);
             }
         }
+        HirExpressionKind::ArrayFill { value, .. } => prescan_expr(value, refed),
         HirExpressionKind::Index { array, index, .. } => {
             prescan_expr(array, refed);
             prescan_expr(index, refed);

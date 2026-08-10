@@ -8,6 +8,19 @@ pub struct HirPattern {
     pub type_: Type,
 }
 
+impl HirPattern {
+    pub fn span(&self) -> SourceSpan {
+        match &self.kind {
+            HirPatternKind::Wildcard(span)
+            | HirPatternKind::Ident { span, .. }
+            | HirPatternKind::Literal { span, .. }
+            | HirPatternKind::Struct { span, .. }
+            | HirPatternKind::Tuple { span, .. }
+            | HirPatternKind::EnumVariant { span, .. } => *span,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum HirPatternKind {
     Wildcard(SourceSpan),

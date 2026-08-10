@@ -356,10 +356,19 @@ export default grammar({
       field("field", choice($.value_identifier, $.integer_literal)),
     )),
 
-    array_expression: $ => seq(
-      "[",
-      commaSep($._expression),
-      "]",
+    array_expression: $ => choice(
+      seq(
+        "[",
+        $._expression,
+        ";",
+        $.integer_literal,
+        "]",
+      ),
+      seq(
+        "[",
+        commaSep($._expression),
+        "]",
+      ),
     ),
 
     tuple_expression: $ => seq(

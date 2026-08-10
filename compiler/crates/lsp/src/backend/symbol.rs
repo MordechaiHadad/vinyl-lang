@@ -2,7 +2,7 @@ use std::path::Path;
 
 use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
-use vinyl_typecheck::hir::{HirExpressionKind, HirItemKind, Type};
+use vinyl_typecheck::hir::{HirExpressionKind, HirItemKind, HirPatternKind, Type};
 use vinyl_typecheck::{Definition, DefinitionKind, SourceSpan};
 
 use crate::backend::state::{Analysis, Backend};
@@ -81,6 +81,9 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
             });
         }
     }
+    if let Some(symbol) = resolve_pattern(analysis, offset) {
+        return Some(symbol);
+    }
     let innermost = analysis
         .result
         .expr_at_pos
@@ -116,37 +119,10 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                 }
             }
             HirExpressionKind::EnumVariant { span, type_name, .. } => {
-                if let Some((colon, _, variant)) = split_segments(source, *span) {
-                    let variant_start = span.offset() + colon + 2;
-                    if offset >= variant_start {
-                        Some(SymbolRef::Variant {
-                            type_name: type_name.clone(),
-                            name: variant,
-                        })
-                    } else {
-                        Some(SymbolRef::Type {
-                            name: type_name.clone(),
-                        })
-                    }
-                } else {
-                    None
-                }
+                variant_or_type_symbol(source, *span, type_name, offset)
             }
-            HirExpressionKind::Struct {
-                span, type_name, ..
-            } => {
-                let source_text = source.get(span.offset()..)?;
-                let type_end = source_text
-                    .find('{')
-                    .map(|index| span.offset() + index)
-                    .unwrap_or_else(|| span.offset() + type_name.len());
-                if offset < type_end {
-                    Some(SymbolRef::Type {
-                        name: type_name.clone(),
-                    })
-                } else {
-                    None
-                }
+            HirExpressionKind::Struct { span, type_name, .. } => {
+                struct_type_symbol(source, *span, type_name, offset)
             }
             _ => None,
         };
@@ -164,6 +140,76 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
     Some(SymbolRef::Ident {
         name: definition.name.clone(),
         span: definition.span,
+    })
+}
+
+fn resolve_pattern(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
+    let source = &analysis.source;
+    let innermost = analysis
+        .result
+        .patterns_at_pos
+        .values()
+        .filter(|pattern| {
+            let span = pattern.span();
+            span_contains(
+                (span.offset(), span.offset() + span.len()),
+                offset,
+            )
+        })
+        .min_by_key(|pattern| pattern.span().len())?;
+    match &innermost.kind {
+        HirPatternKind::EnumVariant { span, type_name, .. } => {
+            variant_or_type_symbol(source, *span, type_name, offset)
+        }
+        HirPatternKind::Struct { span, type_name, .. } => {
+            struct_type_symbol(source, *span, type_name, offset)
+        }
+        HirPatternKind::Tuple { .. }
+        | HirPatternKind::Ident { .. }
+        | HirPatternKind::Literal { .. }
+        | HirPatternKind::Wildcard(_) => None,
+    }
+}
+
+/// Maps a cursor offset inside an enum variant path to either the enclosing
+/// type or the variant, depending on which half of the path the cursor is in.
+/// Shared by expression and pattern resolution so both stay in sync.
+fn variant_or_type_symbol(
+    source: &str,
+    span: SourceSpan,
+    type_name: &str,
+    offset: usize,
+) -> Option<SymbolRef> {
+    let (colon, _, variant) = split_segments(source, span)?;
+    let variant_start = span.offset() + colon + 2;
+    if offset >= variant_start {
+        Some(SymbolRef::Variant {
+            type_name: type_name.to_string(),
+            name: variant,
+        })
+    } else {
+        Some(SymbolRef::Type {
+            name: type_name.to_string(),
+        })
+    }
+}
+
+/// Maps a cursor offset inside a struct literal or pattern to the type, as
+/// long as the cursor is before the opening brace. Shared by expression and
+/// pattern resolution.
+fn struct_type_symbol(
+    source: &str,
+    span: SourceSpan,
+    type_name: &str,
+    offset: usize,
+) -> Option<SymbolRef> {
+    let source_text = source.get(span.offset()..)?;
+    let type_end = source_text
+        .find('{')
+        .map(|index| span.offset() + index)
+        .unwrap_or_else(|| span.offset() + type_name.len());
+    (offset < type_end).then(|| SymbolRef::Type {
+        name: type_name.to_string(),
     })
 }
 
@@ -394,10 +440,10 @@ impl Backend {
             }
         }
         for candidate in candidates {
-            if let Some(module_path) = &module_path {
-                if !crate::backend::workspace::same_file(&candidate.path, module_path) {
-                    continue;
-                }
+            if let Some(module_path) = &module_path
+                && !crate::backend::workspace::same_file(&candidate.path, module_path)
+            {
+                continue;
             }
             let (span_offset, span_len) = match kind {
                 MemberKind::Field => candidate
@@ -463,5 +509,69 @@ impl Backend {
             uri,
             span_range(&line_index, start, end - start),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+    use vinyl_parser::parse_and_lower;
+    use vinyl_typecheck::module::ModuleTable;
+
+    fn analyze(source: &str) -> Analysis {
+        let items = parse_and_lower(source).expect("source should parse");
+        let (result, _warnings) =
+            vinyl_typecheck::typeck_with_index(&items, source, "test.vn", &ModuleTable::new())
+                .expect("source should typecheck");
+        Analysis {
+            path: PathBuf::from("test.vn"),
+            source: source.to_string(),
+            line_index: LineIndex::new(source),
+            result,
+        }
+    }
+
+    fn line_offset(source: &str, line: usize, character: usize) -> usize {
+        source
+            .lines()
+            .take(line)
+            .map(|line_text| line_text.len() + 1)
+            .sum::<usize>()
+            + character
+    }
+
+    #[test]
+    fn resolves_enum_variant_match_pattern() {
+        let source = "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn classify(s: Shape): int32 {\n    match s {\n        Shape::Circle(r) => r,\n        Shape::Square(r) => r,\n        Shape::Empty() => 0,\n    }\n}\n";
+        let analysis = analyze(source);
+        let offset = line_offset(source, 4, 16);
+        match resolve_symbol(&analysis, offset) {
+            Some(SymbolRef::Variant { name, .. }) => assert_eq!(name, "Circle"),
+            other => panic!("expected Variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolves_struct_match_pattern() {
+        let source = "struct Point { x: int32, y: int32 }\n\nfn origin(p: Point): int32 {\n    match p {\n        Point { x, y } => x,\n        _ => 0,\n    }\n}\n";
+        let analysis = analyze(source);
+        let offset = line_offset(source, 4, 10);
+        match resolve_symbol(&analysis, offset) {
+            Some(SymbolRef::Type { name }) => assert_eq!(name, "Point"),
+            other => panic!("expected Type, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pattern_variant_beats_ident_resolution() {
+        let source = "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn classify(s: Shape): int32 {\n    match s {\n        Shape::Circle(r) => r,\n        Shape::Square(r) => r,\n        Shape::Empty() => 0,\n    }\n}\n";
+        let analysis = analyze(source);
+        let r_offset = line_offset(source, 4, 22);
+        match resolve_symbol(&analysis, r_offset) {
+            Some(SymbolRef::Ident { name, .. }) => assert_eq!(name, "r"),
+            other => panic!("expected Ident, got {other:?}"),
+        }
     }
 }

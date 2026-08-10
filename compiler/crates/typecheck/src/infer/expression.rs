@@ -483,6 +483,23 @@ impl InferState {
                     },
                 })
             }
+            Expression::ArrayFill {
+                value, size, span,
+            } => {
+                let hir_value = self.infer_expr(value, signatures)?;
+                let element_type = self.subs.apply(&hir_value.type_);
+                Ok(HirExpression {
+                    kind: HirExpressionKind::ArrayFill {
+                        span: *span,
+                        value: Box::new(hir_value),
+                        size: *size,
+                    },
+                    type_: Type::Array {
+                        element: Box::new(element_type),
+                        size: *size,
+                    },
+                })
+            }
             Expression::Index { array, index, span } => {
                 let hir_array = self.infer_expr(array, signatures)?;
                 let hir_index = self.infer_expr(index, signatures)?;

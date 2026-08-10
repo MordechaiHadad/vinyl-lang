@@ -69,3 +69,19 @@ fn array_bool_index_false() {
         0
     );
 }
+
+#[test]
+fn array_fill() {
+    assert_eq!(
+        common::run("fn main(): int32 { let arr = [7; 3]; arr[2] }").unwrap(),
+        7
+    );
+}
+
+#[test]
+fn array_zero_fill() {
+    assert_eq!(
+        common::run("fn main(): int32 { let arr = [0; 8]; arr[5] }").unwrap(),
+        0
+    );
+}

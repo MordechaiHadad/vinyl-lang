@@ -30,6 +30,10 @@ pub enum ParserDiagnosticKind {
     #[diagnostic(code(parser::unexpected_token))]
     UnexpectedToken { token: String },
 
+    #[error("invalid array size `{size}`")]
+    #[diagnostic(code(parser::invalid_array_size))]
+    InvalidArraySize { size: String },
+
     #[error("{message}")]
     #[diagnostic(code(parser::lowering_error))]
     Lowering { message: String },

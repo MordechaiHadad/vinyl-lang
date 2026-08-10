@@ -19,10 +19,14 @@ impl<'a> Lowerer<'a> {
     }
 
     pub(super) fn span_error(&self, node: &Node, message: &str) -> ParserDiagnostic {
+        self.error_at(node, ParserDiagnosticKind::Lowering {
+            message: message.to_string(),
+        })
+    }
+
+    pub(super) fn error_at(&self, node: &Node, kind: ParserDiagnosticKind) -> ParserDiagnostic {
         ParserDiagnostic {
-            kind: ParserDiagnosticKind::Lowering {
-                message: message.to_string(),
-            },
+            kind,
             source_code: NamedSource::new(self.source_name, self.source.to_string()),
             span: SourceSpan::from(node.start_byte()..node.end_byte()),
         }

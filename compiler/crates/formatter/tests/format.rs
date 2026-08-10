@@ -166,6 +166,27 @@ fn format_range_delegates_to_full_format() {
 }
 
 #[test]
+fn preserves_blank_line_above_attribute() {
+    let input = "fn a(): int {\n    1\n}\n\n@doc(\"x\")\nfn b(): int {\n    2\n}";
+    let expected = "fn a(): int {\n    1\n}\n\n@doc(\"x\")\nfn b(): int {\n    2\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn collapses_multiple_blank_lines_above_attribute_to_one() {
+    let input = "fn a(): int {\n    1\n}\n\n\n\n@doc(\"x\")\nfn b(): int {\n    2\n}";
+    let expected = "fn a(): int {\n    1\n}\n\n@doc(\"x\")\nfn b(): int {\n    2\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn preserves_blank_line_above_public_definition() {
+    let input = "fn a(): int {\n    1\n}\n\npublic fn b(): int {\n    2\n}";
+    let expected = "fn a(): int {\n    1\n}\n\npublic fn b(): int {\n    2\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
 fn format_project_empty_src() {
     let root = project("empty", &[]);
     fs::create_dir_all(root.join("src")).unwrap();

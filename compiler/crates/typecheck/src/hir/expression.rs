@@ -44,6 +44,11 @@ pub enum HirExpressionKind {
         index: Box<HirExpression>,
     },
     Array(Vec<HirExpression>, SourceSpan),
+    ArrayFill {
+        span: SourceSpan,
+        value: Box<HirExpression>,
+        size: usize,
+    },
     If {
         span: SourceSpan,
         condition: Box<HirExpression>,

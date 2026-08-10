@@ -2289,6 +2289,61 @@ fn goto_definition_on_enum_variant() {
 }
 
 #[test]
+fn goto_definition_on_enum_variant_match_pattern() {
+    let project = TestProject::new();
+    let main_text =
+        "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn classify(s: Shape): int32 {\n    match s {\n        Shape::Circle(r) => r,\n        Shape::Square(r) => r,\n        Shape::Empty() => 0,\n    }\n}\n\nfn main() {\n    let c = classify(Shape::Circle(5));\n}\n";
+    std::fs::write(&project.main, main_text).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "initialized", "params": {}
+    }));
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": {
+            "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+                "text": main_text }
+        }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": {
+            "textDocument": { "uri": main_uri },
+            "position": { "line": 4, "character": 16 }
+        }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"], main_uri,
+        "goto-definition on a match pattern variant should resolve to the variant, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 20}),
+        "variant definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 0, "character": 26}),
+        "variant definition range end mismatch, got: {}",
+        definition
+    );
+}
+
+#[test]
 fn goto_definition_on_module_segment() {
     let project = TestProject::new();
     let main_uri = TestProject::uri(&project.main);
