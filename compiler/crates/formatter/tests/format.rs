@@ -44,6 +44,20 @@ fn formats_public_fn() {
 }
 
 #[test]
+fn formats_mut_parameter() {
+    let input = "fn swap(mut a : int , b : int): unit { a = b ; }";
+    let expected = "fn swap(mut a: int, b: int): unit {\n    a = b;\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_bare_return() {
+    let input = "fn f(): unit { return ; }";
+    let expected = "fn f(): unit {\n    return;\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
 fn formats_if_else() {
     let input = "fn max(a:int,b:int):int{if a>b{return a;}else{return b;}}";
     let expected = "fn max(a: int, b: int): int {\n    if a > b {\n        return a;\n    } else {\n        return b;\n    }\n}";

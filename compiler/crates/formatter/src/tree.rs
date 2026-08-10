@@ -1,30 +1,35 @@
-use std::ops::Range;
-
 use tree_sitter::Node;
 
 use crate::FormatterConfig;
 use crate::error::FormatError;
 
-pub fn format_source(source: &str) -> Result<String, FormatError> {
-    format_source_with_config(source, &FormatterConfig::default())
-}
-
-pub fn format_source_with_config(
+/// Formats a source string by walking its syntax tree and emitting normalized
+/// tokens, preserving CRLF line endings when the source uses them.
+pub(crate) fn format_source_with_config(
     source: &str,
     config: &FormatterConfig,
 ) -> Result<String, FormatError> {
-    let tree = vinyl_parser::parse(source)
-        .map_err(|errors| FormatError::Parse(Box::new(errors.into_iter().next().unwrap())))?;
+    let tree = vinyl_parser::parse(source).map_err(|errors| {
+        let diagnostic = errors
+            .into_iter()
+            .next()
+            .expect("parser error list should never be empty");
+        FormatError::Parse(Box::new(diagnostic))
+    })?;
     let root = tree.root_node();
     let indent_str = " ".repeat(config.indent_width);
-    let mut f = Formatter {
+    let mut formatter = Formatter {
         source,
         output: String::new(),
         indent: 0,
         indent_str,
     };
-    f.format_root(root);
-    let normalized = f.output.replace("\r\n", "\n").trim_end().to_string();
+    formatter.format_root(root);
+    let normalized = formatter
+        .output
+        .replace("\r\n", "\n")
+        .trim_end()
+        .to_string();
     let with_newline = if source.ends_with('\n') && !normalized.ends_with('\n') {
         format!("{normalized}\n")
     } else {
@@ -39,26 +44,40 @@ pub fn format_source_with_config(
 }
 
 // todo: support formatting a range of the source code, currently just formats the whole source
-pub fn format_range(
-    source: &str,
-    config: &FormatterConfig,
-    _range: Range<usize>,
-) -> Result<String, FormatError> {
+/// Formats a byte range of a source string.
+///
+/// Range formatting is not yet implemented; the whole source is formatted and
+/// the range is ignored. The LSP and CLI format whole documents.
+pub(crate) fn format_range(source: &str, config: &FormatterConfig) -> Result<String, FormatError> {
     format_source_with_config(source, config)
 }
 
+/// The formatting engine: walks the syntax tree and accumulates normalized
+/// output, tracking the current indentation level.
 struct Formatter<'a> {
+    /// The original source, used to emit token text verbatim.
     source: &'a str,
+    /// The formatted output accumulated so far.
     output: String,
+    /// Current indentation level, in units of `indent_str`.
     indent: usize,
+    /// One level of indentation (e.g. four spaces).
     indent_str: String,
 }
 
-impl Formatter<'_> {
-    fn text(&self, node: Node) -> &str {
+impl<'a> Formatter<'a> {
+    /// Returns the node's exact slice of the source.
+    fn text(&self, node: Node) -> &'a str {
         &self.source[node.start_byte()..node.end_byte()]
     }
 
+    /// Returns the node's source text with surrounding whitespace trimmed.
+    fn trimmed_text(&self, node: Node) -> &'a str {
+        self.text(node).trim()
+    }
+
+    /// Appends `text`, first writing `indent` levels of indentation when the
+    /// output is at the start of a line.
     fn emit(&mut self, text: &str) {
         if self.output.is_empty() || self.output.ends_with('\n') {
             for _ in 0..self.indent {
@@ -68,21 +87,28 @@ impl Formatter<'_> {
         self.output.push_str(text);
     }
 
+    /// Emits the node's source text verbatim.
     fn emit_node(&mut self, node: Node) {
-        let start = node.start_byte();
-        let end = node.end_byte();
-        if self.output.is_empty() || self.output.ends_with('\n') {
-            for _ in 0..self.indent {
-                self.output.push_str(&self.indent_str);
-            }
-        }
-        self.output.push_str(&self.source[start..end]);
+        let text = self.text(node);
+        self.emit(text);
     }
 
+    /// Formats a child node, dispatching on whether it is named.
+    fn format_child(&mut self, child: Node) {
+        if child.is_named() {
+            self.format_node(child);
+        } else {
+            self.emit_node(child);
+        }
+    }
+
+    /// Appends a newline to the output.
     fn newline(&mut self) {
         self.output.push('\n');
     }
 
+    /// Formats the top-level definitions of a source file, separating items
+    /// with a blank line while preserving a single blank line where present.
     fn format_root(&mut self, node: Node) {
         let mut cursor = node.walk();
         let children: Vec<Node> = node.children(&mut cursor).collect();
@@ -134,18 +160,24 @@ impl Formatter<'_> {
         }
     }
 
+    /// Collapses a gap of two or more newlines to a single blank line.
     fn preserve_gap(&mut self, prev_end: Option<usize>, start: usize) {
         if let Some(prev) = prev_end
             && start > prev
-            && self.source[prev..start].chars().filter(|&c| c == '\n').count() > 1
+            && self.source[prev..start]
+                .chars()
+                .filter(|&c| c == '\n')
+                .count()
+                > 1
         {
             self.newline();
         }
     }
 
+    /// Dispatches a named node to its formatter, falling back to
+    /// [`format_default`](Self::format_default) for unhandled node kinds.
     fn format_node(&mut self, node: Node) {
-        let kind = node.kind().to_string();
-        match kind.as_str() {
+        match node.kind() {
             "function_definition" => self.format_function_def(node),
             "struct_definition" => self.format_struct_def(node),
             "field_definition" => self.format_field_def(node),
@@ -153,9 +185,13 @@ impl Formatter<'_> {
             "enum_definition" => self.format_enum_def(node),
             "type_alias_definition" => self.format_type_alias(node),
             "block" => self.format_block(node),
-            "parameters" | "arguments" => self.format_parenthesized_list(node),
+            "parameter" => self.format_parameter(node),
+            "parameters"
+            | "arguments"
+            | "tuple_type"
+            | "parenthesized_expression"
+            | "tuple_expression" => self.format_paren_list(node),
             "type_annotation" => self.format_type_annotation(node),
-            "tuple_type" => self.format_parenthesized_list(node),
             "binary_expression" | "pipe_expression" => self.format_infix(node),
             "unary_expression" => self.format_prefix(node),
             "if_expression" => self.format_if(node),
@@ -168,44 +204,37 @@ impl Formatter<'_> {
             "return_statement" => self.format_return(node),
             "expression_statement" => self.format_expr_stmt(node),
             "assignment_statement" => self.format_assignment(node),
-            "call_expression" => self.format_call(node),
-            "parenthesized_expression" => self.format_paren(node),
-            "tuple_expression" => self.format_tuple_expr(node),
             "string_literal" | "raw_string_literal" | "char_literal" | "integer_literal"
             | "float_literal" | "bool_literal" | "unit_literal" | "primitive_type" => {
                 self.emit_node(node);
             }
-            "struct_literal_expression" => self.format_struct_literal(node),
-            "scoped_type_expression" | "scoped_value_expression" => self.format_scoped(node),
             "comment" => self.format_comment(node),
             _ => self.format_default(node),
         }
     }
 
+    /// Formats an unrecognized node by recursively formatting its children,
+    /// emitting a leaf node's source text verbatim.
     fn format_default(&mut self, node: Node) {
-        let mut cursor = node.walk();
-        let mut has_children = false;
-        for child in node.children(&mut cursor) {
-            has_children = true;
-            if child.is_named() {
-                self.format_node(child);
-            } else {
-                self.emit_node(child);
-            }
-        }
-        if !has_children && node.is_named() {
+        if node.child_count() == 0 && node.is_named() {
             self.emit_node(node);
+            return;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.format_child(child);
         }
     }
 
+    /// Formats a `fn` definition: name, parameters, optional return type, and
+    /// body block.
     fn format_function_def(&mut self, node: Node) {
         self.emit("fn ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "value_identifier" | "type_identifier" => self.emit_node(child),
-                "parameters" => self.format_parenthesized_list(child),
+                "parameters" => self.format_paren_list(child),
                 "type_annotation" => self.format_type_annotation(child),
                 "block" => {
                     self.emit(" ");
@@ -216,40 +245,12 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a struct definition with each field on its own line.
     fn format_struct_def(&mut self, node: Node) {
-        self.emit("struct ");
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
-                "value_identifier" | "type_identifier" => self.emit_node(child),
-                "struct" => {}
-                "{" => self.emit(" {"),
-                "}" => {
-                    self.newline();
-                    self.emit("}");
-                }
-                "field_definition" => {
-                    self.newline();
-                    self.indent += 1;
-                    self.format_node(child);
-                    self.indent -= 1;
-                }
-                "," => self.emit(","),
-                _ => {
-                    if child.is_named() {
-                        self.format_node(child);
-                    } else {
-                        let text = self.text(child).to_string();
-                        if !text.trim().is_empty() {
-                            self.emit(&text);
-                        }
-                    }
-                }
-            }
-        }
+        self.format_braced_members(node, "struct", "field_definition");
     }
 
+    /// Formats a struct field, emitting the `public` keyword when present.
     fn format_field_def(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -265,58 +266,65 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a tuple type definition.
     fn format_tuple_def(&mut self, node: Node) {
         self.emit("tuple ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "value_identifier" | "type_identifier" => self.emit_node(child),
                 "tuple" => {}
                 "(" => self.emit(" ("),
                 ")" => self.emit(")"),
                 "," => self.emit(", "),
+                _ if child.is_named() => self.format_node(child),
+                _ => self.emit_node(child),
+            }
+        }
+    }
+
+    /// Formats an enum definition with each variant on its own line.
+    fn format_enum_def(&mut self, node: Node) {
+        self.format_braced_members(node, "enum", "enum_variant");
+    }
+
+    /// Formats a `struct` or `enum` definition: each `member_kind` child goes
+    /// on its own indented line, with members separated by commas.
+    fn format_braced_members(&mut self, node: Node, keyword: &str, member_kind: &str) {
+        self.emit(&format!("{keyword} "));
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "{" => self.emit(" {"),
+                "}" => {
+                    self.newline();
+                    self.emit("}");
+                }
+                "," => self.emit(","),
+                _ if child.kind() == keyword => {}
+                _ if child.kind() == member_kind => {
+                    self.newline();
+                    self.indent += 1;
+                    self.format_node(child);
+                    self.indent -= 1;
+                }
+                _ if child.is_named() => self.format_node(child),
                 _ => {
-                    if child.is_named() {
-                        self.format_node(child);
-                    } else {
-                        self.emit_node(child);
+                    let text = self.trimmed_text(child);
+                    if !text.is_empty() {
+                        self.emit(text);
                     }
                 }
             }
         }
     }
 
-    fn format_enum_def(&mut self, node: Node) {
-        self.emit("enum ");
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
-                "value_identifier" | "type_identifier" => self.emit_node(child),
-                "{" => self.emit(" {"),
-                "}" => {
-                    self.newline();
-                    self.emit("}");
-                }
-                "enum_variant" => {
-                    self.newline();
-                    self.indent += 1;
-                    self.format_node(child);
-                    self.indent -= 1;
-                }
-                "," => self.emit(","),
-                _ => {}
-            }
-        }
-    }
-
+    /// Formats a `type` alias definition.
     fn format_type_alias(&mut self, node: Node) {
         self.emit("type ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "type" => {}
                 "=" => self.emit(" = "),
                 ";" => self.emit(";"),
@@ -326,6 +334,7 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a `: Type` annotation.
     fn format_type_annotation(&mut self, node: Node) {
         self.emit(": ");
         let mut cursor = node.walk();
@@ -336,23 +345,35 @@ impl Formatter<'_> {
         }
     }
 
-    fn format_parenthesized_list(&mut self, node: Node) {
+    /// Formats a comma-separated list inside parentheses (parameters,
+    /// arguments, tuple types, parenthesized and tuple expressions).
+    fn format_paren_list(&mut self, node: Node) {
         self.emit("(");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            if kind.as_str() == "(" || kind.as_str() == ")" {
-                continue;
-            }
-            if kind.as_str() == "," {
-                self.emit(", ");
-            } else if child.is_named() {
-                self.format_node(child);
+            match child.kind() {
+                "(" | ")" => {}
+                "," => self.emit(", "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
             }
         }
         self.emit(")");
     }
 
+    /// Formats a parameter, emitting the `mut` keyword when present.
+    fn format_parameter(&mut self, node: Node) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "mut" {
+                self.emit("mut ");
+            } else if child.is_named() {
+                self.format_node(child);
+            }
+        }
+    }
+
+    /// Formats a block, preserving a single blank line between statements.
     fn format_block(&mut self, node: Node) {
         let count = node.child_count();
         if count <= 2 {
@@ -367,12 +388,7 @@ impl Formatter<'_> {
             if let Some(child) = node.child(i as u32)
                 && (child.is_named() || child.kind() == "comment")
             {
-                if let Some(prev) = prev_end {
-                    let between = &self.source[prev..child.start_byte()];
-                    if between.chars().filter(|&c| c == '\n').count() > 1 {
-                        self.newline();
-                    }
-                }
+                self.preserve_gap(prev_end, child.start_byte());
                 self.format_node(child);
                 self.newline();
                 prev_end = Some(child.end_byte());
@@ -382,39 +398,36 @@ impl Formatter<'_> {
         self.emit("}");
     }
 
+    /// Formats a binary or pipe expression, padding operators with spaces.
     fn format_infix(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.is_named() {
                 self.format_node(child);
             } else {
-                let text = self.text(child).to_string();
-                let trimmed = text.trim().to_string();
-                if !trimmed.is_empty() {
-                    self.emit(&format!(" {} ", trimmed));
+                let text = self.trimmed_text(child);
+                if !text.is_empty() {
+                    self.emit(&format!(" {text} "));
                 }
             }
         }
     }
 
+    /// Formats a unary expression.
     fn format_prefix(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.is_named() {
-                self.format_node(child);
-            } else {
-                self.emit_node(child);
-            }
+            self.format_child(child);
         }
     }
 
+    /// Formats an if/else-if/else expression.
     fn format_if(&mut self, node: Node) {
         self.emit("if ");
         let mut cursor = node.walk();
         let mut after_else = false;
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "if" => continue,
                 "else" => after_else = true,
                 "block" => {
@@ -438,12 +451,12 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a `while` loop.
     fn format_while(&mut self, node: Node) {
         self.emit("while ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "while" => {}
                 "block" => {
                     self.emit(" ");
@@ -457,6 +470,7 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats an infinite `loop` block.
     fn format_loop(&mut self, node: Node) {
         self.emit("loop ");
         let mut cursor = node.walk();
@@ -470,12 +484,12 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a `match` expression with each arm on its own indented line.
     fn format_match(&mut self, node: Node) {
         self.emit("match ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "match" => {}
                 "{" => {
                     self.emit(" {");
@@ -498,11 +512,12 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a single match arm, padding the `=>` and any guard `if` with
+    /// spaces.
     fn format_match_arm(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "=>" => self.emit(" => "),
                 "," => {}
                 "if" => self.emit(" if "),
@@ -512,12 +527,12 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats an import statement.
     fn format_import(&mut self, node: Node) {
         self.emit("import ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "import" => {}
                 ";" => self.emit(";"),
                 "::" => self.emit("::"),
@@ -527,144 +542,74 @@ impl Formatter<'_> {
         }
     }
 
+    /// Formats a `let` declaration, emitting the `mut` keyword when present.
     fn format_let(&mut self, node: Node) {
         self.emit("let ");
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
+            match child.kind() {
                 "let" => {}
                 "mut" => self.emit("mut "),
                 "=" => self.emit(" = "),
                 ";" => self.emit(";"),
                 _ if child.is_named() => self.format_node(child),
-                _ => {
-                    let text = self.text(child).to_string();
-                    if text == ":" {
-                        self.emit(": ");
-                    } else {
-                        self.emit(&text);
-                    }
-                }
+                _ => self.emit_node(child),
             }
         }
     }
 
+    /// Formats a return statement, always emitting the trailing semicolon.
     fn format_return(&mut self, node: Node) {
         self.emit("return");
+        let mut has_value = false;
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            match kind.as_str() {
-                "return" | ";" => {}
-                _ if child.is_named() => {
-                    self.emit(" ");
-                    self.format_node(child);
-                    self.emit(";");
-                }
-                _ => {}
+            if child.is_named() {
+                self.emit(" ");
+                self.format_node(child);
+                self.emit(";");
+                has_value = true;
             }
+        }
+        if !has_value {
+            self.emit(";");
         }
     }
 
+    /// Formats an expression statement, emitting the trailing semicolon.
     fn format_expr_stmt(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            let kind = child.kind().to_string();
-            if kind.as_str() == ";" {
+            if child.kind() == ";" {
                 self.emit(";");
-            } else if child.is_named() {
-                self.format_node(child);
             } else {
-                self.emit_node(child);
+                self.format_child(child);
             }
         }
     }
 
+    /// Formats an assignment statement, padding the operator with spaces.
     fn format_assignment(&mut self, node: Node) {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.is_named() {
                 self.format_node(child);
             } else {
-                let text = self.text(child).to_string();
-                let trimmed = text.trim().to_string();
+                let trimmed = self.trimmed_text(child);
                 if trimmed == "=" {
                     self.emit(" = ");
                 } else if trimmed.ends_with('=') {
-                    self.emit(&format!(" {} ", trimmed));
+                    self.emit(&format!(" {trimmed} "));
                 } else if trimmed == ";" {
                     self.emit(";");
                 } else {
-                    self.emit(&trimmed);
+                    self.emit(trimmed);
                 }
             }
         }
     }
 
-    fn format_call(&mut self, node: Node) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.is_named() {
-                self.format_node(child);
-            } else {
-                self.emit_node(child);
-            }
-        }
-    }
-
-    fn format_paren(&mut self, node: Node) {
-        self.emit("(");
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.is_named() {
-                self.format_node(child);
-            }
-        }
-        self.emit(")");
-    }
-
-    fn format_tuple_expr(&mut self, node: Node) {
-        self.emit("(");
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if !child.is_named() {
-                let text = self.text(child).to_string();
-                if text == "(" || text == ")" {
-                    continue;
-                }
-                if text == "," {
-                    self.emit(", ");
-                }
-            } else {
-                self.format_node(child);
-            }
-        }
-        self.emit(")");
-    }
-
-    fn format_struct_literal(&mut self, node: Node) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.is_named() {
-                self.format_node(child);
-            } else {
-                self.emit_node(child);
-            }
-        }
-    }
-
-    fn format_scoped(&mut self, node: Node) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.is_named() {
-                self.format_node(child);
-            } else {
-                self.emit_node(child);
-            }
-        }
-    }
-
+    /// Emits a comment verbatim.
     fn format_comment(&mut self, node: Node) {
         self.emit_node(node);
     }

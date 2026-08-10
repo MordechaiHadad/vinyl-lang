@@ -1,11 +1,19 @@
+//! A formatter for the vinyl language, built on the tree-sitter syntax tree.
+//!
+//! The crate exposes three levels of entry points:
+//! - [`format_source`] / [`format_source_with_config`] format a source string.
+//! - [`format_path`] formats a single file in place.
+//! - [`format_project`] formats every file in a project or script.
+
 pub mod error;
 mod tree;
 
 pub use error::FormatError;
-
 use std::path::{Path, PathBuf};
 
+/// Configuration for the formatter.
 pub struct FormatterConfig {
+    /// Number of spaces used for one level of indentation.
     pub indent_width: usize,
 }
 
@@ -15,10 +23,12 @@ impl Default for FormatterConfig {
     }
 }
 
+/// Formats a source string using the default configuration.
 pub fn format_source(source: &str) -> Result<String, FormatError> {
-    tree::format_source(source)
+    format_source_with_config(source, &FormatterConfig::default())
 }
 
+/// Formats a source string with a custom configuration.
 pub fn format_source_with_config(
     source: &str,
     config: &FormatterConfig,
@@ -26,14 +36,20 @@ pub fn format_source_with_config(
     tree::format_source_with_config(source, config)
 }
 
+/// Formats a byte range of a source string.
+///
+/// Range formatting is not yet implemented; the whole source is formatted and
+/// the range is ignored. The LSP and CLI format whole documents.
+// todo: support formatting a range of the source code, currently just formats the whole source
 pub fn format_range(
     source: &str,
     config: &FormatterConfig,
-    range: std::ops::Range<usize>,
+    _range: std::ops::Range<usize>,
 ) -> Result<String, FormatError> {
-    tree::format_range(source, config, range)
+    tree::format_range(source, config)
 }
 
+/// Formats a single file in place, writing only when the output differs.
 pub fn format_path(path: &Path) -> Result<(), Vec<FormatError>> {
     let source = std::fs::read_to_string(path).map_err(|e| vec![FormatError::Io(e)])?;
     let formatted = format_source(&source).map_err(|e| vec![e])?;
@@ -43,6 +59,7 @@ pub fn format_path(path: &Path) -> Result<(), Vec<FormatError>> {
     Ok(())
 }
 
+/// Recursively collects every `*.vn` file under `dir`.
 fn collect_vn_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if let Ok(entries) = std::fs::read_dir(dir) {
@@ -58,6 +75,10 @@ fn collect_vn_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// Formats every file in a project or script, accumulating errors across files.
+///
+/// In manifest mode the module list comes from the resolver; in script mode
+/// every `*.vn` file under the root is formatted.
 pub fn format_project(source_root: &Path) -> Result<(), Vec<FormatError>> {
     let source_root = source_root
         .canonicalize()
