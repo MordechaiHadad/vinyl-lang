@@ -282,6 +282,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                         continue_target: None,
                         return_type: func.return_type.clone(),
                         sret_ptr,
+                        target,
                     },
                 };
 

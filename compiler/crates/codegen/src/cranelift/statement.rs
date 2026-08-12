@@ -30,52 +30,21 @@ impl<'a> CodegenCtx<'a> {
                 mutable,
                 ..
             } => {
-                let ptr_size = self.module.pointer_type.bytes();
-                if is_large_aggregate(type_, self.module.types, ptr_size) {
-                    // todo: always stack-backed, keep small aggregates in SSA values for perf
-                    let val = self.compile_expr(value)?;
-                    let slot = self
-                        .func
-                        .builder
-                        .create_sized_stack_slot(StackSlotData::new(
-                            StackSlotKind::ExplicitSlot,
-                            crate::layout::aggregate_slot_size(type_, self.module.types, ptr_size),
-                            0,
-                        ));
-                    let dest =
-                        self.func
-                            .builder
-                            .ins()
-                            .stack_addr(self.module.pointer_type, slot, 0);
-                    self.emit_memcpy(
-                        dest,
-                        val,
-                        crate::layout::aggregate_copy_size(type_, self.module.types, ptr_size),
-                    )?;
-                    self.func.vars.insert(
-                        name.clone(),
-                        VarInfo {
-                            slot: VarSlot::StackSlot(slot, self.module.pointer_type),
-                            vinyl_type: type_.clone(),
-                        },
-                    );
-                } else {
-                    let val = self.compile_expr(value)?;
-                    let address_taken = self.func.ref_vars.contains(name);
-                    let slot = LocalBuilder::new(self, name.clone())
-                        .typed(type_.clone())
-                        .initialized(val)
-                        .mutable_if(*mutable)
-                        .address_taken_if(address_taken)
-                        .build()?;
-                    self.func.vars.insert(
-                        name.clone(),
-                        VarInfo {
-                            slot,
-                            vinyl_type: type_.clone(),
-                        },
-                    );
-                }
+                let val = self.compile_expr(value)?;
+                let address_taken = self.func.ref_vars.contains(name);
+                let slot = LocalBuilder::new(self, name.clone())
+                    .typed(type_.clone())
+                    .initialized(val)
+                    .mutable_if(*mutable)
+                    .address_taken_if(address_taken)
+                    .build()?;
+                self.func.vars.insert(
+                    name.clone(),
+                    VarInfo {
+                        slot,
+                        vinyl_type: type_.clone(),
+                    },
+                );
                 Ok(())
             }
             HirStatementKind::Expr(expr, _) => {

@@ -46,4 +46,9 @@ impl AggregateAbi {
     pub const fn is_indirect(self) -> bool {
         matches!(self, Self::Indirect)
     }
+
+    /// Returns whether the backend must materialize this value in memory.
+    pub const fn needs_memory_storage(self) -> bool {
+        matches!(self, Self::Indirect | Self::Registers { count: 2 })
+    }
 }

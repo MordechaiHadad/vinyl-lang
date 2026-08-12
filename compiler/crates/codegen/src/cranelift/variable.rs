@@ -145,6 +145,37 @@ impl<'a> FunctionBackend for CodegenCtx<'a> {
         mutable: bool,
         address_taken: bool,
     ) -> Result<VarSlot, CraneliftError> {
+        if crate::layout::is_aggregate(type_)
+            && self
+                .func
+                .target
+                .aggregate_abi(type_, self.module.types)
+                .needs_memory_storage()
+        {
+            let pointer_type = self.module.pointer_type;
+            let slot = self.func.builder.create_sized_stack_slot(
+                cranelift_codegen::ir::StackSlotData::new(
+                    cranelift_codegen::ir::StackSlotKind::ExplicitSlot,
+                    crate::layout::aggregate_slot_size(
+                        type_,
+                        self.module.types,
+                        self.func.target.pointer_size,
+                    ),
+                    0,
+                ),
+            );
+            let destination = self.func.builder.ins().stack_addr(pointer_type, slot, 0);
+            self.emit_memcpy(
+                destination,
+                value,
+                crate::layout::aggregate_copy_size(
+                    type_,
+                    self.module.types,
+                    self.func.target.pointer_size,
+                ),
+            )?;
+            return Ok(VarSlot::StackSlot(slot, pointer_type));
+        }
         let mode = if address_taken {
             VarMode::StackSlot
         } else {

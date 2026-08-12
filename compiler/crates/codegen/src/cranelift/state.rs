@@ -6,6 +6,8 @@ use cranelift_jit::JITModule;
 use cranelift_module::FuncId;
 use vinyl_typecheck::hir::{HirItemKind, HirParam, Type};
 
+use crate::abi::TargetData;
+
 /// A local variable and its Vinyl type.
 pub struct VarInfo {
     pub slot: VarSlot,
@@ -39,6 +41,7 @@ pub struct FuncEnv<'a> {
     pub continue_target: Option<ir::Block>,
     pub return_type: Type,
     pub sret_ptr: Option<ir::Value>,
+    pub target: TargetData,
 }
 
 /// Backend context used while emitting one function.
