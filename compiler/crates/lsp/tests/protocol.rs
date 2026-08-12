@@ -4024,3 +4024,65 @@ fn hover_qualified_enum_shows_signature_and_doc() {
         );
     }
 }
+
+#[test]
+fn goto_definition_qualified_enum_variant_with_colliding_module_names() {
+    let project = TestProject::new();
+    let web_models = project.root.join("web/models.vn");
+    let api_models = project.root.join("api/models.vn");
+    std::fs::create_dir_all(project.root.join("web")).unwrap();
+    std::fs::create_dir_all(project.root.join("api")).unwrap();
+    std::fs::write(&web_models, "public enum Color { Red, Blue }\n").unwrap();
+    std::fs::write(&api_models, "public enum Color { Green, Yellow }\n").unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let web_uri = TestProject::uri(&web_models);
+    let root_uri = TestProject::uri(&project.root);
+    let main_text = "fn main() {\n    let c = parent::web::models::Color::Red;\n}\n";
+    std::fs::write(&project.main, main_text).unwrap();
+    let mut lsp = LspProcess::start();
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    for (uri, text) in [
+        (
+            web_uri.clone(),
+            "public enum Color { Red, Blue }\n".to_string(),
+        ),
+        (
+            TestProject::uri(&api_models),
+            "public enum Color { Green, Yellow }\n".to_string(),
+        ),
+        (main_uri.clone(), main_text.to_string()),
+    ] {
+        lsp.send(json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": uri, "languageId": "vinyl", "version": 1, "text": text } }
+        }));
+        lsp.notification("textDocument/publishDiagnostics");
+    }
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 1, "character": 41 } }
+    }));
+    let definition = lsp.response(2);
+    assert_eq!(
+        definition["result"]["uri"], web_uri,
+        "goto-definition on `Red` should resolve into web/models.vn, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["start"],
+        json!({"line": 0, "character": 20}),
+        "variant definition range start mismatch, got: {}",
+        definition
+    );
+    assert_eq!(
+        definition["result"]["range"]["end"],
+        json!({"line": 0, "character": 23}),
+        "variant definition range end mismatch, got: {}",
+        definition
+    );
+}
