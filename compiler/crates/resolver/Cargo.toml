@@ -9,3 +9,4 @@ miette = { workspace = true }
 ignore = "0.4.31"
 vinyl-parser = { version = "0.1.0", path = "../parser" }
 vinyl-typecheck = { version = "0.1.0", path = "../typecheck" }
+vinyl-std = { version = "0.1.0", path = "../std" }

@@ -287,6 +287,11 @@ fn attribute_name_completions(
             "lint suppression attribute",
             "Suppress a compiler diagnostic on the attached item.\n\n```vinyl\n@allow(large_array)\nfn main() {}\n```\n\nThe diagnostic name to suppress goes inside the parentheses.",
         ),
+        (
+            "intrinsic",
+            "compiler intrinsic attribute",
+            "Mark a function as a compiler intrinsic. The body is never compiled; calls are lowered directly by the compiler instead.\n\n```vinyl\n@intrinsic\npublic fn len(values: [int;1]): usize { 0 }\n```\n\nTypically only used inside the standard library.",
+        ),
     ];
     let items: Vec<CompletionItem> = attributes
         .iter()
@@ -857,6 +862,22 @@ mod tests {
         let labels: Vec<_> = items.iter().map(|item| item.label.as_str()).collect();
         assert!(labels.contains(&"doc"));
         assert!(labels.contains(&"allow"));
+        assert!(labels.contains(&"intrinsic"));
+    }
+
+    #[test]
+    fn suggests_intrinsic_attribute_after_at() {
+        let source = "@i";
+        let line_index = LineIndex::new(source);
+        let items = attribute_completions(source, &line_index, source.len()).unwrap();
+        assert_eq!(items[0].label, "intrinsic");
+        assert!(matches!(
+            items[0].documentation,
+            Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                ..
+            }))
+        ));
     }
 
     #[test]

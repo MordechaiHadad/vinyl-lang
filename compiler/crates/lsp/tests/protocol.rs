@@ -1955,6 +1955,52 @@ fn goto_definition_parent_import_through_pipe() {
 }
 
 #[test]
+fn hover_and_go_to_definition_for_std_len_intrinsic() {
+    let project = TestProject::new();
+    let source = "import std;\nfn main() {\n    println(std::len([1, 2, 3]))\n}\n";
+    std::fs::write(&project.main, source).unwrap();
+    let main_uri = TestProject::uri(&project.main);
+    let root_uri = TestProject::uri(&project.root);
+    let mut lsp = LspProcess::start();
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": { "rootUri": root_uri, "capabilities": {} }
+    }));
+    lsp.response(1);
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({
+        "jsonrpc": "2.0", "method": "textDocument/didOpen",
+        "params": { "textDocument": { "uri": main_uri, "languageId": "vinyl", "version": 1,
+            "text": source } }
+    }));
+    lsp.notification("textDocument/publishDiagnostics");
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 2, "method": "textDocument/hover",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 2, "character": 17 } }
+    }));
+    let hover = lsp.response(2);
+    let hover_text = hover["result"]["contents"].as_str().unwrap();
+    assert!(hover_text.contains("fn len("), "hover should show the signature: {hover_text}");
+    assert!(hover_text.contains("(from std)"), "hover should show the module: {hover_text}");
+    assert!(
+        hover_text.contains("Number of elements in a fixed-size array"),
+        "hover should show documentation: {hover_text}"
+    );
+
+    lsp.send(json!({
+        "jsonrpc": "2.0", "id": 3, "method": "textDocument/definition",
+        "params": { "textDocument": { "uri": main_uri }, "position": { "line": 2, "character": 17 } }
+    }));
+    let definition = lsp.response(3);
+    assert!(
+        definition["result"]["uri"].as_str().unwrap().ends_with("std.vn"),
+        "go to definition should land in std.vn: {definition}"
+    );
+}
+
+#[test]
 fn hover_on_qualified_struct_path_shows_full_detail() {
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")

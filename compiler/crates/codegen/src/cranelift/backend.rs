@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 
 use cranelift_codegen::ir::{self, InstBuilder, StackSlotData, StackSlotKind, types};
@@ -87,18 +87,33 @@ impl crate::CodegenBackend for CraneliftBackend {
             let HirItemKind::Function(f) = &item.kind else {
                 continue;
             };
-            let sig = hir_sig_to_clif(f, &self.types, pointer_type);
-            let func_id = self
-                .module
-                .declare_function(&f.name, Linkage::Export, &sig)
-                .map_err(|e| CraneliftError::Msg(format!("declare {}: {e}", f.name)))?;
-            self.decls.push((
-                f.name.clone(),
-                func_id,
-                f.params.clone(),
-                f.return_type.clone(),
-            ));
+            if f.intrinsic.is_none() {
+                let sig = hir_sig_to_clif(f, &self.types, pointer_type);
+                let func_id = self
+                    .module
+                    .declare_function(&f.name, Linkage::Export, &sig)
+                    .map_err(|e| CraneliftError::Msg(format!("declare {}: {e}", f.name)))?;
+                self.decls.push((
+                    f.name.clone(),
+                    func_id,
+                    f.params.clone(),
+                    f.return_type.clone(),
+                ));
+            }
         }
+
+        let intrinsics: HashSet<String> = items
+            .iter()
+            .filter_map(|item| {
+                if let HirItemKind::Function(f) = &item.kind
+                    && f.intrinsic.is_some()
+                {
+                    Some(f.name.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         for (name, func_id, params, _) in &self.decls.clone() {
             let func = items
@@ -252,6 +267,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                         decls: &self.decls,
                         print_func,
                         types: &self.types,
+                        intrinsics: &intrinsics,
                         pointer_type,
                     },
                     func: FuncEnv {

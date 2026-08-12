@@ -465,6 +465,7 @@ mod tests {
                 name: "main".to_string(),
                 public: true,
                 documentation: None,
+                intrinsic: None,
                 params: vec![HirParam {
                     span: SourceSpan::from(0..1),
                     name: "value".to_string(),
@@ -573,6 +574,7 @@ mod tests {
                 name: "main".to_string(),
                 public: true,
                 documentation: None,
+                intrinsic: None,
                 params: vec![],
                 return_type: Type::Primitive(Primitive::Int32),
                 body: vec![HirStatement {

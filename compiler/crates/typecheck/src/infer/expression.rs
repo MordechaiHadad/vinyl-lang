@@ -332,6 +332,15 @@ impl InferState {
                     let module_name = segments[..module_len].join("::");
                     let item_name = segments[module_len..].join("::");
                     let canonical_function_name = format!("{}::{item_name}", module.import_name);
+                    if crate::infer::intrinsic_kind(&module_function).is_some() {
+                        return crate::infer::type_intrinsic_call(
+                            self,
+                            &canonical_function_name,
+                            args,
+                            hir_args,
+                            *span,
+                        );
+                    }
                     if hir_args.len() != module_function.params.len() {
                         self.errors.push(self.source.error(
                             *span,
@@ -377,6 +386,15 @@ impl InferState {
                 if let HirExpressionKind::Ident(name, _) = &hir_func.kind
                     && let Some(sig) = signatures.get(name.as_str())
                 {
+                    if crate::infer::intrinsic_kind(sig).is_some() {
+                        return crate::infer::type_intrinsic_call(
+                            self,
+                            name,
+                            args,
+                            hir_args,
+                            *span,
+                        );
+                    }
                     if hir_args.len() != sig.params.len() {
                         self.errors.push(self.source.error(
                             *span,

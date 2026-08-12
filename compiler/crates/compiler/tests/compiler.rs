@@ -581,6 +581,36 @@ fn private_enum_variant_is_constructible() {
 }
 
 #[test]
+fn std_module_resolves() {
+    let root = script_project(
+        "std_module",
+        &[("main.vn", "import std; fn main() { 0 }\n")],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn std_symbol_import_resolves() {
+    let root = script_project(
+        "std_symbol_import",
+        &[("main.vn", "import std::len; fn main() { 0 }\n")],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn std_len_intrinsic_returns_array_length() {
+    let root = script_project(
+        "std_len_intrinsic",
+        &[("main.vn", "import std; fn main() { println(std::len([1, 2, 3])) }\n")],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
 fn imported_type_public_field_access() {
     let root = project(
         "imported_type_public_field",

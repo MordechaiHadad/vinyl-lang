@@ -23,6 +23,7 @@ pub struct ModuleEnv<'a> {
     pub decls: &'a [(String, FuncId, Vec<HirParam>, Type)],
     pub print_func: FuncId,
     pub types: &'a HashMap<String, HirItemKind>,
+    pub intrinsics: &'a HashSet<String>,
     pub pointer_type: ir::Type,
 }
 

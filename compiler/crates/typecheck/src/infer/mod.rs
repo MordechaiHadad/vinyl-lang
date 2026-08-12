@@ -9,8 +9,8 @@ use vinyl_parser::ast::types::{Primitive, Type as AstType};
 
 use crate::error::{InferResult, TypeDiagnostic, TypeDiagnosticKind};
 use crate::hir::{
-    HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirItem, HirItemKind, HirStruct,
-    HirTupleStruct, HirTypeAlias, Type,
+    HirEnum, HirEnumVariant, HirEnumVariantData, HirExpression, HirExpressionKind, HirField,
+    HirIntrinsic, HirItem, HirItemKind, HirStruct, HirTupleStruct, HirTypeAlias, Type,
 };
 use crate::module::{ModuleExports, ModuleTable, resolve_module};
 
@@ -94,6 +94,56 @@ fn documentation(attrs: &[Attribute]) -> Option<String> {
             [Expression::String(value, _)] => Some(value.clone()),
             _ => None,
         }
+    })
+}
+
+fn intrinsic_kind(func: &FunctionDef) -> Option<HirIntrinsic> {
+    if !func.attrs.iter().any(|attribute| attribute.name == "intrinsic") {
+        return None;
+    }
+    match func.name.rsplit("::").next().unwrap_or("") {
+        "len" => Some(HirIntrinsic::ArrayLen),
+        _ => None,
+    }
+}
+
+fn type_intrinsic_call(
+    state: &mut InferState,
+    name: &str,
+    args: &[Expression],
+    hir_args: Vec<HirExpression>,
+    span: SourceSpan,
+) -> InferResult<HirExpression> {
+    let callee = name.to_string();
+    if args.len() != 1 {
+        state.errors.push(state.source.error(
+            span,
+            TypeDiagnosticKind::ArgCountMismatch {
+                callee,
+                expected: 1,
+                found: args.len(),
+            },
+        ));
+    }
+    if let (1, Some(arg)) = (args.len(), hir_args.first()) {
+        let arg_type = state.subs.apply(&arg.type_);
+        if !matches!(arg_type, Type::Array { .. }) {
+            state.errors.push(state.source.error(
+                span,
+                TypeDiagnosticKind::LenArgumentNotArray { found: arg_type },
+            ));
+        }
+    }
+    Ok(HirExpression {
+        kind: HirExpressionKind::Call {
+            span,
+            function: Box::new(HirExpression {
+                kind: HirExpressionKind::Ident(name.to_string(), span),
+                type_: Type::Primitive(Primitive::Unit),
+            }),
+            args: hir_args,
+        },
+        type_: Type::Primitive(Primitive::USize),
     })
 }
 

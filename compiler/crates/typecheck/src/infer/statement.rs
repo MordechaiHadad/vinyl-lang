@@ -43,6 +43,19 @@ impl InferState {
             None => self.subs.fresh_var(),
         };
 
+        if let Some(intrinsic) = crate::infer::intrinsic_kind(func) {
+            return Ok(HirFunction {
+                span: func.span,
+                name: func.name.clone(),
+                public: func.public,
+                documentation: None,
+                params,
+                return_type,
+                body: Vec::new(),
+                intrinsic: Some(intrinsic),
+            });
+        }
+
         let resolved_ret = self.subs.apply(&return_type);
         if let Type::Ref(_) = &resolved_ret {
             self.errors.push(
@@ -94,6 +107,7 @@ impl InferState {
             params,
             return_type,
             body,
+            intrinsic: None,
         })
     }
 

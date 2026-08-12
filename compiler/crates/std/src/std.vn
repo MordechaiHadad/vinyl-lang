@@ -1,0 +1,5 @@
+@doc("Number of elements in a fixed-size array. Compiler intrinsic; the body is never compiled, calls are lowered to the array's compile-time size.")
+@intrinsic
+public fn len(values: [int;1]): usize {
+    0
+}

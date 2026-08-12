@@ -357,6 +357,15 @@ impl<'a> CodegenCtx<'a> {
                     if matches!(name.as_str(), "print" | "println") {
                         return self.compile_print_call(name, args);
                     }
+                    if self.module.intrinsics.contains(name) {
+                        let Type::Array { size, .. } = &args[0].type_ else {
+                            return Err(CraneliftError::Msg(format!(
+                                "intrinsic `{name}` expects an array"
+                            )));
+                        };
+                        let ty = self.module.pointer_type;
+                        return Ok(self.func.builder.ins().iconst(ty, *size as i64));
+                    }
                     let callee_info = self
                         .module
                         .decls

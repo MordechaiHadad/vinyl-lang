@@ -264,6 +264,7 @@ When generating code in Vinyl, strict adherence to the following negative constr
 |---|---|---|---|
 | `print` | `print(value)` | Prints value to stdout without newline | Works |
 | `println` | `println(value)` | Prints value to stdout with newline | Works |
+| `len` | `len(array)` | Compile-time length of an array (via `import std;`) | Works |
 | `Option<T>` | `Some(value)` / `None` | Optional value (built-in enum) | **Not implemented** (needs `match`) |
 | `Result<T, E>` | `Ok(value)` / `Err(error)` | Fallible result (built-in enum) | **Not implemented** (needs `match`) |
 | `Vec<T>` | std type | Growable heap-allocated vector | **Not implemented** |

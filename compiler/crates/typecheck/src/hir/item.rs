@@ -27,6 +27,12 @@ pub struct HirFunction {
     pub params: Vec<HirParam>,
     pub return_type: Type,
     pub body: Vec<HirStatement>,
+    pub intrinsic: Option<HirIntrinsic>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HirIntrinsic {
+    ArrayLen,
 }
 
 #[derive(Debug, Clone)]

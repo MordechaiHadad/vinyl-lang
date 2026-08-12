@@ -1,14 +1,4 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+/// Absolute path to the compiler-shipped standard library source. The resolver
+/// registers `std` as a regular on-disk module pointing at this file, so
+/// `import std;` flows through the normal module machinery.
+pub const STD_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/src/std.vn");

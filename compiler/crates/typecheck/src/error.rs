@@ -139,6 +139,10 @@ pub enum TypeDiagnosticKind {
     #[diagnostic(code(typeck::index_must_be_integer))]
     IndexMustBeInteger { found: crate::hir::Type },
 
+    #[error("`len` argument must be an array, found `{found}`")]
+    #[diagnostic(code(typeck::len_argument_not_array))]
+    LenArgumentNotArray { found: crate::hir::Type },
+
     #[error("cannot take reference to array index element")]
     #[diagnostic(code(typeck::cannot_ref_array_element))]
     CannotRefArrayElement,

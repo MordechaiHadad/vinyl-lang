@@ -33,6 +33,14 @@ pub struct Resolver {
     fs: Box<dyn FileSystem>,
 }
 
+fn std_module_info() -> ModuleInfo {
+    ModuleInfo {
+        path: vec!["std".to_string()],
+        file_path: PathBuf::from(vinyl_std::STD_SOURCE_PATH),
+        import_name: "std".to_string(),
+    }
+}
+
 impl Resolver {
     pub fn detect_with(entry: &Path, fs: Box<dyn FileSystem>) -> Result<Self, ResolveDiagnostic> {
         let entry = crate::strip_verbatim_prefix(&std::path::absolute(entry)?);
@@ -129,6 +137,10 @@ impl Resolver {
         &mut self,
         path: &[String],
     ) -> Result<ModuleInfo, ResolveDiagnostic> {
+        if path == ["std"] {
+            let info = std_module_info();
+            return Ok(self.modules.entry(info.path.clone()).or_insert(info).clone());
+        }
         let import_path: Vec<String> = path.to_vec();
         if let Some(info) = self.modules.get(path) {
             return Ok(info.clone());
