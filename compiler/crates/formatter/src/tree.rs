@@ -145,6 +145,7 @@ impl<'a> Formatter<'a> {
                         if next_kind == "public"
                             || next_kind == "attribute"
                             || next_kind == "comment"
+                            || (next_kind == "import_statement" && child.kind() == "import_statement")
                         {
                             self.newline();
                         } else {
@@ -199,6 +200,13 @@ impl<'a> Formatter<'a> {
             "loop_statement" => self.format_loop(node),
             "match_expression" => self.format_match(node),
             "match_arm" => self.format_match_arm(node),
+            "array_type" | "array_expression" => self.format_array(node),
+            "struct_literal_expression" => self.format_struct_literal_expression(node),
+            "struct_literal_fields" => self.format_struct_literal_fields(node),
+            "struct_pattern" => self.format_struct_pattern(node),
+            "field_pattern" => self.format_field_pattern(node),
+            "enum_variant" => self.format_enum_variant(node),
+            "import_group" => self.format_import_group(node),
             "import_statement" => self.format_import(node),
             "let_declaration" => self.format_let(node),
             "return_statement" => self.format_return(node),
@@ -359,6 +367,122 @@ impl<'a> Formatter<'a> {
             }
         }
         self.emit(")");
+    }
+
+    /// Formats a bracketed array, either a list `[a, b]` or a fill `[v; s]`,
+    /// for both values and types.
+    fn format_array(&mut self, node: Node) {
+        self.emit("[");
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "[" | "]" => {}
+                ";" => self.emit("; "),
+                "," => self.emit(", "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+        self.emit("]");
+    }
+
+    /// Formats a struct literal inline: `Name { x: 1, y: 2 }`.
+    fn format_struct_literal_expression(&mut self, node: Node) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "struct_literal_fields" => {
+                    self.emit(" ");
+                    self.format_struct_literal_fields(child);
+                }
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+    }
+
+    /// Formats the braces and field pairs of a struct literal inline.
+    fn format_struct_literal_fields(&mut self, node: Node) {
+        if node.child_count() <= 2 {
+            self.emit("{}");
+            return;
+        }
+        self.emit("{ ");
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "{" | "}" => {}
+                "," => self.emit(", "),
+                ":" => self.emit(": "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+        self.emit(" }");
+    }
+
+    /// Formats a struct pattern inline: `Name { x, y: pat }`.
+    fn format_struct_pattern(&mut self, node: Node) {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+        let has_fields = children.len() > 3;
+        for child in children {
+            match child.kind() {
+                "{" => self.emit(if has_fields { " { " } else { " {" }),
+                "}" => self.emit(if has_fields { " }" } else { "}" }),
+                "," => self.emit(", "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+    }
+
+    /// Formats a single struct pattern field, padding the colon with spaces.
+    fn format_field_pattern(&mut self, node: Node) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                ":" => self.emit(": "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+    }
+
+    /// Formats an enum variant, keeping its tuple payload unspaced and its
+    /// braced payload spaced: `Variant(int32)` or `Variant { public x: int }`.
+    fn format_enum_variant(&mut self, node: Node) {
+        let mut cursor = node.walk();
+        let children: Vec<Node> = node.children(&mut cursor).collect();
+        let brace_has_fields = children
+            .iter()
+            .any(|child| child.kind() == "field_definition");
+        for child in children {
+            match child.kind() {
+                "(" => self.emit("("),
+                ")" => self.emit(")"),
+                "{" => self.emit(if brace_has_fields { " { " } else { " {" }),
+                "}" => self.emit(if brace_has_fields { " }" } else { "}" }),
+                "," => self.emit(", "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+    }
+
+    /// Formats an import symbol group: `import foo::{a, b}`.
+    fn format_import_group(&mut self, node: Node) {
+        self.emit("{");
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "{" | "}" => {}
+                "," => self.emit(", "),
+                _ if child.is_named() => self.format_node(child),
+                _ => {}
+            }
+        }
+        self.emit("}");
     }
 
     /// Formats a parameter, emitting the `mut` keyword when present.

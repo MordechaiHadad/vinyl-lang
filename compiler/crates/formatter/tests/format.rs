@@ -88,7 +88,70 @@ fn formats_type_alias() {
 #[test]
 fn formats_public_type_alias() {
     let input = "public type Bytes = [int32; 4];";
-    let expected = "public type Bytes = [int32;4];";
+    let expected = "public type Bytes = [int32; 4];";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_array_fill_expression() {
+    let input = "fn f(): unit { let a = [0; 3]; }";
+    let expected = "fn f(): unit {\n    let a = [0; 3];\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_array_list_expression() {
+    let input = "fn f(): unit { let a = [1, 2, 3]; }";
+    let expected = "fn f(): unit {\n    let a = [1, 2, 3];\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_array_type() {
+    let input = "type A = [ float64 ; 4 ] ;";
+    let expected = "type A = [float64; 4];";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_struct_literal_expression() {
+    let input = "fn f(): unit { let p = Point { x:1, y:2 }; }";
+    let expected = "fn f(): unit {\n    let p = Point { x: 1, y: 2 };\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_struct_pattern() {
+    let input = "fn f(): int { match p { Point { x, y:n } => n, _ => 0 }; }";
+    let expected = "fn f(): int {\n    match p {\n        Point { x, y: n } => n\n        _ => 0\n    };\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_enum_variant_braced_payload() {
+    let input = "enum Color { Red, Green { public x : int , y : int } }";
+    let expected = "enum Color {\n    Red,\n    Green { public x: int, y: int }\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn formats_import_symbol_group() {
+    let input = "import foo::{a, b};";
+    let expected = "import foo::{a, b};";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn imports_grouped_without_blank_lines() {
+    let input = "import   a;\nimport b;\n\nfn f(): int { 1 }";
+    let expected = "import a;\nimport b;\n\nfn f(): int {\n    1\n}";
+    assert_eq!(format_source(input).unwrap(), expected);
+}
+
+#[test]
+fn collapses_blank_lines_between_imports() {
+    let input = "import a;\n\nimport b;\nfn f(): int { 1 }";
+    let expected = "import a;\nimport b;\n\nfn f(): int {\n    1\n}";
     assert_eq!(format_source(input).unwrap(), expected);
 }
 
