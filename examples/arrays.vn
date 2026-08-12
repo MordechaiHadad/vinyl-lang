@@ -1,5 +1,6 @@
 # Array examples
 # Run: vinyl run examples/arrays.vn
+import std;
 
 fn sum5(arr: [int; 5]): int {
     arr[0] + arr[1] + arr[2] + arr[3] + arr[4]
@@ -24,4 +25,5 @@ fn main() {
     let at = any_true(bools);
 
     println(s + at);
+    println(std::len(nums));
 }

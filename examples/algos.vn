@@ -1,5 +1,6 @@
 # Comprehensive Mixed Algorithms Suite
 # Run: vinyl run examples/mixed_algorithms.vn
+import std;
 
 # --- 1. Binary Search on Fixed Array ---
 # Finds target index in a 6-element sorted integer array using nested logic.
@@ -135,4 +136,5 @@ fn main() {
 
     # Aggregated return statement test
     println(idx + dot + min_res + max_res + bound_sum + e_count + mid + is_even);
+    println(std::len(sorted_nums));
 }
