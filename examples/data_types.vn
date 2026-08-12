@@ -1,6 +1,5 @@
 # Struct, tuple, and enum examples
 # Run: vinyl run examples/data_types.vn
-
 struct Point {
     x: int,
     y: int,
@@ -67,7 +66,11 @@ fn tuple_expression(): int {
 }
 
 fn enum_units(): int {
-    if Shape::Empty() == Shape::Empty() { 1 } else { 0 }
+    if Shape::Empty() == Shape::Empty() {
+        1
+    } else {
+        0
+    }
 }
 
 fn enum_payloads(): int {
@@ -75,9 +78,21 @@ fn enum_payloads(): int {
     let same_circle = Shape::Circle(7);
     let different_circle = Shape::Circle(9);
 
-    let same = if circle == same_circle { 1 } else { 0 };
-    let different = if circle == different_circle { 1 } else { 0 };
-    let different_variant = if circle == Shape::Square(7) { 1 } else { 0 };
+    let same = if circle == same_circle {
+        1
+    } else {
+        0
+    };
+    let different = if circle == different_circle {
+        1
+    } else {
+        0
+    };
+    let different_variant = if circle == Shape::Square(7) {
+        1
+    } else {
+        0
+    };
 
     same + different + different_variant
 }

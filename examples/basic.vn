@@ -2,19 +2,25 @@
 # Run: vinyl run examples/basic.vn
 
 # --- Functions with explicit return ---
-
 fn abs(n: int): int {
-    if n < 0 { -n } else { n }
+    if n < 0 {
+        -n
+    } else {
+        n
+    }
 }
 
 fn signum(val: int): int {
-    if val > 0 { 1 }
-    else if val < 0 { -1 }
-    else { 0 }
+    if val > 0 {
+        1
+    } else if val < 0 {
+        -1
+    } else {
+        0
+    }
 }
 
 # --- Functions with implicit return (trailing expression, no ;) ---
-
 fn square(n: int): int {
     n * n
 }
@@ -24,7 +30,6 @@ fn average(a: int, b: int): int {
 }
 
 # --- Floor division (//) truncates toward negative infinity ---
-
 fn floor_divide(a: int, b: int): int {
     a // b
 }
@@ -34,7 +39,6 @@ fn floor_sum(): int {
 }
 
 # --- Type inference: integer literals adapt to the return type ---
-
 fn four(): int {
     4
 }
@@ -44,35 +48,41 @@ fn eight(): int {
 }
 
 # --- If / else control flow ---
-
 fn max(a: int, b: int): int {
-    if a > b { a } else { b }
+    if a > b {
+        a
+    } else {
+        b
+    }
 }
 
 # --- Nested if ---
-
 fn classify(n: int): int {
-    if n > 100 { 2 }
-    else if n > 0 { 1 }
-    else if n < 0 { -1 }
-    else { 0 }
+    if n > 100 {
+        2
+    } else if n > 0 {
+        1
+    } else if n < 0 {
+        -1
+    } else {
+        0
+    }
 }
 
 # --- Bitwise and shift operators ---
-
 fn bitwise_demo(x: int, y: int): int {
     (x & y) + (x | y) + (x ^ y) + (x << 1) + (y >> 1)
 }
 
 # --- Logical operators ---
-
 fn both_nonzero(a: int, b: int): int {
-    if a != 0 && b != 0 { return 1; }
+    if a != 0 && b != 0 {
+        return 1;
+    }
     0
 }
 
 # --- Main: ties everything together ---
-
 fn main() {
     let a = abs(-5);
     let s = signum(-3) + signum(0) + signum(7);

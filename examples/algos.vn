@@ -4,7 +4,6 @@ import std;
 
 # --- 1. Binary Search on Fixed Array ---
 # Finds target index in a 6-element sorted integer array using nested logic.
-
 fn binary_search(arr: [int; 6], target: int): int {
     let mut low = 0;
     let mut high = 5;
@@ -26,14 +25,12 @@ fn binary_search(arr: [int; 6], target: int): int {
 
 # --- 2. Vector Dot Product ---
 # Direct index access combined inside arithmetic expressions.
-
 fn dot_product(a: [int; 3], b: [int; 3]): int {
     (a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2])
 }
 
 # --- 3. Array Analysis with Reference Mutation ---
 # Finds min/max in an array, writes values out through pointers, and returns sum.
-
 fn analyze_bounds(arr: [int; 4], min_out: &int, max_out: &int): int {
     let mut min_val = arr[0];
     let mut max_val = arr[0];
@@ -50,13 +47,12 @@ fn analyze_bounds(arr: [int; 4], min_out: &int, max_out: &int): int {
 
     min_out = min_val;
     max_out = max_val;
-    
+
     min_val + max_val
 }
 
 # --- 4. Character Array Frequency Counter ---
 # Scans a fixed char array and counts matches for a target character.
-
 fn count_char(arr: [char; 5], target: char): int {
     let mut count = 0;
     let mut i = 0;
@@ -71,7 +67,6 @@ fn count_char(arr: [char; 5], target: char): int {
 
 # --- 5. In-Place Array Reversal ---
 # Copies an array locally, swaps elements, and returns the middle element.
-
 fn reverse_and_get_middle(arr: [int; 5]): int {
     let mut data = arr;
     let mut left = 0;
@@ -90,7 +85,6 @@ fn reverse_and_get_middle(arr: [int; 5]): int {
 
 # --- 6. Boolean Array Parity Validation ---
 # Combines loop condition checks and boolean logic to verify even numbers.
-
 fn all_even(arr: [int; 4]): int {
     let mut result = 1;
     let mut i = 0;
@@ -105,34 +99,39 @@ fn all_even(arr: [int; 4]): int {
 }
 
 # --- Main Driver ---
-
 fn main() {
     # 1. Binary Search
     let sorted_nums = [10, 20, 30, 40, 50, 60];
-    let idx = binary_search(sorted_nums, 40);             # 3
+    let idx = binary_search(sorted_nums, 40);
+    # 3
 
     # 2. Dot Product
     let vec_a = [1, 2, 3];
     let vec_b = [4, 5, 6];
-    let dot = dot_product(vec_a, vec_b);                   # 32
+    let dot = dot_product(vec_a, vec_b);
+    # 32
 
     # 3. Reference Mutation + Array Min/Max
     let sample = [15, 3, 99, 42];
     let mut min_res = 0;
     let mut max_res = 0;
-    let bound_sum = analyze_bounds(sample, &min_res, &max_res); # min=3, max=99, sum=102
+    let bound_sum = analyze_bounds(sample, &min_res, &max_res);
+    # min=3, max=99, sum=102
 
     # 4. Character Array Processing
     let vowels = ['a', 'e', 'i', 'o', 'e'];
-    let e_count = count_char(vowels, 'e');                 # 2
+    let e_count = count_char(vowels, 'e');
+    # 2
 
     # 5. In-place Local Swap
     let items = [10, 20, 30, 40, 50];
-    let mid = reverse_and_get_middle(items);               # 30
+    let mid = reverse_and_get_middle(items);
+    # 30
 
     # 6. Boolean Check
     let evens = [2, 4, 6, 8];
-    let is_even = all_even(evens);                         # 1
+    let is_even = all_even(evens);
+    # 1
 
     # Aggregated return statement test
     println(idx + dot + min_res + max_res + bound_sum + e_count + mid + is_even);

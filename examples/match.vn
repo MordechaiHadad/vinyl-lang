@@ -3,12 +3,12 @@
 enum Shape {
     Empty,
     Circle(int),
-    Rect(int,int),
+    Rect(int, int),
 }
 
 struct Point {
-    x:int,
-    y:int,
+    x: int,
+    y: int,
 }
 # Match on enum payloads, extracting values per variant.
 fn shape_area(shape: Shape): int {
@@ -31,8 +31,8 @@ fn classify(shape: Shape): int {
 # Struct patterns bind fields by name (field pun).
 fn point_quadrant(p: Point): int {
     match p {
-        Point{x,y} if x > 0 && y > 0 => 1
-        Point{x,y} if x < 0 && y < 0 => 3
+        Point { x, y } if x > 0 && y > 0 => 1
+        Point { x, y } if x < 0 && y < 0 => 3
         _ => 0
     }
 }
@@ -60,13 +60,13 @@ fn main() {
     let d = classify(Shape::Circle(5));
     let e = classify(Shape::Rect(4, 4));
     let f = classify(Shape::Rect(2, 3));
-    let g = point_quadrant(Point{x:3,y:4});
-    let h = point_quadrant(Point{x:-1,y:-1});
+    let g = point_quadrant(Point { x: 3, y: 4 });
+    let h = point_quadrant(Point { x: -1, y: -1 });
     let i = tuple_sum((10, 20));
     let j = classify_signed(0);
     let k = classify_signed(-5);
     let l = classify_signed(7);
     let x = Point { x: 10, y: 10 };
-    
+
     println(a + b + c + d + e + f + g + h + i + j + k + l);
 }

@@ -11,7 +11,11 @@ fn first_char(arr: [char; 3]): char {
 }
 
 fn any_true(arr: [bool; 3]): int {
-    if arr[0] || arr[1] || arr[2] { 1 } else { 0 }
+    if arr[0] || arr[1] || arr[2] {
+        1
+    } else {
+        0
+    }
 }
 
 fn main() {
