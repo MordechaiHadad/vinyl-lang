@@ -1729,7 +1729,7 @@ impl<'a> CodegenCtx<'a> {
             self.func.builder.ins().store(mflags, zero, addr, 0);
             offset += 8;
         }
-        if offset < size {
+        while offset < size {
             let addr = if offset == 0 {
                 base
             } else {
@@ -1738,6 +1738,7 @@ impl<'a> CodegenCtx<'a> {
             };
             let zero = self.func.builder.ins().iconst(types::I8, 0);
             self.func.builder.ins().store(mflags, zero, addr, 0);
+            offset += 1;
         }
     }
 

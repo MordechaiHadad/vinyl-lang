@@ -26,13 +26,21 @@ fn guard_named_layout<F: FnOnce() -> u32>(name: &str, pointer_size: u32, compute
     result
 }
 
+/// Size and alignment of a value in the Vinyl ABI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
+    /// Size in bytes, including trailing padding.
     pub size: u32,
+    /// Required byte alignment.
     pub alignment: u32,
 }
 
+/// Offset and size of a named field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FieldLayout {
+    /// Byte offset from the containing value.
     pub offset: u32,
+    /// Field size in bytes.
     pub size: u32,
 }
 
@@ -239,14 +247,14 @@ pub fn struct_layout(
 
     let mut current_offset: u32 = 0;
     let mut max_align: u32 = 1;
-    let mut result: Vec<(String, FieldLayout)> = Vec::with_capacity(fields.len());
+    let mut result: Vec<Option<(String, FieldLayout)>> = vec![None; fields.len()];
 
-    for (_, name, t) in &indexed {
+    for (index, name, t) in &indexed {
         let field_align = align_of(t, types, pointer_size);
         max_align = max_align.max(field_align);
         current_offset = align_up(current_offset, field_align);
         let field_size = size_of(t, types, pointer_size);
-        result.push((
+        result[*index] = Some((
             (*name).to_string(),
             FieldLayout {
                 offset: current_offset,
@@ -257,7 +265,7 @@ pub fn struct_layout(
     }
 
     let total_size = align_up(current_offset, max_align);
-    (total_size, result)
+    (total_size, result.into_iter().flatten().collect())
 }
 
 pub fn enum_layout(
@@ -295,18 +303,29 @@ pub fn enum_layout(
     (total_size, data_offset, discriminant_size)
 }
 
+/// Returns the byte width used for an enum discriminant.
+pub fn enum_discriminant_size(variant_count: usize) -> u32 {
+    if variant_count <= 256 { 1 } else { 2 }
+}
+
+/// Rounds `offset` up to the next `alignment` boundary.
 pub fn align_up(offset: u32, alignment: u32) -> u32 {
     if alignment <= 1 {
         return offset;
     }
-    let mask = alignment - 1;
-    (offset + mask) & !mask
+    if alignment.is_power_of_two() {
+        let mask = alignment - 1;
+        (offset + mask) & !mask
+    } else {
+        offset.div_ceil(alignment) * alignment
+    }
 }
 
 /// Byte size of the memory region an aggregate reserves when embedded.
 /// Register-passed aggregates occupy their whole slot (8 or 16 bytes) so a
 /// packed store/load or chunk copy never touches a neighboring field.
 /// This rounding preserves the <=8/<=16/>16 register-chunk thresholds.
+/// Returns the storage slot size used for a register-passed aggregate.
 pub fn chunk_slot_size(real: u32) -> u32 {
     if real <= 8 {
         8
@@ -317,12 +336,14 @@ pub fn chunk_slot_size(real: u32) -> u32 {
     }
 }
 
+/// Returns whether a type has aggregate representation rules.
 pub fn is_aggregate(t: &Type) -> bool {
     matches!(t, Type::Named(_) | Type::Tuple(_) | Type::Array { .. })
 }
 
 /// Number of i64 registers an aggregate is passed/returned in (0 = byref/sret).
 /// Aggregates up to 16 bytes are split into 8-byte chunks; larger ones use memory.
+/// Returns the number of integer registers used to pass an aggregate.
 pub fn aggregate_register_count(
     t: &Type,
     types: &HashMap<String, HirItemKind>,
@@ -341,6 +362,7 @@ pub fn aggregate_register_count(
 /// Byte size of the stack slot that materializes an aggregate value in memory.
 /// Register-passed aggregates (<=16 bytes) get a fixed 8 or 16-byte slot so a
 /// chunk load never reads past the value; larger aggregates use their real size.
+/// Returns the stack slot size used to materialize an aggregate.
 pub fn aggregate_slot_size(
     t: &Type,
     types: &HashMap<String, HirItemKind>,
@@ -355,6 +377,7 @@ pub fn aggregate_slot_size(
 
 /// Byte count to copy when moving an aggregate value between memory slots.
 /// Two-chunk aggregates copy the full 16-byte slot so padding stays deterministic.
+/// Returns the number of bytes copied for an aggregate move.
 pub fn aggregate_copy_size(
     t: &Type,
     types: &HashMap<String, HirItemKind>,
@@ -367,6 +390,7 @@ pub fn aggregate_copy_size(
 }
 
 /// Byte stride between elements of a by-value array.
+/// Returns the byte stride of an array element.
 pub fn array_element_stride(
     element: &Type,
     types: &HashMap<String, HirItemKind>,
@@ -376,5 +400,40 @@ pub fn array_element_stride(
         aggregate_slot_size(element, types, pointer_size)
     } else {
         size_of(element, types, pointer_size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn primitive(name: Primitive) -> Type {
+        Type::Primitive(name)
+    }
+
+    #[test]
+    fn non_repr_c_layout_preserves_declaration_index() {
+        let fields = vec![
+            ("small".to_string(), primitive(Primitive::Int8)),
+            ("large".to_string(), primitive(Primitive::Int64)),
+        ];
+        let (_, layouts) = struct_layout(&fields, false, &HashMap::new(), 8);
+
+        assert_eq!(layouts[0].0, "small");
+        assert_eq!(layouts[0].1.offset, 8);
+        assert_eq!(layouts[1].0, "large");
+        assert_eq!(layouts[1].1.offset, 0);
+    }
+
+    #[test]
+    fn enum_discriminant_width_has_one_boundary() {
+        assert_eq!(enum_discriminant_size(256), 1);
+        assert_eq!(enum_discriminant_size(257), 2);
+    }
+
+    #[test]
+    fn align_up_handles_non_power_of_two_alignment() {
+        assert_eq!(align_up(7, 3), 9);
+        assert_eq!(align_up(9, 3), 9);
     }
 }

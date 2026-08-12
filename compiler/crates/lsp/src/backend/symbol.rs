@@ -56,6 +56,9 @@ fn split_segments(source: &str, span: SourceSpan) -> Option<(usize, String, Stri
 pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
     let source = &analysis.source;
 
+    if let Some(symbol) = resolve_enum_position(analysis, offset) {
+        return Some(symbol);
+    }
     if let Some(symbol) = resolve_type_position(analysis, offset) {
         return Some(symbol);
     }
@@ -143,6 +146,46 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
     })
 }
 
+fn resolve_enum_position(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
+    let source = &analysis.source;
+    let expression = analysis
+        .result
+        .expr_at_pos
+        .values()
+        .filter(|expression| {
+            span_contains(
+                (
+                    expression.span.offset(),
+                    expression.span.offset() + expression.span.len(),
+                ),
+                offset,
+            )
+        })
+        .min_by_key(|expression| expression.span.len());
+    if let Some(HirExpressionKind::EnumVariant {
+        span, type_name, ..
+    }) = expression.map(|expression| &expression.kind)
+    {
+        return variant_or_type_symbol(source, *span, type_name, offset);
+    }
+    let pattern = analysis
+        .result
+        .patterns_at_pos
+        .values()
+        .filter(|pattern| {
+            let span = pattern.span();
+            span_contains((span.offset(), span.offset() + span.len()), offset)
+        })
+        .min_by_key(|pattern| pattern.span().len());
+    if let Some(HirPatternKind::EnumVariant {
+        span, type_name, ..
+    }) = pattern.map(|pattern| &pattern.kind)
+    {
+        return variant_or_type_symbol(source, *span, type_name, offset);
+    }
+    None
+}
+
 fn resolve_pattern(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
     let source = &analysis.source;
     let innermost = analysis
@@ -174,21 +217,45 @@ fn resolve_pattern(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
 fn variant_or_type_symbol(
     source: &str,
     span: SourceSpan,
-    type_name: &str,
+    _type_name: &str,
     offset: usize,
 ) -> Option<SymbolRef> {
-    let (colon, _, variant) = split_segments(source, span)?;
+    let span = qualified_path_span(source, span);
+    let (colon, qualified_type, variant) = split_segments(source, span)?;
     let variant_start = span.offset() + colon + 2;
     if offset >= variant_start {
         Some(SymbolRef::Variant {
-            type_name: type_name.to_string(),
+            type_name: qualified_type,
             name: variant,
         })
     } else {
         Some(SymbolRef::Type {
-            name: type_name.to_string(),
+            name: _type_name.to_string(),
         })
     }
+}
+
+fn qualified_path_span(source: &str, span: SourceSpan) -> SourceSpan {
+    let mut start = span.offset();
+    while start >= 2 {
+        let bytes = source.as_bytes();
+        let previous = bytes[start - 1];
+        let before_colon = bytes[start - 2];
+        if previous == b':' && before_colon == b':' {
+            start -= 2;
+            while start > 0 {
+                let character = bytes[start - 1];
+                if character.is_ascii_alphanumeric() || character == b'_' {
+                    start -= 1;
+                } else {
+                    break;
+                }
+            }
+        } else {
+            break;
+        }
+    }
+    SourceSpan::from(start..span.offset() + span.len())
 }
 
 /// Maps a cursor offset inside a struct literal or pattern to the type, as
@@ -424,6 +491,7 @@ impl Backend {
         kind: MemberKind,
     ) -> Option<Location> {
         let local_type_name = type_name.rsplit("::").next().unwrap_or(type_name);
+        let module_path = type_name.rsplit_once("::").map(|(module, _)| module);
         let others = self.analyses().await;
         let mut candidates = vec![analysis];
         for candidate in &others {
@@ -477,6 +545,11 @@ impl Backend {
             {
                 continue;
             }
+            if let Some(module_path) = module_path
+                && !path_matches_module(&candidate.path, module_path)
+            {
+                continue;
+            }
             let (start, end) = name_span(
                 &candidate.source,
                 (
@@ -519,6 +592,30 @@ impl Backend {
             span_range(&line_index, start, end - start),
         ))
     }
+}
+
+pub(crate) fn path_matches_module(path: &Path, module_path: &str) -> bool {
+    let segments: Vec<_> = module_path
+        .split("::")
+        .filter(|segment| !matches!(*segment, "parent" | "self" | "package"))
+        .collect();
+    let Some(file_stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        return false;
+    };
+    if segments.last().copied() != Some(file_stem) {
+        return false;
+    }
+    let parent_segments: Vec<_> = path
+        .parent()
+        .into_iter()
+        .flat_map(Path::components)
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect();
+    parent_segments
+        .iter()
+        .rev()
+        .zip(segments[..segments.len().saturating_sub(1)].iter().rev())
+        .all(|(actual, expected)| actual == expected)
 }
 
 #[cfg(test)]

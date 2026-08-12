@@ -1,12 +1,19 @@
 use std::cell::RefCell;
 use std::fmt::Write;
 
+/// Runtime tag for signed integer values.
 pub const TAG_INT: u8 = 0;
+/// Runtime tag for unsigned integer values.
 pub const TAG_UINT: u8 = 1;
+/// Runtime tag for 32-bit floating-point values.
 pub const TAG_FLOAT32: u8 = 2;
+/// Runtime tag for 64-bit floating-point values.
 pub const TAG_FLOAT64: u8 = 3;
+/// Runtime tag for boolean values.
 pub const TAG_BOOL: u8 = 4;
+/// Runtime tag for character values.
 pub const TAG_CHAR: u8 = 5;
+/// Runtime tag for values without a scalar formatter.
 pub const TAG_RAW: u8 = 255;
 
 thread_local! {
@@ -14,10 +21,12 @@ thread_local! {
     static CAPTURE_OUTPUT: RefCell<bool> = const { RefCell::new(false) };
 }
 
+/// Starts capturing output on the current thread.
 pub fn begin_capture() {
     CAPTURE_OUTPUT.with(|capture| *capture.borrow_mut() = true);
 }
 
+/// Stops capturing and returns all output collected on the current thread.
 pub fn take_output() -> String {
     CAPTURE_OUTPUT.with(|capture| *capture.borrow_mut() = false);
     OUTPUT.with(|output| std::mem::take(&mut *output.borrow_mut()))

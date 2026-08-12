@@ -8,13 +8,16 @@ use vinyl_typecheck::hir::Type;
 use super::state::{CodegenCtx, VarSlot};
 use super::types::ir_type_from_primitive;
 use crate::CraneliftError;
+use crate::locals::FunctionBackend;
 
+/// Storage mode selected for a local variable.
 pub enum VarMode {
     Value,
     Variable,
     StackSlot,
 }
 
+/// Selects local storage from mutability and address-taking information.
 pub fn var_mode(name: &str, mutable: bool, ref_vars: &HashSet<String>) -> VarMode {
     if ref_vars.contains(name) {
         VarMode::StackSlot
@@ -25,6 +28,7 @@ pub fn var_mode(name: &str, mutable: bool, ref_vars: &HashSet<String>) -> VarMod
     }
 }
 
+/// Creates backend storage and initializes it with a value.
 pub fn build_var_info(
     builder: &mut FunctionBuilder,
     _vtype: &Type,
@@ -125,5 +129,78 @@ impl<'a> CodegenCtx<'a> {
                 Ok(())
             }
         }
+    }
+}
+
+impl<'a> FunctionBackend for CodegenCtx<'a> {
+    type Value = ir::Value;
+    type Storage = VarSlot;
+    type Error = CraneliftError;
+
+    fn declare_local(
+        &mut self,
+        name: &str,
+        type_: &Type,
+        value: ir::Value,
+        mutable: bool,
+        address_taken: bool,
+    ) -> Result<VarSlot, CraneliftError> {
+        let mode = if address_taken {
+            VarMode::StackSlot
+        } else {
+            var_mode(name, mutable, self.func.ref_vars)
+        };
+        let clif_type = ir_type_from_primitive(type_, self.module.pointer_type);
+        Ok(build_var_info(
+            self.func.builder,
+            type_,
+            clif_type,
+            value,
+            mode,
+            self.module.pointer_type,
+        )
+        .0)
+    }
+
+    fn load_local(&mut self, storage: &VarSlot) -> Result<ir::Value, CraneliftError> {
+        match *storage {
+            VarSlot::Value(value) => Ok(value),
+            VarSlot::Variable(variable) => Ok(self.func.builder.use_var(variable)),
+            VarSlot::StackSlot(slot, type_) => {
+                let address = self
+                    .func
+                    .builder
+                    .ins()
+                    .stack_addr(self.module.pointer_type, slot, 0);
+                let flags = cranelift_codegen::ir::MachMemFlags::trusted();
+                Ok(self.func.builder.ins().load(type_, flags, address, 0))
+            }
+        }
+    }
+
+    fn store_local(&mut self, storage: &VarSlot, value: ir::Value) -> Result<(), CraneliftError> {
+        match *storage {
+            VarSlot::Value(_) => Err(CraneliftError::Msg(
+                "cannot write to immutable variable".to_string(),
+            )),
+            VarSlot::Variable(variable) => {
+                self.func.builder.def_var(variable, value);
+                Ok(())
+            }
+            VarSlot::StackSlot(slot, _) => {
+                let address = self
+                    .func
+                    .builder
+                    .ins()
+                    .stack_addr(self.module.pointer_type, slot, 0);
+                let flags = cranelift_codegen::ir::MachMemFlags::trusted();
+                self.func.builder.ins().store(flags, value, address, 0);
+                Ok(())
+            }
+        }
+    }
+
+    fn invalid_local(message: &'static str) -> CraneliftError {
+        CraneliftError::Msg(message.to_string())
     }
 }

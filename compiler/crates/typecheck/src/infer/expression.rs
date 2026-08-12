@@ -396,7 +396,7 @@ impl InferState {
                 if let HirExpressionKind::Ident(name, _) = &hir_func.kind
                     && let Some(sig) = signatures
                         .get(name.as_str())
-                        .map(|signature| *signature)
+                        .copied()
                         .or_else(|| self.scope.lookup_import(name))
                 {
                     if crate::infer::intrinsic_kind(sig).is_some() {

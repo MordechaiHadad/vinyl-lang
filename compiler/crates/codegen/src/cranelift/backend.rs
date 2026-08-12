@@ -20,6 +20,8 @@ use crate::runtime::vinyl_print_value;
 
 use tracing::debug;
 
+use crate::abi::TargetData;
+
 pub struct CraneliftBackend {
     module: JITModule,
     ctx: Context,
@@ -28,6 +30,7 @@ pub struct CraneliftBackend {
 }
 
 impl CraneliftBackend {
+    /// Creates a JIT backend configured for the host target.
     pub fn new() -> Result<Self, CraneliftError> {
         let isa_builder = isa::lookup(Triple::host())
             .map_err(|e| CraneliftError::Msg(format!("isa lookup: {e}")))?;
@@ -56,6 +59,7 @@ impl crate::CodegenBackend for CraneliftBackend {
 
     fn compile(&mut self, items: &[HirItem]) -> Result<(), Self::Error> {
         let pointer_type = self.module.isa().pointer_type();
+        let target = TargetData::new(pointer_type.bytes());
         let mut print_sig = ir::Signature::new(self.module.isa().default_call_conv());
         print_sig.params.push(ir::AbiParam::new(pointer_type));
         print_sig.params.push(ir::AbiParam::new(pointer_type));
@@ -139,7 +143,7 @@ impl crate::CodegenBackend for CraneliftBackend {
                 let ref_vars = prescan_function_body(&func.body);
                 let mut vars = HashMap::new();
 
-                let ptr_size = pointer_type.bytes();
+                let ptr_size = target.pointer_size;
                 let needs_sret = crate::layout::is_aggregate(&func.return_type)
                     && crate::layout::aggregate_register_count(
                         &func.return_type,

@@ -25,6 +25,59 @@ impl Backend {
         let Some(target) = resolve_symbol(&analysis, offset) else {
             return Ok(None);
         };
+        if let SymbolRef::Variant { type_name, .. } = &target {
+            let local_type_name = type_name.rsplit("::").next().unwrap_or(type_name);
+            let module_path = type_name.rsplit_once("::").map(|(module, _)| module);
+            for candidate in self.analyses().await {
+                if candidate.path == analysis.path
+                    || !candidate
+                        .result
+                        .items
+                        .iter()
+                        .any(|item| matches!(&item.kind, HirItemKind::Enum(enumeration) if enumeration.name == local_type_name))
+                {
+                    continue;
+                }
+                if let Some(module_path) = module_path
+                    && !crate::backend::symbol::path_matches_module(&candidate.path, module_path)
+                {
+                    continue;
+                }
+                let Some(definition) =
+                    candidate
+                        .result
+                        .items
+                        .iter()
+                        .find_map(|item| match &item.kind {
+                            HirItemKind::Enum(enumeration)
+                                if enumeration.name == local_type_name =>
+                            {
+                                Some(vinyl_typecheck::Definition {
+                                    id: 0,
+                                    name: enumeration.name.clone(),
+                                    kind: vinyl_typecheck::DefinitionKind::Enum,
+                                    span: enumeration.span,
+                                    scope_depth: 1,
+                                    scope: None,
+                                    type_name: None,
+                                })
+                            }
+                            _ => None,
+                        })
+                else {
+                    continue;
+                };
+                let Some(detail) =
+                    definition_detail(&definition, &candidate.result, &candidate.source)
+                else {
+                    return Ok(None);
+                };
+                return Ok(Some(Hover {
+                    contents: HoverContents::Scalar(MarkedString::String(detail)),
+                    range: None,
+                }));
+            }
+        }
         let content = match target_definition(&analysis, &target) {
             Some(definition) => {
                 let source = self

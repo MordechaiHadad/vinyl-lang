@@ -9,8 +9,8 @@ use vinyl_typecheck::hir::{
 
 use super::state::{CodegenCtx, VarInfo, VarSlot};
 use super::types::{extract_array_element_type, ir_type_from_primitive, is_large_aggregate};
-use super::variable::{build_var_info, var_mode};
 use crate::CraneliftError;
+use crate::locals::LocalBuilder;
 
 impl<'a> CodegenCtx<'a> {
     pub fn compile_stmt(
@@ -60,17 +60,14 @@ impl<'a> CodegenCtx<'a> {
                         },
                     );
                 } else {
-                    let clif_type = ir_type_from_primitive(type_, self.module.pointer_type);
                     let val = self.compile_expr(value)?;
-                    let mode = var_mode(name, *mutable, self.func.ref_vars);
-                    let (slot, _) = build_var_info(
-                        self.func.builder,
-                        type_,
-                        clif_type,
-                        val,
-                        mode,
-                        self.module.pointer_type,
-                    );
+                    let address_taken = self.func.ref_vars.contains(name);
+                    let slot = LocalBuilder::new(self, name.clone())
+                        .typed(type_.clone())
+                        .initialized(val)
+                        .mutable_if(*mutable)
+                        .address_taken_if(address_taken)
+                        .build()?;
                     self.func.vars.insert(
                         name.clone(),
                         VarInfo {

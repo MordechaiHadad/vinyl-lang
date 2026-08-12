@@ -6,6 +6,7 @@ use cranelift_codegen::isa::CallConv;
 use vinyl_parser::ast::types::Primitive;
 use vinyl_typecheck::hir::{HirAssignTarget, HirEnumVariantData, HirFunction, HirItemKind, Type};
 
+/// Extracts an array element type from an indexed assignment target.
 pub fn extract_array_element_type(target: &HirAssignTarget) -> Option<&Type> {
     match target {
         HirAssignTarget::Index { array, .. } => {
@@ -19,6 +20,7 @@ pub fn extract_array_element_type(target: &HirAssignTarget) -> Option<&Type> {
     }
 }
 
+/// Converts a scalar HIR type to its Cranelift value type.
 pub fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> ir::Type {
     match t {
         Type::Primitive(Primitive::Int32) => types::I32,
@@ -36,21 +38,10 @@ pub fn param_type_to_clif(t: &Type, pointer_type: ir::Type) -> ir::Type {
 }
 
 pub fn ir_type_from_primitive(t: &Type, pointer_type: ir::Type) -> ir::Type {
-    match t {
-        Type::Primitive(Primitive::Int32) => types::I32,
-        Type::Primitive(Primitive::Int64 | Primitive::Int) => types::I64,
-        Type::Primitive(Primitive::Int128) | Type::Primitive(Primitive::UInt128) => types::I128,
-        Type::Primitive(Primitive::ISize) | Type::Ref(_) => pointer_type,
-        Type::Primitive(Primitive::USize) => pointer_type,
-        Type::Primitive(Primitive::UInt64 | Primitive::UInt) => types::I64,
-        Type::Primitive(Primitive::Float32) => types::F32,
-        Type::Primitive(Primitive::Float64 | Primitive::Float) => types::F64,
-        Type::Primitive(Primitive::Bool) => types::I8,
-        Type::Primitive(Primitive::Char) => types::I32,
-        _ => types::I64,
-    }
+    param_type_to_clif(t, pointer_type)
 }
 
+/// Converts a typed Vinyl function signature to the Cranelift ABI signature.
 pub fn hir_sig_to_clif(
     func: &HirFunction,
     types: &HashMap<String, HirItemKind>,
@@ -109,6 +100,7 @@ pub fn hir_sig_to_clif(
     sig
 }
 
+/// Returns whether an aggregate is represented indirectly inside a function.
 pub fn is_large_aggregate(
     t: &Type,
     types: &HashMap<String, HirItemKind>,

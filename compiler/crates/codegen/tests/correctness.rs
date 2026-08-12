@@ -234,3 +234,21 @@ fn struct_float_nan_equality_is_false() {
         0
     );
 }
+
+#[test]
+fn non_repr_c_field_access_uses_declared_field_name() {
+    assert_eq!(
+        common::run("struct Mixed { small: int8, large: int64 } fn main(): int32 { let value = Mixed { small: 7, large: 42 }; if value.small == 7 && value.large == 42 { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn aggregate_padding_is_zeroed_past_first_remainder_byte() {
+    assert_eq!(
+        common::run("struct Padded { a: int64, b: int8 } fn main(): int32 { let left = Padded { a: 1, b: 2 }; let right = Padded { a: 1, b: 2 }; if left == right { 1 } else { 0 } }")
+            .unwrap(),
+        1
+    );
+}
