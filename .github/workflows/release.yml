@@ -18,67 +18,7 @@ jobs:
 
       - name: Validate component versions match tag
         run: |
-          python3 -c "
-          import json, os, re, sys
-
-          tag = os.environ.get('GITHUB_REF_NAME', '')
-          expected = tag.lstrip('v')
-
-          print(f'==> Target release tag: {tag} (expected version: {expected})\n')
-
-          mismatches = []
-
-          vscode_path = 'editor/vscode/package.json'
-          if os.path.exists(vscode_path):
-              with open(vscode_path) as f:
-                  data = json.load(f)
-                  ver = data.get('version')
-                  if ver != expected:
-                      mismatches.append(('VS Code Extension', vscode_path, ver))
-          else:
-              mismatches.append(('VS Code Extension', vscode_path, 'FILE NOT FOUND'))
-
-          def get_toml_version(filepath):
-              if not os.path.exists(filepath):
-                  return 'FILE NOT FOUND'
-              with open(filepath) as f:
-                  content = f.read()
-              if re.search(r'version\.workspace\s*=\s*true', content):
-                  return 'workspace'
-              m = re.search(r'^\s*version\s*=\s*\"([^\"]+)\"', content, re.MULTILINE)
-              return m.group(1) if m else None
-
-          root_toml = 'compiler/Cargo.toml'
-          root_ver = get_toml_version(root_toml)
-          if root_ver is not None and root_ver != 'FILE NOT FOUND' and root_ver != expected:
-              mismatches.append(('Compiler Workspace Root', root_toml, root_ver))
-
-          crates_to_check = [
-              ('CLI Crate', 'compiler/crates/cli/Cargo.toml'),
-              ('LSP Crate', 'compiler/crates/lsp/Cargo.toml'),
-          ]
-
-          for name, path in crates_to_check:
-              ver = get_toml_version(path)
-              if ver == 'workspace':
-                  if root_ver != expected:
-                      mismatches.append((f'{name} (inherits workspace version)', path, f'workspace root version is {root_ver}'))
-              elif ver is None:
-                  mismatches.append((name, path, 'NO VERSION FOUND'))
-              elif ver != expected:
-                  mismatches.append((name, path, ver))
-
-          if mismatches:
-              print('ERROR: VERSION MISMATCH DETECTED!\n')
-              print('The following files need to be internally bumped before releasing:\n')
-              for name, path, found in mismatches:
-                  print(f'  - {name} ({path}):')
-                  print(f'      Found:    {found}')
-                  print(f'      Expected: {expected}\n')
-              sys.exit(1)
-          else:
-              print('SUCCESS: All component versions match the release tag!')
-          "
+          python3 scripts/check-release-versions.py "$GITHUB_REF_NAME"
 
   build-release:
     name: Build & Package (${{ matrix.target }})
@@ -142,6 +82,35 @@ jobs:
           fi
           npx @vscode/vsce package --out ../../vinyl-vscode-${{ github.ref_name }}.vsix
 
+      - name: Build Zed Extension
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          rustup target add wasm32-wasip2
+          cargo build --release --manifest-path editor/zed/Cargo.toml --target wasm32-wasip2
+          mkdir -p zed-extension
+          cp editor/zed/extension.toml zed-extension/
+          cp -r editor/zed/languages zed-extension/
+          cp editor/zed/target/wasm32-wasip2/release/vinyl_zed.wasm zed-extension/extension.wasm
+          cd zed-extension
+          zip -r ../vinyl-zed-${{ github.ref_name }}.zip extension.toml languages extension.wasm
+
+      - name: Build JetBrains Plugin
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        if: matrix.os == 'ubuntu-latest'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Package JetBrains Plugin
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          gradle -p editor/jetbrains/lsp-plugin buildPlugin --no-daemon
+          cp editor/jetbrains/lsp-plugin/build/distributions/*.zip vinyl-jetbrains-${{ github.ref_name }}.zip
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -150,6 +119,8 @@ jobs:
             vinyl-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-lsp-${{ matrix.target }}.${{ matrix.archive_ext }}
             vinyl-vscode-*.vsix
+            vinyl-zed-*.zip
+            vinyl-jetbrains-*.zip
           if-no-files-found: ignore
 
   publish-release:

@@ -1,1 +1,11 @@
 /target
+
+# Local build and tool caches
+**/target/
+**/build/
+**/.gradle/
+**/.intellijPlatform/
+
+# Local Python and agent state
+__pycache__/
+.serena/

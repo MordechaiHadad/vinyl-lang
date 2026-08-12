@@ -1,0 +1,5 @@
+<idea-plugin>
+    <extensions defaultExtensionNs="com.intellij">
+        <platform.lsp.integrationProvider implementation="com.vinyl.lsp.VinylLspIntegrationProvider"/>
+    </extensions>
+</idea-plugin>

@@ -1,0 +1,16 @@
+id = "vinyl"
+name = "Vinyl"
+description = "Vinyl language support."
+version = "0.3.0"
+schema_version = 1
+authors = ["Mordechai Hadad"]
+repository = "https://github.com/MordechaiHadad/vinyl-lang"
+
+[grammars.vinyl]
+repository = "https://github.com/MordechaiHadad/vinyl-lang"
+rev = "e22265b6dda923e3d9bceed364b42835d68c8d45"
+path = "grammar"
+
+[language_servers.vinyl-lsp]
+name = "Vinyl LSP"
+languages = ["Vinyl"]

@@ -26,6 +26,14 @@ audit:
 audit-ci:
     cd compiler && cargo audit --deny warnings
 
+# Editor query sync
+
+sync-queries:
+    ./scripts/sync-queries.sh all
+
+check-queries:
+    ./scripts/sync-queries.sh --check all
+
 # Test stuff
 
 test-all: test-workspace test-grammar

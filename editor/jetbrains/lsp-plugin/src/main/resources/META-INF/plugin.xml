@@ -1,0 +1,15 @@
+<idea-plugin>
+    <id>com.vinyl.lsp</id>
+    <name>Vinyl Language Support</name>
+    <vendor>Vinyl</vendor>
+    <description><![CDATA[
+        Language support for the <a href="https://github.com/MordechaiHadad/vinyl-lang">Vinyl</a>
+        programming language: TextMate syntax highlighting and LSP integration
+        (completion, diagnostics, go-to-definition, hover) via <code>vinyl-lsp</code>.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends optional="true" config-file="lsp.xml">com.intellij.modules.lsp</depends>
+    <depends optional="true">com.intellij.modules.ultimate</depends>
+    <depends optional="true">org.jetbrains.plugins.textmate</depends>
+</idea-plugin>
