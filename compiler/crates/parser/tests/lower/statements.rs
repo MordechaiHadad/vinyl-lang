@@ -145,6 +145,24 @@ fn import_bare_keyword_errors() {
 }
 
 #[test]
+fn function_scoped_import_is_a_statement() {
+    let items = common::do_lower("fn main() { import math::double; }");
+    let Item::Function(function) = &items[0] else {
+        panic!("expected function");
+    };
+    assert!(matches!(function.body.first(), Some(Statement::Import(_))));
+}
+
+#[test]
+fn import_attributes_are_rejected() {
+    let errors = vinyl_parser::parse_and_lower("@doc(\"import\")\nimport math;").unwrap_err();
+    assert!(matches!(
+        errors.first().map(|error| &error.kind),
+        Some(vinyl_parser::error::ParserDiagnosticKind::ImportAttributes)
+    ));
+}
+
+#[test]
 fn let_statements() {
     let items =
         common::do_lower("fn f() { let x: int32 = 42; let y = 10; let mut z: float64 = 3.14; }");

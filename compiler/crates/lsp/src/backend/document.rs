@@ -31,8 +31,7 @@ impl Backend {
                     .definition_source(&definition)
                     .await
                     .unwrap_or_else(|| analysis.source.clone());
-                let Some(detail) = definition_detail(&definition, &analysis.result, &source)
-                else {
+                let Some(detail) = definition_detail(&definition, &analysis.result, &source) else {
                     return Ok(None);
                 };
                 detail
@@ -53,7 +52,7 @@ impl Backend {
         }))
     }
 
-pub(crate) async fn document_symbol(
+    pub(crate) async fn document_symbol(
         &self,
         params: DocumentSymbolParams,
     ) -> tower_lsp::jsonrpc::Result<Option<DocumentSymbolResponse>> {

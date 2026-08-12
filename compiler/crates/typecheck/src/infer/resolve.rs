@@ -75,11 +75,13 @@ impl InferState {
                     elements.iter().map(|e| self.resolve_hir_expr(e)).collect(),
                     *span,
                 ),
-                HirExpressionKind::ArrayFill { span, value, size } => HirExpressionKind::ArrayFill {
-                    span: *span,
-                    value: Box::new(self.resolve_hir_expr(value)),
-                    size: *size,
-                },
+                HirExpressionKind::ArrayFill { span, value, size } => {
+                    HirExpressionKind::ArrayFill {
+                        span: *span,
+                        value: Box::new(self.resolve_hir_expr(value)),
+                        size: *size,
+                    }
+                }
                 HirExpressionKind::If {
                     span,
                     condition,

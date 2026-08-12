@@ -6,7 +6,7 @@ use crate::{
     ast::pattern::{LiteralPattern, Pattern},
     lower::{
         Lowerer,
-        helpers::{child_by_field_opt, children, node_text},
+        helpers::{child_by_field_opt, children, node_text, parse_integer_literal},
     },
 };
 
@@ -62,21 +62,14 @@ impl<'a> Lowerer<'a> {
                 return match child.kind() {
                     "integer_literal" => {
                         let raw = node_text(&child, self.source);
-                        let val = if let Some(hex) = raw.strip_prefix("0x") {
-                            i128::from_str_radix(hex, 16)
-                        } else if let Some(oct) = raw.strip_prefix("0o") {
-                            i128::from_str_radix(oct, 8)
-                        } else if let Some(bin) = raw.strip_prefix("0b") {
-                            i128::from_str_radix(bin, 2)
-                        } else {
-                            raw.parse()
-                        };
-                        match val {
-                            Ok(v) => Ok(Pattern::Literal(
+                        match parse_integer_literal(&raw)
+                            .and_then(|value| i128::try_from(value).ok())
+                        {
+                            Some(v) => Ok(Pattern::Literal(
                                 LiteralPattern::Int(v),
                                 SourceSpan::from(child.start_byte()..child.end_byte()),
                             )),
-                            Err(_) => Err(self
+                            None => Err(self
                                 .span_error(&child, &format!("invalid integer literal `{raw}`"))),
                         }
                     }

@@ -74,10 +74,14 @@ impl InferState {
                             })
                         }
                     }
-                    None if signatures.contains_key(name.as_str()) => Ok(HirExpression {
-                        kind: HirExpressionKind::Ident(name.clone(), *span),
-                        type_: Type::Primitive(Primitive::Unit),
-                    }),
+                    None if signatures.contains_key(name.as_str())
+                        || self.scope.lookup_import(name).is_some() =>
+                    {
+                        Ok(HirExpression {
+                            kind: HirExpressionKind::Ident(name.clone(), *span),
+                            type_: Type::Primitive(Primitive::Unit),
+                        })
+                    }
                     None => Err(Box::new(self.source.error(
                         *span,
                         TypeDiagnosticKind::UndefinedVariable { name: name.clone() },
@@ -114,9 +118,7 @@ impl InferState {
                         } else if !is_public {
                             self.errors.push(self.source.error(
                                 *span,
-                                TypeDiagnosticKind::UndefinedVariable {
-                                    name: item_name,
-                                },
+                                TypeDiagnosticKind::UndefinedVariable { name: item_name },
                             ));
                         }
                     } else {
@@ -290,6 +292,7 @@ impl InferState {
                 if let Expression::Ident(name, function_span) = function.as_ref()
                     && self.scope.lookup(name).is_none()
                     && !signatures.contains_key(name.as_str())
+                    && self.scope.lookup_import(name).is_none()
                     && !self.types.contains_key(name.as_str())
                 {
                     return Err(Box::new(self.source.error(
@@ -298,11 +301,18 @@ impl InferState {
                     )));
                 }
 
-                if let Expression::ValuePath { segments, span: function_span } = function.as_ref()
+                if let Expression::ValuePath {
+                    segments,
+                    span: function_span,
+                } = function.as_ref()
                     && let Some((module_len, module)) = resolve_module(&self.module_table, segments)
                 {
                     let item_name = segments[module_len..].join("::");
-                    if !module.functions.iter().any(|function| function.name == item_name) {
+                    if !module
+                        .functions
+                        .iter()
+                        .any(|function| function.name == item_name)
+                    {
                         let module_name = segments[..module_len].join("::");
                         let kind = if module.declares(&item_name) {
                             TypeDiagnosticKind::PrivateAccess {
@@ -384,15 +394,14 @@ impl InferState {
                 }
 
                 if let HirExpressionKind::Ident(name, _) = &hir_func.kind
-                    && let Some(sig) = signatures.get(name.as_str())
+                    && let Some(sig) = signatures
+                        .get(name.as_str())
+                        .map(|signature| *signature)
+                        .or_else(|| self.scope.lookup_import(name))
                 {
                     if crate::infer::intrinsic_kind(sig).is_some() {
                         return crate::infer::type_intrinsic_call(
-                            self,
-                            name,
-                            args,
-                            hir_args,
-                            *span,
+                            self, name, args, hir_args, *span,
                         );
                     }
                     if hir_args.len() != sig.params.len() {
@@ -502,9 +511,7 @@ impl InferState {
                     },
                 })
             }
-            Expression::ArrayFill {
-                value, size, span,
-            } => {
+            Expression::ArrayFill { value, size, span } => {
                 let hir_value = self.infer_expr(value, signatures)?;
                 let element_type = self.subs.apply(&hir_value.type_);
                 if let Some(element_size) = self.type_size_of(&element_type) {

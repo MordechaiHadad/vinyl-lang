@@ -19,16 +19,27 @@ impl<'a> Lowerer<'a> {
     }
 
     pub(super) fn span_error(&self, node: &Node, message: &str) -> ParserDiagnostic {
-        self.error_at(node, ParserDiagnosticKind::Lowering {
-            message: message.to_string(),
-        })
+        self.error_at(
+            node,
+            ParserDiagnosticKind::Lowering {
+                message: message.to_string(),
+            },
+        )
     }
 
     pub(super) fn error_at(&self, node: &Node, kind: ParserDiagnosticKind) -> ParserDiagnostic {
+        self.error_at_span(SourceSpan::from(node.start_byte()..node.end_byte()), kind)
+    }
+
+    pub(super) fn error_at_span(
+        &self,
+        span: SourceSpan,
+        kind: ParserDiagnosticKind,
+    ) -> ParserDiagnostic {
         ParserDiagnostic {
             kind,
             source_code: NamedSource::new(self.source_name, self.source.to_string()),
-            span: SourceSpan::from(node.start_byte()..node.end_byte()),
+            span,
         }
     }
 }
@@ -49,4 +60,16 @@ pub(super) fn children<'a>(node: &'a Node<'a>) -> Vec<Node<'a>> {
 
 pub(super) fn node_text(node: &Node, source: &str) -> String {
     source[node.start_byte()..node.end_byte()].to_string()
+}
+
+pub(super) fn parse_integer_literal(raw: &str) -> Option<u128> {
+    if let Some(hex) = raw.strip_prefix("0x") {
+        u128::from_str_radix(hex, 16).ok()
+    } else if let Some(oct) = raw.strip_prefix("0o") {
+        u128::from_str_radix(oct, 8).ok()
+    } else if let Some(bin) = raw.strip_prefix("0b") {
+        u128::from_str_radix(bin, 2).ok()
+    } else {
+        raw.parse().ok()
+    }
 }

@@ -69,6 +69,9 @@ impl<'a> Lowerer<'a> {
         node: &Node,
     ) -> Result<Option<Statement>, ParserDiagnostic> {
         match node.kind() {
+            "import_statement" => self
+                .lower_import(node)
+                .map(|import| Some(Statement::Import(import))),
             "let_declaration" => self.lower_let(node).map(Some),
             "assignment_statement" => self.lower_assignment(node).map(Some),
             "return_statement" => self.lower_return(node).map(Some),
@@ -90,6 +93,7 @@ impl<'a> Lowerer<'a> {
                         .ok_or_else(|| self.span_error(node, "incomplete match statement"))?,
                 )
                 .map(|e| Some(Statement::Expression(e))),
+            // Lowering deliberately desugars while into the loop representation consumed by HIR.
             "while_statement" => {
                 let span = SourceSpan::from(node.start_byte()..node.end_byte());
                 let named = children(node);

@@ -17,6 +17,9 @@ clippy-workspace:
 build-compiler:
     cd compiler && cargo build --release
 
+format-compiler:
+    cd compiler && cargo fmt
+
 audit:
     cd compiler && cargo audit
 

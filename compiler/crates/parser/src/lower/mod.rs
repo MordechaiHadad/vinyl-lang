@@ -1,8 +1,16 @@
+//! Tree-sitter CST to compiler AST lowering.
+
+/// Expression lowering.
 pub mod expression;
+/// Shared lowering helpers.
 pub mod helpers;
+/// Declaration lowering.
 pub mod item;
+/// Pattern lowering.
 pub mod pattern;
+/// Statement lowering.
 pub mod statement;
+/// Type lowering.
 pub mod types;
 
 use crate::{
@@ -11,12 +19,14 @@ use crate::{
 };
 use tree_sitter::{Node, Tree};
 
+/// Lowers one parsed source tree using its source text for names and spans.
 pub struct Lowerer<'a> {
-    pub source: &'a str,
-    pub source_name: &'a str,
+    source: &'a str,
+    source_name: &'a str,
 }
 
 impl<'a> Lowerer<'a> {
+    /// Creates a lowerer for source text and its diagnostic filename.
     pub fn new(source: &'a str, source_name: &'a str) -> Self {
         Self {
             source,
@@ -59,6 +69,12 @@ impl<'a> Lowerer<'a> {
                                 }
                                 Item::Enum(e) => e.attrs = std::mem::take(&mut pending_attrs),
                                 Item::TypeAlias(a) => a.attrs = std::mem::take(&mut pending_attrs),
+                                Item::Import(_) if !pending_attrs.is_empty() => {
+                                    errors.push(self.error_at_span(
+                                        pending_attrs[0].span,
+                                        crate::error::ParserDiagnosticKind::ImportAttributes,
+                                    ));
+                                }
                                 Item::Import(_) => {}
                             }
                         }
@@ -80,6 +96,7 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+/// Lowers a validated tree-sitter tree into parser AST items.
 pub fn lower(
     tree: &Tree,
     source: &str,

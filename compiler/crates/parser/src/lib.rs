@@ -1,5 +1,10 @@
+//! Parsing and lowering for the Vinyl language.
+
+/// The parser AST and its public data structures.
 pub mod ast;
+/// Parser and lowering diagnostics.
 pub mod error;
+/// Conversion from tree-sitter nodes into the parser AST.
 pub mod lower;
 
 pub use ast::*;
@@ -14,14 +19,17 @@ fn language() -> tree_sitter::Language {
     unsafe { tree_sitter::Language::from_raw(tree_sitter_vinyl()) }
 }
 
+/// Parses source text and validates the resulting syntax tree.
 pub fn parse(source: &str) -> Result<Tree, Vec<ParserDiagnostic>> {
     parse_with_name("<input>", source)
 }
 
+/// Parses and lowers source text into the compiler AST.
 pub fn parse_and_lower(source: &str) -> Result<Vec<Item>, Vec<ParserDiagnostic>> {
     parse_and_lower_with_name("<input>", source)
 }
 
+/// Parses source text with a filename used in diagnostics.
 pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParserDiagnostic>> {
     let tree = parse_tree(source);
     let errors = error::validate_with_name(filename, &tree, source);
@@ -34,6 +42,7 @@ pub fn parse_with_name(filename: &str, source: &str) -> Result<Tree, Vec<ParserD
 
 /// Parses without validating, returning the tree-sitter tree even when the source
 /// contains error or missing nodes (e.g. while the user is mid-edit).
+/// Parses source text without rejecting tree-sitter recovery nodes.
 pub fn parse_tree(source: &str) -> Tree {
     let mut parser = Parser::new();
     parser
@@ -50,6 +59,7 @@ pub fn parse_tree(source: &str) -> Tree {
 /// Deleting that range from the source yields a file that still parses, which is
 /// what the LSP uses to analyze a partially-typed statement (e.g. `x.` with a
 /// missing field) for completions.
+/// Returns the byte range of the statement containing a cursor offset.
 pub fn statement_range_at(tree: &Tree, offset: usize) -> Option<(usize, usize)> {
     let query = offset.saturating_sub(1);
     let mut node = tree.root_node().descendant_for_byte_range(query, query)?;
@@ -64,6 +74,7 @@ pub fn statement_range_at(tree: &Tree, offset: usize) -> Option<(usize, usize)> 
     }
 }
 
+/// Parses and lowers source text with a filename used in diagnostics.
 pub fn parse_and_lower_with_name(
     filename: &str,
     source: &str,

@@ -2,6 +2,7 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 use tree_sitter::Tree;
 
+/// A parser or lowering diagnostic.
 #[derive(Debug, Error, Diagnostic)]
 #[error("{kind}")]
 pub struct ParserDiagnostic {
@@ -15,8 +16,13 @@ pub struct ParserDiagnostic {
     pub span: SourceSpan,
 }
 
+/// The specific kind of parser or lowering failure.
 #[derive(Debug, Error, Diagnostic)]
 pub enum ParserDiagnosticKind {
+    #[error("attributes are not allowed on imports")]
+    #[diagnostic(code(parser::import_attributes))]
+    ImportAttributes,
+
     #[error("enum variants are public by default; remove the `public` modifier")]
     #[diagnostic(code(parser::enum_variant_public_modifier))]
     EnumVariantPublicModifier,

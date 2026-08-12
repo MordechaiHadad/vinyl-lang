@@ -537,9 +537,7 @@ impl<'a> CodegenCtx<'a> {
                 }
                 Ok(base)
             }
-            HirExpressionKind::ArrayFill {
-                value, size, ..
-            } => {
+            HirExpressionKind::ArrayFill { value, size, .. } => {
                 let (base, element_type) = self.array_slot(&expr.type_)?;
                 if !is_zero_constant(&value.kind) {
                     let elem_size = crate::layout::array_element_stride(
@@ -1693,19 +1691,13 @@ impl<'a> CodegenCtx<'a> {
 
     /// Allocates a zero-filled stack slot for an array-typed expression and
     /// returns the base address together with its element type.
-    pub(super) fn array_slot(
-        &mut self,
-        type_: &Type,
-    ) -> Result<(ir::Value, Type), CraneliftError> {
+    pub(super) fn array_slot(&mut self, type_: &Type) -> Result<(ir::Value, Type), CraneliftError> {
         let element_type = match type_ {
             Type::Array { element, .. } => *element.clone(),
             _ => Type::Primitive(Primitive::Int32),
         };
-        let size = crate::layout::size_of(
-            type_,
-            self.module.types,
-            self.module.pointer_type.bytes(),
-        );
+        let size =
+            crate::layout::size_of(type_, self.module.types, self.module.pointer_type.bytes());
         let slot = self
             .func
             .builder
@@ -1725,7 +1717,8 @@ impl<'a> CodegenCtx<'a> {
     pub(super) fn zero_slot(&mut self, base: ir::Value, size: u32) {
         let pointer_type = self.module.pointer_type;
         let mflags = cranelift_codegen::ir::MachMemFlags::trusted();
-        let mut offset = 0u32;        while offset + 8 <= size {
+        let mut offset = 0u32;
+        while offset + 8 <= size {
             let addr = if offset == 0 {
                 base
             } else {

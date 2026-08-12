@@ -4,10 +4,11 @@ use std::{
 };
 
 use vinyl_parser::ast::item::{ImportDef, Item};
+use vinyl_parser::ast::statement::Statement;
 use vinyl_typecheck::module::{ModuleExports, ModuleTable};
 
-use crate::{ResolveDiagnostic, resolver::ImportPrefix};
 use crate::resolver::{ModuleInfo, Resolver, ResolverMode};
+use crate::{ResolveDiagnostic, resolver::ImportPrefix};
 
 /// A diagnostic attached to a specific file and source span during module graph
 /// building. `warning` distinguishes the `parent::`-depth hint from real errors;
@@ -72,7 +73,11 @@ pub fn import_prefix(import: &ImportDef) -> Result<Option<ImportPrefix>, String>
         return Ok(None);
     }
     let display = import_display(import);
-    let self_count = import.prefix.iter().filter(|s| s.as_str() == "self").count();
+    let self_count = import
+        .prefix
+        .iter()
+        .filter(|s| s.as_str() == "self")
+        .count();
     let package_count = import
         .prefix
         .iter()
@@ -96,7 +101,9 @@ pub fn import_prefix(import: &ImportDef) -> Result<Option<ImportPrefix>, String>
         );
     }
     if package_count > 1 {
-        return Err(format!("`package` prefix can only appear once in `{display}`"));
+        return Err(format!(
+            "`package` prefix can only appear once in `{display}`"
+        ));
     }
     if package_count > 0 && parent_count > 0 {
         return Err(format!(
@@ -222,15 +229,11 @@ impl Resolver {
 
 impl<'a> Collector<'a> {
     fn collect_modules(&mut self, from: &Path, items: &[Item]) {
-        let imports: Vec<ImportDef> = items
-            .iter()
-            .filter_map(|item| match item {
-                Item::Import(definition) => Some(definition),
-                _ => None,
-            })
-            .flat_map(|import| {
+        let imports: Vec<(ImportDef, bool)> = imports_in_items(items)
+            .into_iter()
+            .flat_map(|(import, local)| {
                 if import.symbols.is_empty() {
-                    return vec![import.clone()];
+                    return vec![(import.clone(), local)];
                 }
                 import
                     .symbols
@@ -246,11 +249,12 @@ impl<'a> Collector<'a> {
                             wildcard: false,
                         }
                     })
+                    .map(|import| (import, local))
                     .collect()
             })
             .collect();
 
-        for item in &imports {
+        for (item, local) in &imports {
             if let Some(warning) = parent_depth_warning(item) {
                 self.push_issue(from, item, warning, true);
             }
@@ -330,7 +334,9 @@ impl<'a> Collector<'a> {
             }
 
             if let Some(symbol_name) = symbol {
-                self.all_items.extend(type_items.iter().cloned());
+                if !*local {
+                    self.all_items.extend(type_items.iter().cloned());
+                }
                 let found = functions
                     .iter()
                     .find(|function| function.name == symbol_name)
@@ -343,6 +349,9 @@ impl<'a> Collector<'a> {
                             .cloned()
                     });
                 let Some(injected) = found else {
+                    if *local {
+                        continue;
+                    }
                     self.push_issue(
                         from,
                         item,
@@ -354,17 +363,19 @@ impl<'a> Collector<'a> {
                     );
                     continue;
                 };
-                if !self.bare_imported_symbols.insert(symbol_name.clone()) {
-                    self.push_issue(
-                        from,
-                        item,
-                        format!("import of `{symbol_name}` conflicts with an existing import"),
-                        false,
-                    );
-                    continue;
+                if !*local {
+                    if !self.bare_imported_symbols.insert(symbol_name.clone()) {
+                        self.push_issue(
+                            from,
+                            item,
+                            format!("import of `{symbol_name}` conflicts with an existing import"),
+                            false,
+                        );
+                        continue;
+                    }
+                    self.all_items.push(injected);
                 }
-                self.all_items.push(injected);
-            } else if item.wildcard {
+            } else if item.wildcard && !*local {
                 for function in &functions {
                     if !self.bare_imported_symbols.insert(function.name.clone()) {
                         self.push_issue(
@@ -381,7 +392,10 @@ impl<'a> Collector<'a> {
                     self.all_items.push(Item::Function(function.clone()));
                 }
                 for type_item in &type_items {
-                    if !self.bare_imported_symbols.insert(item_name(type_item).to_string()) {
+                    if !self
+                        .bare_imported_symbols
+                        .insert(item_name(type_item).to_string())
+                    {
                         self.push_issue(
                             from,
                             item,
@@ -395,7 +409,7 @@ impl<'a> Collector<'a> {
                     }
                     self.all_items.push(type_item.clone());
                 }
-            } else {
+            } else if !*local {
                 for function in &functions {
                     let mut imported = function.clone();
                     imported.name = format!("{}::{}", info.import_name, imported.name);
@@ -428,9 +442,12 @@ impl<'a> Collector<'a> {
                 types,
                 all_symbols,
             };
-            self.module_table.insert(info.import_name.clone(), exports.clone());
-            self.module_table.insert(info.path.join("::"), exports.clone());
-            self.module_table.insert(exports.import_path.clone(), exports);
+            self.module_table
+                .insert(info.import_name.clone(), exports.clone());
+            self.module_table
+                .insert(info.path.join("::"), exports.clone());
+            self.module_table
+                .insert(exports.import_path.clone(), exports);
             self.push_file(&path, module_source, module_items.clone());
             self.collect_modules(&info.file_path, &module_items);
         }
@@ -450,46 +467,48 @@ impl<'a> Collector<'a> {
                 }
             };
             self.push_file(&info.file_path, module_source, module_items.clone());
-            self.all_items.extend(module_items.iter().filter_map(|item| {
-                let mut item = item.clone();
-                let is_public = match &mut item {
-                    Item::Struct(structure) => structure.public,
-                    Item::TupleStruct(tuple) => tuple.public,
-                    Item::Enum(enumeration) => enumeration.public,
-                    Item::TypeAlias(alias) => alias.public,
-                    _ => return None,
-                };
-                if !is_public {
-                    return None;
-                }
-                match &mut item {
-                    Item::Struct(structure) => {
-                        structure.name = format!("{}::{}", info.import_name, structure.name)
+            self.all_items
+                .extend(module_items.iter().filter_map(|item| {
+                    let mut item = item.clone();
+                    let is_public = match &mut item {
+                        Item::Struct(structure) => structure.public,
+                        Item::TupleStruct(tuple) => tuple.public,
+                        Item::Enum(enumeration) => enumeration.public,
+                        Item::TypeAlias(alias) => alias.public,
+                        _ => return None,
+                    };
+                    if !is_public {
+                        return None;
                     }
-                    Item::TupleStruct(tuple) => {
-                        tuple.name = format!("{}::{}", info.import_name, tuple.name)
+                    match &mut item {
+                        Item::Struct(structure) => {
+                            structure.name = format!("{}::{}", info.import_name, structure.name)
+                        }
+                        Item::TupleStruct(tuple) => {
+                            tuple.name = format!("{}::{}", info.import_name, tuple.name)
+                        }
+                        Item::Enum(enumeration) => {
+                            enumeration.name = format!("{}::{}", info.import_name, enumeration.name)
+                        }
+                        Item::TypeAlias(alias) => {
+                            alias.name = format!("{}::{}", info.import_name, alias.name)
+                        }
+                        _ => unreachable!(),
                     }
-                    Item::Enum(enumeration) => {
-                        enumeration.name = format!("{}::{}", info.import_name, enumeration.name)
+                    Some(item)
+                }));
+            self.all_items
+                .extend(module_items.iter().filter_map(|item| {
+                    let Item::Enum(enumeration) = item else {
+                        return None;
+                    };
+                    if enumeration.public {
+                        return None;
                     }
-                    Item::TypeAlias(alias) => {
-                        alias.name = format!("{}::{}", info.import_name, alias.name)
-                    }
-                    _ => unreachable!(),
-                }
-                Some(item)
-            }));
-            self.all_items.extend(module_items.iter().filter_map(|item| {
-                let Item::Enum(enumeration) = item else {
-                    return None;
-                };
-                if enumeration.public {
-                    return None;
-                }
-                let mut enumeration = enumeration.clone();
-                enumeration.name = format!("{}::{}", info.import_name, enumeration.name);
-                Some(Item::Enum(enumeration))
-            }));
+                    let mut enumeration = enumeration.clone();
+                    enumeration.name = format!("{}::{}", info.import_name, enumeration.name);
+                    Some(Item::Enum(enumeration))
+                }));
             let functions = module_items
                 .iter()
                 .filter_map(|item| match item {
@@ -502,9 +521,7 @@ impl<'a> Collector<'a> {
                 .filter_map(|item| match item {
                     Item::Struct(structure) if structure.public => Some(structure.name.clone()),
                     Item::TupleStruct(tuple) if tuple.public => Some(tuple.name.clone()),
-                    Item::Enum(enumeration) if enumeration.public => {
-                        Some(enumeration.name.clone())
-                    }
+                    Item::Enum(enumeration) if enumeration.public => Some(enumeration.name.clone()),
                     Item::TypeAlias(alias) if alias.public => Some(alias.name.clone()),
                     _ => None,
                 })
@@ -518,13 +535,16 @@ impl<'a> Collector<'a> {
                 types,
                 all_symbols,
             };
-            self.module_table.insert(info.import_name.clone(), exports.clone());
-            self.module_table.insert(info.path.join("::"), exports.clone());
+            self.module_table
+                .insert(info.import_name.clone(), exports.clone());
+            self.module_table
+                .insert(info.path.join("::"), exports.clone());
             let inline_exports = ModuleExports {
                 imported: true,
                 ..exports.clone()
             };
-            self.module_table.insert(exports.import_path.clone(), inline_exports);
+            self.module_table
+                .insert(exports.import_path.clone(), inline_exports);
         }
     }
 
@@ -543,10 +563,7 @@ impl<'a> Collector<'a> {
         }
     }
 
-    fn parse_file(
-        &mut self,
-        path: &Path,
-    ) -> Result<(String, Vec<Item>), Vec<ModuleIssue>> {
+    fn parse_file(&mut self, path: &Path) -> Result<(String, Vec<Item>), Vec<ModuleIssue>> {
         let source = match (self.read_source)(path) {
             Ok(source) => source,
             Err(message) => {
@@ -610,5 +627,65 @@ impl<'a> Collector<'a> {
         if self.files_seen.insert(key) {
             self.files.push((path.to_path_buf(), source, items));
         }
+    }
+}
+
+fn imports_in_items(items: &[Item]) -> Vec<(&ImportDef, bool)> {
+    let mut imports = Vec::new();
+    for item in items {
+        match item {
+            Item::Import(import) => imports.push((import, false)),
+            Item::Function(function) => imports_in_statements(&function.body, &mut imports),
+            _ => {}
+        }
+    }
+    imports
+}
+
+fn imports_in_statements<'a>(
+    statements: &'a [Statement],
+    imports: &mut Vec<(&'a ImportDef, bool)>,
+) {
+    for statement in statements {
+        match statement {
+            Statement::Import(import) => imports.push((import, true)),
+            Statement::Loop { body, .. }
+            | Statement::If {
+                then_block: body, ..
+            }
+            | Statement::While { body, .. } => imports_in_statements(body, imports),
+            Statement::Expression(expression) | Statement::Value(expression, _) => {
+                imports_in_expression(expression, imports)
+            }
+            Statement::Let { value, .. } => imports_in_expression(value, imports),
+            Statement::Return(Some(expression), _) => imports_in_expression(expression, imports),
+            Statement::Assign { value, .. } => imports_in_expression(value, imports),
+            Statement::Return(None, _) | Statement::Break(_) | Statement::Continue(_) => {}
+        }
+    }
+}
+
+fn imports_in_expression<'a>(
+    expression: &'a vinyl_parser::ast::expression::Expression,
+    imports: &mut Vec<(&'a ImportDef, bool)>,
+) {
+    use vinyl_parser::ast::expression::Expression;
+    match expression {
+        Expression::Block(statements, _) => imports_in_statements(statements, imports),
+        Expression::If {
+            then_block,
+            else_if,
+            else_block,
+            ..
+        } => {
+            imports_in_statements(then_block, imports);
+            for (_, block) in else_if {
+                imports_in_statements(block, imports);
+            }
+            if let Some(block) = else_block {
+                imports_in_statements(block, imports);
+            }
+        }
+        _ => {}
     }
 }

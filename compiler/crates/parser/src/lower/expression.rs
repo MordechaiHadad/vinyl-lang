@@ -9,7 +9,7 @@ use crate::{
     },
     lower::{
         Lowerer,
-        helpers::{child_by_field_opt, children, node_text},
+        helpers::{child_by_field_opt, children, node_text, parse_integer_literal},
     },
 };
 
@@ -136,13 +136,7 @@ impl<'a> Lowerer<'a> {
                         match fields_node.field_name_for_named_child(i) {
                             Some("name") => {
                                 if let Some((name, name_span)) = current_field.take() {
-                                    fields.push((
-                                        name.clone(),
-                                        Expression::Ident(
-                                            name,
-                                            name_span,
-                                        ),
-                                    ));
+                                    fields.push((name.clone(), Expression::Ident(name, name_span)));
                                 }
                                 current_field = Some((
                                     node_text(&child, self.source),
@@ -160,13 +154,7 @@ impl<'a> Lowerer<'a> {
                     }
                 }
                 if let Some((name, name_span)) = current_field {
-                    fields.push((
-                        name.clone(),
-                        Expression::Ident(
-                            name,
-                            name_span,
-                        ),
-                    ));
+                    fields.push((name.clone(), Expression::Ident(name, name_span)));
                 }
                 Ok(Expression::Struct {
                     span: span(),
@@ -279,19 +267,10 @@ impl<'a> Lowerer<'a> {
     pub(super) fn lower_int(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let raw = node_text(node, self.source);
-        let val = if let Some(hex) = raw.strip_prefix("0x") {
-            u128::from_str_radix(hex, 16)
-        } else if let Some(oct) = raw.strip_prefix("0o") {
-            u128::from_str_radix(oct, 8)
-        } else if let Some(bin) = raw.strip_prefix("0b") {
-            u128::from_str_radix(bin, 2)
-        } else {
-            raw.parse()
-        };
-        match val {
-            Ok(v) if v <= i128::MAX as u128 => Ok(Expression::Int(v as i128, span)),
-            Ok(v) => Ok(Expression::UInt(v, span)),
-            Err(_) => Err(self.span_error(node, &format!("invalid integer literal `{raw}`"))),
+        match parse_integer_literal(&raw) {
+            Some(v) if v <= i128::MAX as u128 => Ok(Expression::Int(v as i128, span)),
+            Some(v) => Ok(Expression::UInt(v, span)),
+            None => Err(self.span_error(node, &format!("invalid integer literal `{raw}`"))),
         }
     }
 
@@ -308,20 +287,20 @@ impl<'a> Lowerer<'a> {
         let span = SourceSpan::from(node.start_byte()..node.end_byte());
         let func_node = self.child_by_field(node, "function")?;
         let function = self.lower_expression(&func_node)?;
-
-        let args_node = self.child_by_field(node, "arguments")?;
-        let mut args = Vec::new();
-        for i in 0..args_node.named_child_count() {
-            if let Some(child) = args_node.named_child(i as u32) {
-                args.push(self.lower_expression(&child)?);
-            }
-        }
+        let args = self.lower_arguments(&self.child_by_field(node, "arguments")?)?;
 
         Ok(Expression::Call {
             span,
             function: Box::new(function),
             args,
         })
+    }
+
+    fn lower_arguments(&self, node: &Node) -> Result<Vec<Expression>, ParserDiagnostic> {
+        (0..node.named_child_count())
+            .filter_map(|index| node.named_child(index as u32))
+            .map(|child| self.lower_expression(&child))
+            .collect()
     }
 
     pub(super) fn lower_match(&self, node: &Node) -> Result<Expression, ParserDiagnostic> {
@@ -433,13 +412,7 @@ impl<'a> Lowerer<'a> {
             "call_expression" => {
                 let func_node = self.child_by_field(right, "function")?;
                 let function = self.lower_expression(&func_node)?;
-                let args_node = self.child_by_field(right, "arguments")?;
-                let mut args = Vec::new();
-                for i in 0..args_node.named_child_count() {
-                    if let Some(child) = args_node.named_child(i as u32) {
-                        args.push(self.lower_expression(&child)?);
-                    }
-                }
+                let mut args = self.lower_arguments(&self.child_by_field(right, "arguments")?)?;
                 if pipe_to_first {
                     args.insert(0, left);
                 } else {

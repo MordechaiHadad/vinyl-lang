@@ -373,8 +373,7 @@ impl IndexBuilder {
             | HirPatternKind::Tuple { span, .. }
             | HirPatternKind::EnumVariant { span, .. } => *span,
         };
-        self.patterns_at_pos
-            .insert(span.offset(), pattern.clone());
+        self.patterns_at_pos.insert(span.offset(), pattern.clone());
         match &pattern.kind {
             HirPatternKind::Wildcard(_) | HirPatternKind::Literal { .. } => {}
             HirPatternKind::Ident { span, name } => {
@@ -443,8 +442,8 @@ impl IndexBuilder {
 mod tests {
     use super::*;
     use crate::hir::{
-        HirExpression, HirExpressionKind, HirFunction, HirItem, HirItemKind, HirMatchArm,
-        HirParam, HirPattern, HirPatternKind, HirStatement, HirStatementKind, Type,
+        HirExpression, HirExpressionKind, HirFunction, HirItem, HirItemKind, HirMatchArm, HirParam,
+        HirPattern, HirPatternKind, HirStatement, HirStatementKind, Type,
     };
     use miette::SourceSpan;
     use vinyl_parser::ast::types::Primitive;
@@ -557,8 +556,14 @@ mod tests {
                         span: struct_pattern_span,
                         type_name: "Point".to_string(),
                         fields: vec![
-                            ("x".to_string(), ident_pattern(SourceSpan::from(38..39), "x")),
-                            ("y".to_string(), ident_pattern(SourceSpan::from(41..42), "y")),
+                            (
+                                "x".to_string(),
+                                ident_pattern(SourceSpan::from(38..39), "x"),
+                            ),
+                            (
+                                "y".to_string(),
+                                ident_pattern(SourceSpan::from(41..42), "y"),
+                            ),
                         ],
                     },
                     type_: Type::Primitive(Primitive::Int32),
@@ -599,12 +604,16 @@ mod tests {
             }),
         }];
         let index = IndexBuilder::default().build(&items);
-        assert!(index
-            .patterns_at_pos
-            .contains_key(&enum_pattern_span.offset()));
-        assert!(index
-            .patterns_at_pos
-            .contains_key(&struct_pattern_span.offset()));
+        assert!(
+            index
+                .patterns_at_pos
+                .contains_key(&enum_pattern_span.offset())
+        );
+        assert!(
+            index
+                .patterns_at_pos
+                .contains_key(&struct_pattern_span.offset())
+        );
         assert!(index.patterns_at_pos.contains_key(&20));
     }
 }

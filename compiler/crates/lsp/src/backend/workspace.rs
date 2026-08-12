@@ -369,16 +369,14 @@ fn load_imported_module(
     let resolved = if import.wildcard || import.path.len() <= 1 {
         resolve_module_with_prefix(resolver, &prefix, &import.path, opened_path)
     } else {
-        resolve_module_with_prefix(resolver, &prefix, &import.path, opened_path).or_else(
-            |_| {
-                resolve_module_with_prefix(
-                    resolver,
-                    &prefix,
-                    &import.path[..import.path.len() - 1],
-                    opened_path,
-                )
-            },
-        )
+        resolve_module_with_prefix(resolver, &prefix, &import.path, opened_path).or_else(|_| {
+            resolve_module_with_prefix(
+                resolver,
+                &prefix,
+                &import.path[..import.path.len() - 1],
+                opened_path,
+            )
+        })
     };
     if let Ok(info) = resolved
         && !vfs.files().contains_key(&info.file_path)

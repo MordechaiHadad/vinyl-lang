@@ -98,7 +98,11 @@ fn documentation(attrs: &[Attribute]) -> Option<String> {
 }
 
 fn intrinsic_kind(func: &FunctionDef) -> Option<HirIntrinsic> {
-    if !func.attrs.iter().any(|attribute| attribute.name == "intrinsic") {
+    if !func
+        .attrs
+        .iter()
+        .any(|attribute| attribute.name == "intrinsic")
+    {
         return None;
     }
     match func.name.rsplit("::").next().unwrap_or("") {

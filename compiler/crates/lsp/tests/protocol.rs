@@ -156,11 +156,13 @@ fn serves_core_lsp_features_over_stdio() {
         initialize["result"]["capabilities"]["definitionProvider"],
         true
     );
-    assert!(initialize["result"]["capabilities"]["completionProvider"]["triggerCharacters"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|character| character == "{"));
+    assert!(
+        initialize["result"]["capabilities"]["completionProvider"]["triggerCharacters"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|character| character == "{")
+    );
 
     lsp.send(json!({
         "jsonrpc": "2.0",
@@ -1982,8 +1984,14 @@ fn hover_and_go_to_definition_for_std_len_intrinsic() {
     }));
     let hover = lsp.response(2);
     let hover_text = hover["result"]["contents"].as_str().unwrap();
-    assert!(hover_text.contains("fn len("), "hover should show the signature: {hover_text}");
-    assert!(hover_text.contains("(from std)"), "hover should show the module: {hover_text}");
+    assert!(
+        hover_text.contains("fn len("),
+        "hover should show the signature: {hover_text}"
+    );
+    assert!(
+        hover_text.contains("(from std)"),
+        "hover should show the module: {hover_text}"
+    );
     assert!(
         hover_text.contains("Number of elements in a fixed-size array"),
         "hover should show documentation: {hover_text}"
@@ -1995,7 +2003,10 @@ fn hover_and_go_to_definition_for_std_len_intrinsic() {
     }));
     let definition = lsp.response(3);
     assert!(
-        definition["result"]["uri"].as_str().unwrap().ends_with("std.vn"),
+        definition["result"]["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with("std.vn"),
         "go to definition should land in std.vn: {definition}"
     );
 }
@@ -2417,8 +2428,7 @@ fn goto_definition_on_enum_variant() {
 #[test]
 fn goto_definition_on_enum_variant_match_pattern() {
     let project = TestProject::new();
-    let main_text =
-        "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn classify(s: Shape): int32 {\n    match s {\n        Shape::Circle(r) => r,\n        Shape::Square(r) => r,\n        Shape::Empty() => 0,\n    }\n}\n\nfn main() {\n    let c = classify(Shape::Circle(5));\n}\n";
+    let main_text = "enum Shape { Empty, Circle(int32), Square(int32) }\n\nfn classify(s: Shape): int32 {\n    match s {\n        Shape::Circle(r) => r,\n        Shape::Square(r) => r,\n        Shape::Empty() => 0,\n    }\n}\n\nfn main() {\n    let c = classify(Shape::Circle(5));\n}\n";
     std::fs::write(&project.main, main_text).unwrap();
     let main_uri = TestProject::uri(&project.main);
     let root_uri = TestProject::uri(&project.root);
@@ -3719,7 +3729,9 @@ fn import_parent_completion_scope_limited() {
         "`import parent::` should suggest sibling module labels `math`/`main`, got: {items:#?}"
     );
     assert!(
-        !items.iter().any(|item| item["label"].as_str().is_some_and(|l| l.contains("::"))),
+        !items
+            .iter()
+            .any(|item| item["label"].as_str().is_some_and(|l| l.contains("::"))),
         "`import parent::` should not suggest qualified symbols, got: {items:#?}"
     );
     let _ = lsp;
@@ -3805,7 +3817,10 @@ fn completion_struct_literal_fields() {
             "position": { "line": 2, "character": 19 }
         }
     }));
-    let items = lsp.response(2)["result"]["items"].as_array().unwrap().clone();
+    let items = lsp.response(2)["result"]["items"]
+        .as_array()
+        .unwrap()
+        .clone();
     for expected in ["x", "y"] {
         assert!(
             items.iter().any(|item| item["label"] == expected),
@@ -3828,7 +3843,10 @@ fn completion_struct_literal_fields() {
             "position": { "line": 2, "character": 27 }
         }
     }));
-    let items = lsp.response(3)["result"]["items"].as_array().unwrap().clone();
+    let items = lsp.response(3)["result"]["items"]
+        .as_array()
+        .unwrap()
+        .clone();
     assert!(
         items.iter().any(|item| item["label"] == "y"),
         "struct literal should still suggest `y`, got: {items:#?}"
@@ -3862,7 +3880,10 @@ fn incomplete_struct_literal_reports_one_parse_diagnostic() {
         .as_array()
         .unwrap()
         .clone();
-    assert!(diagnostics.len() <= 2, "missing semicolon cascaded: {diagnostics:#?}");
+    assert!(
+        diagnostics.len() <= 2,
+        "missing semicolon cascaded: {diagnostics:#?}"
+    );
 }
 
 #[test]

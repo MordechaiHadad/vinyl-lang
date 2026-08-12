@@ -6,6 +6,7 @@ use crate::ast::{
     statement::Statement,
 };
 
+/// An expression in the lowered compiler AST.
 #[derive(Debug, Clone)]
 pub enum Expression {
     Int(i128, SourceSpan),
@@ -85,6 +86,7 @@ pub enum Expression {
 }
 
 impl Expression {
+    /// Returns the source span covering the expression.
     pub fn span(&self) -> SourceSpan {
         match self {
             Expression::Int(_, s) => *s,
@@ -115,6 +117,7 @@ impl Expression {
     }
 }
 
+/// A single arm in a match expression.
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub span: SourceSpan,

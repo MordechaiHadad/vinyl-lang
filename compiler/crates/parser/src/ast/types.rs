@@ -1,5 +1,6 @@
 use core::fmt;
 
+/// A source-level type.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Primitive(Primitive),
@@ -12,6 +13,7 @@ pub enum Type {
 }
 
 impl Type {
+    /// Returns the primitive type, if this is one.
     pub fn as_primitive(&self) -> Option<&Primitive> {
         match self {
             Type::Primitive(p) => Some(p),
@@ -19,26 +21,32 @@ impl Type {
         }
     }
 
+    /// Returns whether this is an integer type.
     pub fn is_int(&self) -> bool {
         self.as_primitive().is_some_and(|p| p.is_int())
     }
 
+    /// Returns whether this is an unsigned integer type.
     pub fn is_uint(&self) -> bool {
         self.as_primitive().is_some_and(|p| p.is_uint())
     }
 
+    /// Returns whether this is a signed integer type.
     pub fn is_signed(&self) -> bool {
         self.is_int()
     }
 
+    /// Returns whether this is an unsigned integer type.
     pub fn is_unsigned(&self) -> bool {
         self.is_uint()
     }
 
+    /// Returns whether this is a floating-point type.
     pub fn is_float(&self) -> bool {
         self.as_primitive().is_some_and(|p| p.is_float())
     }
 
+    /// Returns whether this is numeric.
     pub fn is_numeric(&self) -> bool {
         self.as_primitive().is_some_and(|p| p.is_numeric())
     }
@@ -79,6 +87,7 @@ impl fmt::Display for Type {
     }
 }
 
+/// A built-in primitive type.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Primitive {
     Int,
@@ -105,6 +114,7 @@ pub enum Primitive {
 }
 
 impl Primitive {
+    /// Returns whether this is a signed integer primitive.
     pub fn is_int(&self) -> bool {
         matches!(
             self,
@@ -118,6 +128,7 @@ impl Primitive {
         )
     }
 
+    /// Returns whether this is an unsigned integer primitive.
     pub fn is_uint(&self) -> bool {
         matches!(
             self,
@@ -131,14 +142,17 @@ impl Primitive {
         )
     }
 
+    /// Returns whether this is a signed integer primitive.
     pub fn is_signed(&self) -> bool {
         self.is_int()
     }
 
+    /// Returns whether this is an unsigned integer primitive.
     pub fn is_unsigned(&self) -> bool {
         self.is_uint()
     }
 
+    /// Returns whether this is a floating-point primitive.
     pub fn is_float(&self) -> bool {
         matches!(
             self,
@@ -146,6 +160,7 @@ impl Primitive {
         )
     }
 
+    /// Returns whether this is numeric.
     pub fn is_numeric(&self) -> bool {
         self.is_int() || self.is_uint() || self.is_float()
     }

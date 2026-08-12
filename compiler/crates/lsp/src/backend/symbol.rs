@@ -118,12 +118,12 @@ pub(crate) fn resolve_symbol(analysis: &Analysis, offset: usize) -> Option<Symbo
                     })
                 }
             }
-            HirExpressionKind::EnumVariant { span, type_name, .. } => {
-                variant_or_type_symbol(source, *span, type_name, offset)
-            }
-            HirExpressionKind::Struct { span, type_name, .. } => {
-                struct_type_symbol(source, *span, type_name, offset)
-            }
+            HirExpressionKind::EnumVariant {
+                span, type_name, ..
+            } => variant_or_type_symbol(source, *span, type_name, offset),
+            HirExpressionKind::Struct {
+                span, type_name, ..
+            } => struct_type_symbol(source, *span, type_name, offset),
             _ => None,
         };
     }
@@ -151,19 +151,16 @@ fn resolve_pattern(analysis: &Analysis, offset: usize) -> Option<SymbolRef> {
         .values()
         .filter(|pattern| {
             let span = pattern.span();
-            span_contains(
-                (span.offset(), span.offset() + span.len()),
-                offset,
-            )
+            span_contains((span.offset(), span.offset() + span.len()), offset)
         })
         .min_by_key(|pattern| pattern.span().len())?;
     match &innermost.kind {
-        HirPatternKind::EnumVariant { span, type_name, .. } => {
-            variant_or_type_symbol(source, *span, type_name, offset)
-        }
-        HirPatternKind::Struct { span, type_name, .. } => {
-            struct_type_symbol(source, *span, type_name, offset)
-        }
+        HirPatternKind::EnumVariant {
+            span, type_name, ..
+        } => variant_or_type_symbol(source, *span, type_name, offset),
+        HirPatternKind::Struct {
+            span, type_name, ..
+        } => struct_type_symbol(source, *span, type_name, offset),
         HirPatternKind::Tuple { .. }
         | HirPatternKind::Ident { .. }
         | HirPatternKind::Literal { .. }
@@ -286,22 +283,26 @@ pub(crate) fn target_definition(analysis: &Analysis, target: &SymbolRef) -> Opti
                     _ => None,
                 })
         }
-        SymbolRef::Variant { type_name, .. } => analysis
-            .result
-            .items
-            .iter()
-            .find_map(|item| match &item.kind {
-                HirItemKind::Enum(enumeration) if enumeration.name == *type_name => Some(Definition {
-                    id: 0,
-                    name: enumeration.name.clone(),
-                    kind: DefinitionKind::Enum,
-                    span: enumeration.span,
-                    scope_depth: 1,
-                    scope: None,
-                    type_name: None,
-                }),
-                _ => None,
-            }),
+        SymbolRef::Variant { type_name, .. } => {
+            analysis
+                .result
+                .items
+                .iter()
+                .find_map(|item| match &item.kind {
+                    HirItemKind::Enum(enumeration) if enumeration.name == *type_name => {
+                        Some(Definition {
+                            id: 0,
+                            name: enumeration.name.clone(),
+                            kind: DefinitionKind::Enum,
+                            span: enumeration.span,
+                            scope_depth: 1,
+                            scope: None,
+                            type_name: None,
+                        })
+                    }
+                    _ => None,
+                })
+        }
         SymbolRef::Module { name } => Some(Definition {
             id: 0,
             name: name.clone(),

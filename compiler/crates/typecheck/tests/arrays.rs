@@ -168,7 +168,11 @@ fn bool_array_return_int() {
 fn array_fill_small_clean() {
     let source = "fn main(): int32 { let arr = [0; 10]; arr[0] }";
     let (items, warnings) = common::compile_with_warnings(source);
-    assert!(items.is_ok(), "small fill should compile: {:?}", items.err());
+    assert!(
+        items.is_ok(),
+        "small fill should compile: {:?}",
+        items.err()
+    );
     assert_eq!(warnings.len(), 0, "small array should not warn");
 }
 
@@ -184,7 +188,11 @@ fn array_fill_below_warning_boundary_clean() {
 fn array_fill_large_warns() {
     let source = "fn main(): int32 { let arr = [0; 4096]; arr[0] }";
     let (items, warnings) = common::compile_with_warnings(source);
-    assert!(items.is_ok(), "32 KiB fill should compile: {:?}", items.err());
+    assert!(
+        items.is_ok(),
+        "32 KiB fill should compile: {:?}",
+        items.err()
+    );
     assert_eq!(warnings.len(), 1, "exactly 32 KiB should warn");
     assert!(
         warnings[0].to_string().contains("large"),
@@ -219,10 +227,13 @@ fn array_fill_huge_errors() {
 
 #[test]
 fn allow_large_array_suppresses_error_and_warning() {
-    let source =
-        "@allow(large_array) fn main(): int32 { let arr = [0; 10000000]; arr[0] }";
+    let source = "@allow(large_array) fn main(): int32 { let arr = [0; 10000000]; arr[0] }";
     let (items, warnings) = common::compile_with_warnings(source);
-    assert!(items.is_ok(), "suppressed fill should compile: {:?}", items.err());
+    assert!(
+        items.is_ok(),
+        "suppressed fill should compile: {:?}",
+        items.err()
+    );
     assert_eq!(warnings.len(), 0, "suppressed fill should not warn");
 }
 

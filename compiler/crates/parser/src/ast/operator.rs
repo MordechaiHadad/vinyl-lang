@@ -1,3 +1,4 @@
+/// An assignment operator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AssignOp {
     Eq,
@@ -14,6 +15,7 @@ pub enum AssignOp {
     PowEq,
 }
 
+/// A binary operator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add,
@@ -40,6 +42,7 @@ pub enum BinaryOp {
     RangeInclusive,
 }
 
+/// A unary operator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Neg,

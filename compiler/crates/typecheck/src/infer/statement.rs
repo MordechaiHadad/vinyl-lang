@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use miette::SourceSpan;
 use vinyl_parser::ast::expression::Expression;
 use vinyl_parser::ast::item::FunctionDef;
+use vinyl_parser::ast::item::ImportDef;
 use vinyl_parser::ast::operator::AssignOp;
 use vinyl_parser::ast::statement::{AssignTarget, Statement};
 use vinyl_parser::ast::types::Primitive;
@@ -155,12 +156,9 @@ impl InferState {
                     let resolved = self.subs.apply(&hir_value.type_);
                     match self.canonicalize_type(ann, *span) {
                         Ok(canonical) => {
-                            if let Err(e) = self.subs.unify(
-                                &self.source,
-                                &canonical,
-                                &resolved,
-                                *span,
-                            ) {
+                            if let Err(e) =
+                                self.subs.unify(&self.source, &canonical, &resolved, *span)
+                            {
                                 self.errors.push(*e);
                             }
                         }
@@ -189,6 +187,18 @@ impl InferState {
                 let hir_expr = self.infer_expr(expr, signatures)?;
                 Ok(HirStatement {
                     kind: HirStatementKind::Expr(hir_expr, expr.span()),
+                })
+            }
+            Statement::Import(import) => {
+                self.bind_local_import(import);
+                Ok(HirStatement {
+                    kind: HirStatementKind::Expr(
+                        HirExpression {
+                            kind: crate::hir::HirExpressionKind::Unit(import.span),
+                            type_: Type::Primitive(Primitive::Unit),
+                        },
+                        import.span,
+                    ),
                 })
             }
             Statement::Return(expr, span) => {
@@ -294,6 +304,42 @@ impl InferState {
                         value: hir_value,
                     },
                 })
+            }
+        }
+    }
+
+    fn bind_local_import(&mut self, import: &ImportDef) {
+        let (module_len, exports) =
+            if let Some(exports) = self.module_table.get(&import.path.join("::")) {
+                (import.path.len(), exports)
+            } else if let Some((module_len, exports)) =
+                crate::module::resolve_module(&self.module_table, &import.path)
+            {
+                (module_len, exports)
+            } else {
+                return;
+            };
+        let requested = &import.path[module_len..];
+        let names = if import.symbols.is_empty() {
+            if import.wildcard || requested.is_empty() {
+                exports
+                    .functions
+                    .iter()
+                    .map(|function| function.name.clone())
+                    .collect()
+            } else {
+                vec![requested.join("::")]
+            }
+        } else {
+            import.symbols.clone()
+        };
+        for name in names {
+            if let Some(function) = exports
+                .functions
+                .iter()
+                .find(|function| function.name == name)
+            {
+                self.scope.bind_import(&name, function.clone());
             }
         }
     }

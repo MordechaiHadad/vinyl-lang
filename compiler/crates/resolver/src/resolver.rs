@@ -130,7 +130,11 @@ impl Resolver {
             ResolverMode::Manifest => self.root.join("src"),
             ResolverMode::Script => self.root.clone(),
         };
-        crate::add_module_path(&crate::strip_verbatim_prefix(file_path), &source_root, &mut self.modules);
+        crate::add_module_path(
+            &crate::strip_verbatim_prefix(file_path),
+            &source_root,
+            &mut self.modules,
+        );
     }
 
     pub fn resolve_module_path(
@@ -139,7 +143,11 @@ impl Resolver {
     ) -> Result<ModuleInfo, ResolveDiagnostic> {
         if path == ["std"] {
             let info = std_module_info();
-            return Ok(self.modules.entry(info.path.clone()).or_insert(info).clone());
+            return Ok(self
+                .modules
+                .entry(info.path.clone())
+                .or_insert(info)
+                .clone());
         }
         let import_path: Vec<String> = path.to_vec();
         if let Some(info) = self.modules.get(path) {

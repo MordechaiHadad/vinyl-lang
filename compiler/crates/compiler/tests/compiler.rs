@@ -64,6 +64,35 @@ fn compiles_public_script_module_with_import() {
 }
 
 #[test]
+fn compiles_function_scoped_import() {
+    let root = script_project(
+        "function_scoped_import",
+        &[
+            ("main.vn", "fn main() { import math::double; double(21) }\n"),
+            ("math.vn", "public fn double(n: int): int { n * 2 }\n"),
+        ],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn function_scoped_import_does_not_leak() {
+    let root = script_project(
+        "function_scoped_import_is_local",
+        &[
+            (
+                "main.vn",
+                "fn first() { import math::double; double(21) }\nfn second() { double(21) }\nfn main() {}\n",
+            ),
+            ("math.vn", "public fn double(n: int): int { n * 2 }\n"),
+        ],
+    );
+    let result = compile_entry(&root.join("main.vn"), None);
+    assert!(result.is_err(), "local import leaked into another function");
+}
+
+#[test]
 fn rejects_bare_module_ref_without_import() {
     let root = script_project(
         "bare_module_ref_without_import",
@@ -73,7 +102,10 @@ fn rejects_bare_module_ref_without_import() {
         ],
     );
     let result = compile_entry(&root.join("main.vn"), None);
-    assert!(result.is_err(), "bare `math::` refs require an explicit import");
+    assert!(
+        result.is_err(),
+        "bare `math::` refs require an explicit import"
+    );
 }
 
 #[test]
@@ -604,7 +636,10 @@ fn std_symbol_import_resolves() {
 fn std_len_intrinsic_returns_array_length() {
     let root = script_project(
         "std_len_intrinsic",
-        &[("main.vn", "import std; fn main() { println(std::len([1, 2, 3])) }\n")],
+        &[(
+            "main.vn",
+            "import std; fn main() { println(std::len([1, 2, 3])) }\n",
+        )],
     );
     let result = compile_entry(&root.join("main.vn"), None);
     assert!(result.is_ok(), "{result:?}");

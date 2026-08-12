@@ -1,4 +1,5 @@
 import parent::math;
+import std;
 
 fn main() {
     let y = math::Color::Red;

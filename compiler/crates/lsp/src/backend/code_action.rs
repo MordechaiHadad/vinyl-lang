@@ -4,9 +4,7 @@ use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
 
 use crate::backend::state::Backend;
-use crate::backend::workspace::{
-    is_imported, is_public_symbol, non_canonical_key, same_file,
-};
+use crate::backend::workspace::{is_imported, is_public_symbol, non_canonical_key, same_file};
 use crate::position::{full_range, offset_at};
 use crate::text::{current_imports, import_edit_range, module_ref_prefix, word_prefix};
 

@@ -5,24 +5,29 @@ use miette::SourceSpan;
 use crate::error::{InferResult, TypeDiagnosticKind};
 use crate::infer::SourceContext;
 use crate::infer::TypeScheme;
+use vinyl_parser::ast::item::FunctionDef;
 
 pub(super) struct ScopeState {
     pub(super) scopes: Vec<HashMap<String, TypeScheme>>,
+    pub(super) imports: Vec<HashMap<String, FunctionDef>>,
 }
 
 impl ScopeState {
     pub(super) fn new() -> Self {
         ScopeState {
             scopes: vec![HashMap::new()],
+            imports: vec![HashMap::new()],
         }
     }
 
     pub(super) fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.imports.push(HashMap::new());
     }
 
     pub(super) fn pop_scope(&mut self) {
         self.scopes.pop();
+        self.imports.pop();
     }
 
     pub(super) fn bind(&mut self, name: &str, scheme: TypeScheme) {
@@ -35,6 +40,21 @@ impl ScopeState {
         for scope in self.scopes.iter().rev() {
             if let Some(scheme) = scope.get(name) {
                 return Some(scheme);
+            }
+        }
+        None
+    }
+
+    pub(super) fn bind_import(&mut self, name: &str, function: FunctionDef) {
+        if let Some(scope) = self.imports.last_mut() {
+            scope.insert(name.to_string(), function);
+        }
+    }
+
+    pub(super) fn lookup_import(&self, name: &str) -> Option<&FunctionDef> {
+        for scope in self.imports.iter().rev() {
+            if let Some(function) = scope.get(name) {
+                return Some(function);
             }
         }
         None

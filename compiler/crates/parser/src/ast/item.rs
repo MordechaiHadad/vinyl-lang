@@ -2,6 +2,7 @@ use miette::SourceSpan;
 
 use crate::ast::{expression::Expression, statement::Statement, types::Type};
 
+/// A top-level declaration.
 #[derive(Debug, Clone)]
 pub enum Item {
     Function(FunctionDef),
@@ -13,6 +14,7 @@ pub enum Item {
 }
 
 impl Item {
+    /// Returns the source span covering the declaration.
     pub fn span(&self) -> SourceSpan {
         match self {
             Item::Function(f) => f.span,
@@ -25,6 +27,7 @@ impl Item {
     }
 }
 
+/// A function declaration.
 #[derive(Debug, Clone)]
 pub struct FunctionDef {
     pub span: SourceSpan,
@@ -36,6 +39,7 @@ pub struct FunctionDef {
     pub body: Vec<Statement>,
 }
 
+/// A function parameter.
 #[derive(Debug, Clone)]
 pub struct FunctionParam {
     pub span: SourceSpan,
@@ -44,6 +48,7 @@ pub struct FunctionParam {
     pub type_: Type,
 }
 
+/// A named structure declaration.
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub span: SourceSpan,
@@ -53,6 +58,7 @@ pub struct StructDef {
     pub fields: Vec<StructField>,
 }
 
+/// A structure field.
 #[derive(Debug, Clone)]
 pub struct StructField {
     pub span: SourceSpan,
@@ -61,6 +67,7 @@ pub struct StructField {
     pub type_: Type,
 }
 
+/// A tuple structure declaration.
 #[derive(Debug, Clone)]
 pub struct TupleDef {
     pub span: SourceSpan,
@@ -70,6 +77,7 @@ pub struct TupleDef {
     pub types: Vec<Type>,
 }
 
+/// An enum declaration.
 #[derive(Debug, Clone)]
 pub struct EnumDef {
     pub span: SourceSpan,
@@ -79,6 +87,7 @@ pub struct EnumDef {
     pub variants: Vec<EnumVariant>,
 }
 
+/// An enum variant.
 #[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub span: SourceSpan,
@@ -86,6 +95,7 @@ pub struct EnumVariant {
     pub data: Option<EnumVariantData>,
 }
 
+/// A type alias declaration.
 #[derive(Debug, Clone)]
 pub struct TypeAliasDef {
     pub span: SourceSpan,
@@ -95,21 +105,29 @@ pub struct TypeAliasDef {
     pub type_: Type,
 }
 
+/// The payload carried by an enum variant.
 #[derive(Debug, Clone)]
 pub enum EnumVariantData {
     Tuple(Vec<Type>),
     Struct(Vec<StructField>),
 }
 
+/// An import declaration.
 #[derive(Debug, Clone)]
 pub struct ImportDef {
+    /// Source span covering the import declaration.
     pub span: SourceSpan,
+    /// Relative import prefix such as `parent` or `package`.
     pub prefix: Vec<String>,
+    /// Module path segments.
     pub path: Vec<String>,
+    /// Explicit symbols selected from the module path.
     pub symbols: Vec<String>,
+    /// Whether the import selects every public symbol.
     pub wildcard: bool,
 }
 
+/// An attribute attached to a declaration.
 #[derive(Debug, Clone)]
 pub struct Attribute {
     pub span: SourceSpan,

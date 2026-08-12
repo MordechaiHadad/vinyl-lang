@@ -103,7 +103,11 @@ pub fn compile_entry(
             .issues
             .into_iter()
             .filter(|issue| !issue.warning)
-            .map(|issue| CompileError::Module(ModuleError { message: issue.message }))
+            .map(|issue| {
+                CompileError::Module(ModuleError {
+                    message: issue.message,
+                })
+            })
             .collect());
     }
 

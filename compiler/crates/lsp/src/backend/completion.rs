@@ -17,8 +17,8 @@ use crate::backend::workspace::{
 use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
 use crate::text::{
-    current_imports, import_edit_range, module_path_context, word_before_colon, word_prefix,
-    ModulePathContext,
+    ModulePathContext, current_imports, import_edit_range, module_path_context, word_before_colon,
+    word_prefix,
 };
 use crate::vfs::LspFileSystem;
 
@@ -164,7 +164,10 @@ impl Backend {
                         ));
                     }
                 }
-                Some(ModulePathContext::ImportSymbol { module_name, partial }) => {
+                Some(ModulePathContext::ImportSymbol {
+                    module_name,
+                    partial,
+                }) => {
                     items.extend(module_ref_completions(
                         &state,
                         resolver,
@@ -423,9 +426,7 @@ fn struct_literal_field_completions(
         .items
         .iter()
         .find_map(|item| match &item.kind {
-            vinyl_typecheck::hir::HirItemKind::Struct(structure)
-                if structure.name == type_name =>
-            {
+            vinyl_typecheck::hir::HirItemKind::Struct(structure) if structure.name == type_name => {
                 Some(structure.clone())
             }
             _ => None,
@@ -439,11 +440,7 @@ fn struct_literal_field_completions(
         .split(',')
         .filter_map(|part| {
             let name = part.split(':').next()?.trim();
-            if name.is_empty() {
-                None
-            } else {
-                Some(name)
-            }
+            if name.is_empty() { None } else { Some(name) }
         })
         .collect();
     let line_index = LineIndex::new(source);

@@ -84,10 +84,7 @@ fn is_scope_qualified(line: &str) -> bool {
     if matches!(module_name, "parent" | "self" | "package") {
         return true;
     }
-    matches!(
-        chunks.next(),
-        Some("parent" | "self" | "package")
-    )
+    matches!(chunks.next(), Some("parent" | "self" | "package"))
 }
 
 fn find_identifier(text: &str, name: &str) -> Option<usize> {

@@ -1,5 +1,6 @@
 use miette::SourceSpan;
 
+/// A pattern used by a match arm.
 #[derive(Debug, Clone)]
 pub enum Pattern {
     Wildcard(SourceSpan),
@@ -20,6 +21,7 @@ pub enum Pattern {
 }
 
 impl Pattern {
+    /// Returns the source span covering the pattern.
     pub fn span(&self) -> SourceSpan {
         match self {
             Pattern::Wildcard(s) => *s,
@@ -32,6 +34,7 @@ impl Pattern {
     }
 }
 
+/// A literal value used in a pattern.
 #[derive(Debug, Clone)]
 pub enum LiteralPattern {
     Int(i128),

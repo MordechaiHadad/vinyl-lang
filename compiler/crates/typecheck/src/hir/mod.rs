@@ -7,8 +7,8 @@ pub mod types;
 
 pub use expression::{HirExpression, HirExpressionKind, HirMatchArm};
 pub use item::{
-    HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirFunction, HirItem, HirItemKind,
-    HirIntrinsic, HirParam, HirStruct, HirTupleStruct, HirTypeAlias,
+    HirEnum, HirEnumVariant, HirEnumVariantData, HirField, HirFunction, HirIntrinsic, HirItem,
+    HirItemKind, HirParam, HirStruct, HirTupleStruct, HirTypeAlias,
 };
 pub use operator::AssignOp;
 pub use pattern::{HirPattern, HirPatternKind, LiteralValue};
