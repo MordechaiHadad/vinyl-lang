@@ -1,7 +1,7 @@
 id = "vinyl"
 name = "Vinyl"
 description = "Vinyl language support."
-version = "0.3.0"
+version = "0.4.0"
 schema_version = 1
 authors = ["Mordechai Hadad"]
 repository = "https://github.com/MordechaiHadad/vinyl-lang"
