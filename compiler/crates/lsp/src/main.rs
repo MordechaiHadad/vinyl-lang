@@ -141,6 +141,7 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         if let Ok(path) = params.text_document.uri.to_file_path() {
             let mut state = self.state.write().await;
+            state.files.intern(&path);
             state.vfs.set(path.clone(), params.text_document.text);
             if let Some(root) = state
                 .workspace_root
@@ -156,6 +157,7 @@ impl LanguageServer for Backend {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Ok(path) = params.text_document.uri.to_file_path() {
             let mut state = self.state.write().await;
+            state.files.intern(&path);
             let mut source = state.vfs.source(&path).unwrap_or_default();
             for change in params.content_changes {
                 if let Some(range) = change.range {
@@ -188,8 +190,11 @@ impl LanguageServer for Backend {
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         if let Ok(path) = params.text_document.uri.to_file_path() {
             let mut state = self.state.write().await;
+            state.files.intern(&path);
             state.vfs.remove(&path);
-            state.cache.remove(&path);
+            if let Some(file_id) = state.files.get(&path) {
+                state.cache.remove(&file_id);
+            }
         }
         self.client
             .publish_diagnostics(params.text_document.uri, Vec::new(), None)

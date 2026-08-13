@@ -145,7 +145,8 @@ impl<'a> Formatter<'a> {
                         if next_kind == "public"
                             || next_kind == "attribute"
                             || next_kind == "comment"
-                            || (next_kind == "import_statement" && child.kind() == "import_statement")
+                            || (next_kind == "import_statement"
+                                && child.kind() == "import_statement")
                         {
                             self.newline();
                         } else {

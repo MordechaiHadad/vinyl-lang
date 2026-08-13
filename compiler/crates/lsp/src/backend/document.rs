@@ -29,7 +29,7 @@ impl Backend {
             let local_type_name = type_name.rsplit("::").next().unwrap_or(type_name);
             let module_path = type_name.rsplit_once("::").map(|(module, _)| module);
             for candidate in self.analyses().await {
-                if candidate.path == analysis.path
+                if candidate.file_id == analysis.file_id
                     || !candidate
                         .result
                         .items
@@ -38,10 +38,13 @@ impl Backend {
                 {
                     continue;
                 }
-                if let Some(module_path) = module_path
-                    && !crate::backend::symbol::path_matches_module(&candidate.path, module_path)
-                {
-                    continue;
+                if let Some(module_path) = module_path {
+                    let Some(candidate_path) = self.file_path(candidate.file_id).await else {
+                        continue;
+                    };
+                    if !crate::backend::symbol::path_matches_module(&candidate_path, module_path) {
+                        continue;
+                    }
                 }
                 let Some(definition) =
                     candidate

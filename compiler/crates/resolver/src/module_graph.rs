@@ -245,7 +245,9 @@ impl<'a> Collector<'a> {
                             span: import.span,
                             prefix: import.prefix.clone(),
                             path,
+                            path_spans: Vec::new(),
                             symbols: Vec::new(),
+                            symbol_spans: Vec::new(),
                             wildcard: false,
                         }
                     })

@@ -9,10 +9,9 @@ use vinyl_typecheck::DefinitionKind;
 use vinyl_typecheck::index::types::Definition;
 
 use crate::backend::definition::definition_detail;
-use crate::backend::state::{Analysis, Backend, State};
+use crate::backend::state::{Analysis, Backend, FileId, State};
 use crate::backend::workspace::{
-    analyze_with_diagnostics, is_imported, is_public_symbol, non_canonical_key,
-    parse_file_with_diagnostics, same_file,
+    analyze_with_diagnostics, is_imported, is_public_symbol, parse_file_with_diagnostics, same_file,
 };
 use crate::consts::{KEYWORDS, MODULE_PREFIXES};
 use crate::position::{offset_at, position_at};
@@ -35,7 +34,15 @@ impl Backend {
         let current_source = state.vfs.source(&path).unwrap_or_default();
         let analysis = (|| {
             let (name, items) = parse_file_with_diagnostics(&state.vfs, &path).ok()?;
-            analyze_with_diagnostics(&path, &name, &items, &state.module_table).ok()
+            analyze_with_diagnostics(
+                &path,
+                FileId::INVALID,
+                &name,
+                &items,
+                &items,
+                &state.module_table,
+            )
+            .ok()
         })()
         .or(self.analysis(uri).await);
         let current_line_index = LineIndex::new(&current_source);
@@ -358,7 +365,15 @@ fn analyze_completion_source(state: &State, path: &Path, source: &str) -> Option
     if let Some(analysis) = analyze_completion_source_with_imports(state, path, source, &items) {
         return Some(analysis);
     }
-    analyze_with_diagnostics(path, source, &items, &state.module_table).ok()
+    analyze_with_diagnostics(
+        path,
+        FileId::INVALID,
+        source,
+        &items,
+        &items,
+        &state.module_table,
+    )
+    .ok()
 }
 
 fn analyze_completion_source_with_imports(
@@ -387,7 +402,15 @@ fn analyze_completion_source_with_imports(
             .ok_or_else(|| format!("could not read {}", path.display()))
     };
     let graph = resolver.build_module_graph(path, items, &mut read_source);
-    analyze_with_diagnostics(path, source, &graph.all_items, &graph.module_table).ok()
+    analyze_with_diagnostics(
+        path,
+        FileId::INVALID,
+        source,
+        &graph.all_items,
+        items,
+        &graph.module_table,
+    )
+    .ok()
 }
 
 fn struct_literal_context(source: &str, offset: usize) -> Option<String> {
@@ -645,9 +668,7 @@ fn variant_completions(
             .all_modules()
             .values()
             .find(|info| info.import_name == module_name)?;
-        let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
-        let cache_key =
-            crate::backend::workspace::non_canonical_key(&info.file_path, resolver, workspace_root);
+        let cache_key = state.files.get(&info.file_path)?;
         state
             .cache
             .get(&cache_key)?
@@ -909,7 +930,6 @@ fn module_ref_completions(
     offset: usize,
     auto_import: Option<(&str, &str)>,
 ) -> Vec<CompletionItem> {
-    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
     let mut items = Vec::new();
     let mut found_module = false;
     for info in resolver.all_modules().values() {
@@ -917,7 +937,9 @@ fn module_ref_completions(
             continue;
         }
         found_module = true;
-        let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
+        let Some(cache_key) = state.files.get(&info.file_path) else {
+            continue;
+        };
         let Some(module_analysis) = state.cache.get(&cache_key) else {
             return module_ref_file_completions(
                 state,
@@ -1103,14 +1125,15 @@ fn auto_import_completions(
     current_line_index: &LineIndex,
     offset: usize,
 ) -> Vec<CompletionItem> {
-    let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
     let existing_imports = current_imports(current_source);
     let mut items = Vec::new();
     for info in resolver.all_modules().values() {
         if same_file(path, &info.file_path) {
             continue;
         }
-        let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
+        let Some(cache_key) = state.files.get(&info.file_path) else {
+            continue;
+        };
         let Some(module_analysis) = state.cache.get(&cache_key) else {
             continue;
         };

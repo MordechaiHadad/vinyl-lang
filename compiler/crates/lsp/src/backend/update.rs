@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,10 +8,9 @@ use tower_lsp::Client;
 use tower_lsp::lsp_types::notification::Progress;
 use tower_lsp::lsp_types::*;
 use tracing::{debug, info};
-use vinyl_typecheck::DefinitionKind;
 
 use crate::backend::state::{Backend, State};
-use crate::backend::workspace::{analyze_workspace, same_file};
+use crate::backend::workspace::analyze_workspace;
 use crate::position::span_range;
 
 impl Backend {
@@ -116,74 +115,57 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
     };
 
     match analyze_workspace(&vfs, &root, &entry_path) {
-        Ok((analyses, diagnostics, resolver, module_table, publics, modules)) => {
+        Ok((analyses, diagnostics, resolver, module_table, publics, modules, files)) => {
             if state.read().await.update_version != update_version {
                 return;
             }
             info!(files = analyses.len(), "workspace analysis complete");
             let entry_source = vfs.source(&entry_path).unwrap_or_default();
             let entry_line_index = LineIndex::new(&entry_source);
-            let mut entry_diagnostics: Vec<Diagnostic> = diagnostics
-                .get(&entry_path)
+            let entry_file_id = files.get(&entry_path);
+            let entry_diagnostics: Vec<Diagnostic> = entry_file_id
+                .and_then(|file_id| diagnostics.get(&file_id))
                 .map(|diags| {
                     diags
                         .iter()
-                        .map(|d| {
-                            Diagnostic::new_simple(
-                                span_range(&entry_line_index, d.offset, d.length),
-                                d.message.clone(),
-                            )
+                        .map(|d| Diagnostic {
+                            range: span_range(&entry_line_index, d.offset, d.length),
+                            severity: Some(if d.warning {
+                                DiagnosticSeverity::WARNING
+                            } else {
+                                DiagnosticSeverity::ERROR
+                            }),
+                            message: d.message.clone(),
+                            ..Diagnostic::default()
                         })
                         .collect()
                 })
                 .unwrap_or_default();
 
-            let current_diagnostic_files: Vec<PathBuf> = diagnostics
+            let current_diagnostic_files: Vec<_> = diagnostics
                 .iter()
                 .filter(|(_, file_diags)| !file_diags.is_empty())
-                .map(|(file_path, _)| file_path.clone())
+                .map(|(file_id, _)| *file_id)
                 .collect();
             let entry_has_diagnostics = !entry_diagnostics.is_empty();
 
             let should_clear_changed_file = {
                 let mut guard = state.write().await;
+                let changed_file_id = guard.files.intern(&path);
                 let should_clear = guard
                     .diagnostic_files
                     .iter()
-                    .any(|file_path| same_file(file_path, &path))
-                    && !current_diagnostic_files
-                        .iter()
-                        .any(|file_path| same_file(file_path, &path));
+                    .any(|file_id| *file_id == changed_file_id)
+                    && !current_diagnostic_files.contains(&changed_file_id);
                 guard.resolver = Some(resolver);
                 guard.module_table = module_table;
                 guard.publics = publics;
                 guard.modules = modules;
+                guard.files = files.clone();
                 guard.cache.extend(analyses);
                 guard.diagnostic_files = current_diagnostic_files.iter().cloned().collect();
-                if entry_has_diagnostics {
-                    guard.diagnostic_files.insert(entry_path.clone());
-                }
-                if let Some(analysis) = guard.cache.get(&entry_path) {
-                    for definition in &analysis.result.unused {
-                        entry_diagnostics.push(Diagnostic {
-                            range: span_range(
-                                &entry_line_index,
-                                definition.span.offset(),
-                                definition.span.len(),
-                            ),
-                            severity: Some(DiagnosticSeverity::WARNING),
-                            message: format!(
-                                "unused {}",
-                                match definition.kind {
-                                    DefinitionKind::Function => "function",
-                                    DefinitionKind::Variable => "variable",
-                                    DefinitionKind::Parameter => "parameter",
-                                    _ => "symbol",
-                                }
-                            ),
-                            ..Diagnostic::default()
-                        });
-                    }
+                if entry_has_diagnostics && let Some(entry_file_id) = guard.files.get(&entry_path) {
+                    guard.diagnostic_files.insert(entry_file_id);
                 }
                 should_clear
             };
@@ -196,24 +178,31 @@ pub(crate) async fn perform_update(state: &Arc<RwLock<State>>, client: &Client, 
                 )
                 .await;
 
-            for (file_path, file_diags) in &diagnostics {
-                if file_path == &entry_path {
+            for (file_id, file_diags) in &diagnostics {
+                if Some(*file_id) == entry_file_id {
                     continue;
                 }
-                let source = vfs.source(file_path).unwrap_or_default();
+                let Some(file_path) = files.path(*file_id).map(Path::to_path_buf) else {
+                    continue;
+                };
+                let source = vfs.source(&file_path).unwrap_or_default();
                 let line_index = LineIndex::new(&source);
                 let diags: Vec<Diagnostic> = file_diags
                     .iter()
-                    .map(|d| {
-                        Diagnostic::new_simple(
-                            span_range(&line_index, d.offset, d.length),
-                            d.message.clone(),
-                        )
+                    .map(|d| Diagnostic {
+                        range: span_range(&line_index, d.offset, d.length),
+                        severity: Some(if d.warning {
+                            DiagnosticSeverity::WARNING
+                        } else {
+                            DiagnosticSeverity::ERROR
+                        }),
+                        message: d.message.clone(),
+                        ..Diagnostic::default()
                     })
                     .collect();
                 client
                     .publish_diagnostics(
-                        Url::from_file_path(file_path).unwrap_or(uri.clone()),
+                        Url::from_file_path(&file_path).unwrap_or(uri.clone()),
                         diags,
                         None,
                     )

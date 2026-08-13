@@ -124,6 +124,14 @@ pub fn compile_entry(
             .collect::<Vec<_>>()
     })?;
 
+    let mut warnings = warnings;
+    warnings.extend(vinyl_typecheck::unused_import_warnings(
+        &entry_items,
+        &entry_source,
+        &entry_source_name,
+        &graph.module_table,
+    ));
+
     Ok((
         CompiledModule {
             items: hir,

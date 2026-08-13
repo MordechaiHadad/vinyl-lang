@@ -4,7 +4,7 @@ use line_index::LineIndex;
 use tower_lsp::lsp_types::*;
 
 use crate::backend::state::Backend;
-use crate::backend::workspace::{is_imported, is_public_symbol, non_canonical_key, same_file};
+use crate::backend::workspace::{is_imported, is_public_symbol, same_file};
 use crate::position::{full_range, offset_at};
 use crate::text::{current_imports, import_edit_range, module_ref_prefix, word_prefix};
 
@@ -34,13 +34,14 @@ impl Backend {
             && !is_imported(&existing_imports, module_name)
             && let Some(resolver) = &state.resolver
         {
-            let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
             for info in resolver.all_modules().values() {
                 if info.import_name != *module_name || same_file(&path, &info.file_path) {
                     continue;
                 }
-                let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
-                let Some(module_analysis) = state.cache.get(&cache_key) else {
+                let Some(file_id) = state.files.get(&info.file_path) else {
+                    continue;
+                };
+                let Some(module_analysis) = state.cache.get(&file_id) else {
                     continue;
                 };
                 let Some(definitions) = module_analysis.result.definitions.get(symbol_name) else {
@@ -65,7 +66,6 @@ impl Backend {
                 .is_some_and(|a| a.result.definitions.keys().any(|k| k == &prefix));
             if !is_local && let Some(resolver) = &state.resolver {
                 let current_path = uri.to_file_path().ok();
-                let workspace_root = state.workspace_root.as_deref().unwrap_or(resolver.root());
                 for info in resolver.all_modules().values() {
                     if current_path
                         .as_ref()
@@ -73,8 +73,10 @@ impl Backend {
                     {
                         continue;
                     }
-                    let cache_key = non_canonical_key(&info.file_path, resolver, workspace_root);
-                    let Some(module_analysis) = state.cache.get(&cache_key) else {
+                    let Some(file_id) = state.files.get(&info.file_path) else {
+                        continue;
+                    };
+                    let Some(module_analysis) = state.cache.get(&file_id) else {
                         continue;
                     };
                     let import_path = current_path

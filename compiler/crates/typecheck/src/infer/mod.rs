@@ -3,7 +3,7 @@ use std::path::Path;
 
 use miette::{NamedSource, SourceSpan};
 use vinyl_parser::ast::expression::Expression;
-use vinyl_parser::ast::item::{Attribute, EnumVariantData, FunctionDef, Item};
+use vinyl_parser::ast::item::{Attribute, EnumVariantData, FunctionDef, ImportDef, Item};
 use vinyl_parser::ast::statement::Statement;
 use vinyl_parser::ast::types::{Primitive, Type as AstType};
 
@@ -16,6 +16,301 @@ use crate::module::{ModuleExports, ModuleTable, resolve_module};
 
 use crate::index::builder::IndexBuilder;
 pub use crate::index::{Definition, DefinitionKind, HirExprRef, TypeckResult};
+
+pub fn unused_import_warnings(
+    items: &[Item],
+    source: &str,
+    source_name: &str,
+    module_table: &ModuleTable,
+) -> Vec<TypeDiagnostic> {
+    let mut used = Vec::new();
+    let mut imports = Vec::new();
+    for item in items {
+        match item {
+            Item::Function(function) => {
+                for parameter in &function.params {
+                    collect_type_uses(&parameter.type_, &mut used);
+                }
+                if let Some(return_type) = &function.return_type {
+                    collect_type_uses(return_type, &mut used);
+                }
+                collect_statement_uses(&function.body, &mut used, &mut imports);
+            }
+            Item::Struct(structure) => {
+                for field in &structure.fields {
+                    collect_type_uses(&field.type_, &mut used);
+                }
+            }
+            Item::TupleStruct(tuple) => {
+                for type_ in &tuple.types {
+                    collect_type_uses(type_, &mut used);
+                }
+            }
+            Item::Enum(enumeration) => {
+                for variant in &enumeration.variants {
+                    if let Some(data) = &variant.data {
+                        match data {
+                            EnumVariantData::Tuple(types) => {
+                                for type_ in types {
+                                    collect_type_uses(type_, &mut used);
+                                }
+                            }
+                            EnumVariantData::Struct(fields) => {
+                                for field in fields {
+                                    collect_type_uses(&field.type_, &mut used);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Item::TypeAlias(alias) => collect_type_uses(&alias.type_, &mut used),
+            Item::Import(import) => imports.push(import),
+        }
+    }
+
+    let source_context = SourceContext::new(source, source_name);
+    imports
+        .into_iter()
+        .flat_map(|import| unused_import_diagnostics(import, &used, module_table, &source_context))
+        .collect()
+}
+
+fn unused_import_diagnostics(
+    import: &ImportDef,
+    used: &[(String, SourceSpan)],
+    module_table: &ModuleTable,
+    source: &SourceContext,
+) -> Vec<TypeDiagnostic> {
+    let module_name = import.path.last().cloned().unwrap_or_default();
+    let exports = module_table
+        .get(&import.path.join("::"))
+        .or_else(|| module_table.get(&module_name));
+    let names = if !import.symbols.is_empty() {
+        import.symbols.clone()
+    } else if import.wildcard {
+        exports
+            .map(|exports| {
+                exports
+                    .functions
+                    .iter()
+                    .map(|function| function.name.clone())
+                    .chain(exports.types.iter().cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        vec![module_name.clone()]
+    };
+    let module_used = used.iter().any(|(name, _)| {
+        name == &module_name
+            || name.starts_with(&format!("{module_name}::"))
+            || exports.is_some_and(|exports| {
+                exports
+                    .functions
+                    .iter()
+                    .any(|function| function.name == *name)
+                    || exports.types.iter().any(|type_name| type_name == name)
+            })
+    });
+    if import.symbols.is_empty() && !import.wildcard && import.path.len() == 1 {
+        return if !module_used {
+            vec![source.error(
+                import.span,
+                TypeDiagnosticKind::UnusedImport { name: module_name },
+            )]
+        } else {
+            Vec::new()
+        };
+    }
+    names
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, name)| {
+            let symbol_used = used.iter().any(|(used_name, _)| {
+                used_name == &name
+                    || used_name.ends_with(&format!("::{name}"))
+                    || (import.wildcard && used_name == &format!("{module_name}::{name}"))
+            });
+            if symbol_used {
+                return None;
+            }
+            let span = import
+                .symbol_spans
+                .get(index)
+                .copied()
+                .or_else(|| import.path_spans.last().copied())
+                .unwrap_or(import.span);
+            Some(source.error(span, TypeDiagnosticKind::UnusedImport { name }))
+        })
+        .collect()
+}
+
+fn collect_type_uses(type_: &AstType, used: &mut Vec<(String, SourceSpan)>) {
+    match type_ {
+        AstType::Named(name) => used.push((name.clone(), SourceSpan::from(0..0))),
+        AstType::Generic { name, args } => {
+            used.push((name.clone(), SourceSpan::from(0..0)));
+            for arg in args {
+                collect_type_uses(arg, used);
+            }
+        }
+        AstType::Ref(inner) => collect_type_uses(inner, used),
+        AstType::Array { element, .. } => collect_type_uses(element, used),
+        AstType::Tuple(elements) => {
+            for element in elements {
+                collect_type_uses(element, used);
+            }
+        }
+        AstType::Primitive(_) | AstType::Var(_) => {}
+    }
+}
+
+fn collect_statement_uses<'a>(
+    statements: &'a [Statement],
+    used: &mut Vec<(String, SourceSpan)>,
+    imports: &mut Vec<&'a ImportDef>,
+) {
+    for statement in statements {
+        match statement {
+            Statement::Let { type_, value, .. } => {
+                if let Some(type_) = type_ {
+                    collect_type_uses(type_, used);
+                }
+                collect_expression_uses(value, used, imports);
+            }
+            Statement::Expression(expression)
+            | Statement::Value(expression, _)
+            | Statement::Return(Some(expression), _) => {
+                collect_expression_uses(expression, used, imports)
+            }
+            Statement::Assign { target, value, .. } => {
+                collect_expression_uses(value, used, imports);
+                if let vinyl_parser::ast::statement::AssignTarget::Index { array, index, .. } =
+                    target
+                {
+                    collect_expression_uses(array, used, imports);
+                    collect_expression_uses(index, used, imports);
+                }
+            }
+            Statement::Loop { body, .. } => collect_statement_uses(body, used, imports),
+            Statement::While {
+                condition, body, ..
+            } => {
+                collect_expression_uses(condition, used, imports);
+                collect_statement_uses(body, used, imports);
+            }
+            Statement::If {
+                condition,
+                then_block,
+                else_if,
+                else_block,
+                ..
+            } => {
+                collect_expression_uses(condition, used, imports);
+                collect_statement_uses(then_block, used, imports);
+                for (condition, body) in else_if {
+                    collect_expression_uses(condition, used, imports);
+                    collect_statement_uses(body, used, imports);
+                }
+                if let Some(body) = else_block {
+                    collect_statement_uses(body, used, imports);
+                }
+            }
+            Statement::Return(None, _) | Statement::Break(_) | Statement::Continue(_) => {}
+            Statement::Import(import) => imports.push(import),
+        }
+    }
+}
+
+fn collect_expression_uses<'a>(
+    expression: &'a Expression,
+    used: &mut Vec<(String, SourceSpan)>,
+    imports: &mut Vec<&'a ImportDef>,
+) {
+    match expression {
+        Expression::Ident(name, span) => used.push((name.clone(), *span)),
+        Expression::ValuePath { segments, span } => used.push((segments.join("::"), *span)),
+        Expression::EnumVariant {
+            type_name, span, ..
+        }
+        | Expression::Struct {
+            type_name, span, ..
+        } => {
+            used.push((type_name.clone(), *span));
+            if let Expression::EnumVariant { args, .. } = expression {
+                for arg in args {
+                    collect_expression_uses(arg, used, imports);
+                }
+            }
+            if let Expression::Struct { fields, .. } = expression {
+                for (_, value) in fields {
+                    collect_expression_uses(value, used, imports);
+                }
+            }
+        }
+        Expression::Binary { left, right, .. } => {
+            collect_expression_uses(left, used, imports);
+            collect_expression_uses(right, used, imports);
+        }
+        Expression::Unary { operand, .. }
+        | Expression::Paren(operand, _)
+        | Expression::Ref { operand, .. }
+        | Expression::ArrayFill { value: operand, .. } => {
+            collect_expression_uses(operand, used, imports)
+        }
+        Expression::Call { function, args, .. } => {
+            collect_expression_uses(function, used, imports);
+            for arg in args {
+                collect_expression_uses(arg, used, imports);
+            }
+        }
+        Expression::Block(statements, _) => collect_statement_uses(statements, used, imports),
+        Expression::If {
+            condition,
+            then_block,
+            else_if,
+            else_block,
+            ..
+        } => {
+            collect_expression_uses(condition, used, imports);
+            collect_statement_uses(then_block, used, imports);
+            for (condition, body) in else_if {
+                collect_expression_uses(condition, used, imports);
+                collect_statement_uses(body, used, imports);
+            }
+            if let Some(body) = else_block {
+                collect_statement_uses(body, used, imports);
+            }
+        }
+        Expression::Index { array, index, .. } => {
+            collect_expression_uses(array, used, imports);
+            collect_expression_uses(index, used, imports);
+        }
+        Expression::Tuple(elements, _) | Expression::Array(elements, _) => {
+            for element in elements {
+                collect_expression_uses(element, used, imports);
+            }
+        }
+        Expression::Match { value, arms, .. } => {
+            collect_expression_uses(value, used, imports);
+            for arm in arms {
+                if let Some(guard) = &arm.guard {
+                    collect_expression_uses(guard, used, imports);
+                }
+                collect_expression_uses(&arm.body, used, imports);
+            }
+        }
+        Expression::Field { object, .. } => collect_expression_uses(object, used, imports),
+        Expression::Int(_, _)
+        | Expression::UInt(_, _)
+        | Expression::Float(_, _)
+        | Expression::String(_, _)
+        | Expression::Char(_, _)
+        | Expression::Bool(_, _)
+        | Expression::Unit(_) => {}
+    }
+}
 
 pub mod expression;
 pub mod literal;

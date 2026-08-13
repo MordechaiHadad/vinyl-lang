@@ -40,24 +40,24 @@ impl ReportHandler for RustcReportHandler {
             .map(|labels| labels.collect::<Vec<_>>())
             .unwrap_or_default();
 
-        if let (Some(source), Some(first_label)) = (diagnostic.source_code(), labels.first()) {
-            if let Ok(contents) = source.read_span(first_label.inner(), 1, 1) {
-                let source_name = contents.name().unwrap_or("<source>");
-                let first_line = contents.line() + 1;
-                let first_column = contents.column() + 1;
-                writeln!(
-                    formatter,
-                    " {}",
-                    color(
-                        &format!("--> {source_name}:{first_line}:{first_column}"),
-                        "36",
-                        colors,
-                    )
-                )?;
-                writeln!(formatter, "{}", color("  |", "34", colors))?;
-                render_source(formatter, contents.as_ref(), &labels, colors)?;
-                writeln!(formatter, "{}", color("  |", "34", colors))?;
-            }
+        if let (Some(source), Some(first_label)) = (diagnostic.source_code(), labels.first())
+            && let Ok(contents) = source.read_span(first_label.inner(), 1, 1)
+        {
+            let source_name = contents.name().unwrap_or("<source>");
+            let first_line = contents.line() + 1;
+            let first_column = contents.column() + 1;
+            writeln!(
+                formatter,
+                " {}",
+                color(
+                    &format!("--> {source_name}:{first_line}:{first_column}"),
+                    "36",
+                    colors,
+                )
+            )?;
+            writeln!(formatter, "{}", color("  |", "34", colors))?;
+            render_source(formatter, contents.as_ref(), &labels, colors)?;
+            writeln!(formatter, "{}", color("  |", "34", colors))?;
         }
 
         if let Some(help) = diagnostic.help() {

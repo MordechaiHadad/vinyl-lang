@@ -18,6 +18,10 @@ pub struct TypeDiagnostic {
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum TypeDiagnosticKind {
+    #[error("unused import `{name}`")]
+    #[diagnostic(code(typeck::unused_import), severity(warning))]
+    UnusedImport { name: String },
+
     #[error("main function must return `unit`")]
     #[diagnostic(code(typeck::main_return_type))]
     MainReturnType,

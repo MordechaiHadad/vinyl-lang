@@ -234,6 +234,7 @@ impl<'a> Lowerer<'a> {
 
         let path_node = self.child_by_field(&import_path_node, "path")?;
         let mut path = Vec::new();
+        let mut path_spans = Vec::new();
         let mut wildcard = false;
         for i in 0..path_node.named_child_count() {
             if let Some(child) = path_node.named_child(i as u32) {
@@ -241,23 +242,27 @@ impl<'a> Lowerer<'a> {
                     wildcard = true;
                 } else {
                     path.push(node_text(&child, self.source));
+                    path_spans.push(SourceSpan::from(child.byte_range()));
                 }
             }
         }
-        let symbols = self
+        let (symbols, symbol_spans) = self
             .child_by_field(&import_path_node, "symbols")
             .map(|symbols_node| {
                 (0..symbols_node.named_child_count())
                     .filter_map(|index| symbols_node.named_child(index as u32))
-                    .map(|child| node_text(&child, self.source))
-                    .collect()
+                    .map(|child| (node_text(&child, self.source), child.byte_range()))
+                    .map(|(name, range)| (name, SourceSpan::from(range)))
+                    .unzip()
             })
             .unwrap_or_default();
         Ok(ImportDef {
             span,
             prefix,
             path,
+            path_spans,
             symbols,
+            symbol_spans,
             wildcard,
         })
     }

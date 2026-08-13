@@ -430,7 +430,8 @@ impl Backend {
                     .await
             }
             SymbolRef::Module { name, .. } => {
-                let path = self.state.read().await.modules.get(name)?.clone();
+                let file_id = self.state.read().await.modules.get(name).copied()?;
+                let path = self.file_path(file_id).await?;
                 Some(Location::new(
                     Url::from_file_path(&path).ok()?,
                     Range::new(Position::new(0, 0), Position::new(0, 0)),
@@ -440,12 +441,13 @@ impl Backend {
     }
 
     async fn module_item_location(&self, module: &str, item: &str) -> Option<Location> {
-        let module_path = self.state.read().await.modules.get(module)?.clone();
+        let module_id = self.state.read().await.modules.get(module).copied()?;
+        let module_path = self.file_path(module_id).await?;
         let publics = self.state.read().await.publics.clone();
-        let (name, public) = publics.iter().find(|(name, public)| {
-            *name == item && crate::backend::workspace::same_file(&public.path, &module_path)
-        })?;
-        self.location_for_symbol(&public.path, public.span, name)
+        let (name, public) = publics
+            .iter()
+            .find(|(name, public)| *name == item && public.file_id == module_id)?;
+        self.location_for_symbol(&module_path, public.span, name)
             .await
     }
 
@@ -454,7 +456,7 @@ impl Backend {
         for (name, public) in &publics {
             if public.span == definition.span {
                 return self
-                    .location_for_symbol(&public.path, public.span, name)
+                    .location_for_symbol(&self.file_path(public.file_id).await?, public.span, name)
                     .await;
             }
         }
@@ -475,7 +477,7 @@ impl Backend {
                     &definition.name,
                 );
                 return Some(Location::new(
-                    Url::from_file_path(&candidate.path).ok()?,
+                    Url::from_file_path(&self.file_path(candidate.file_id).await?).ok()?,
                     span_range(&candidate.line_index, start, end - start),
                 ));
             }
@@ -495,7 +497,7 @@ impl Backend {
         let others = self.analyses().await;
         let mut candidates = vec![analysis];
         for candidate in &others {
-            if candidate.path != analysis.path {
+            if candidate.file_id != analysis.file_id {
                 candidates.push(candidate);
             }
         }
@@ -545,10 +547,13 @@ impl Backend {
             {
                 continue;
             }
-            if let Some(module_path) = module_path
-                && !path_matches_module(&candidate.path, module_path)
-            {
-                continue;
+            if let Some(module_path) = module_path {
+                let Some(candidate_path) = self.file_path(candidate.file_id).await else {
+                    continue;
+                };
+                if !path_matches_module(&candidate_path, module_path) {
+                    continue;
+                }
             }
             let (start, end) = name_span(
                 &candidate.source,
@@ -559,7 +564,7 @@ impl Backend {
                 name,
             )?;
             return Some(Location::new(
-                Url::from_file_path(&candidate.path).ok()?,
+                Url::from_file_path(&self.file_path(candidate.file_id).await?).ok()?,
                 span_range(&candidate.line_index, start, end - start),
             ));
         }
@@ -620,9 +625,8 @@ pub(crate) fn path_matches_module(path: &Path, module_path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
+    use crate::backend::state::FileId;
     use vinyl_parser::parse_and_lower;
     use vinyl_typecheck::module::ModuleTable;
 
@@ -632,10 +636,11 @@ mod tests {
             vinyl_typecheck::typeck_with_index(&items, source, "test.vn", &ModuleTable::new())
                 .expect("source should typecheck");
         Analysis {
-            path: PathBuf::from("test.vn"),
+            file_id: FileId::INVALID,
             source: source.to_string(),
             line_index: LineIndex::new(source),
             result,
+            warnings: Vec::new(),
         }
     }
 

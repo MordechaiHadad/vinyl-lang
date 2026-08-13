@@ -123,7 +123,8 @@ fn formats_struct_literal_expression() {
 #[test]
 fn formats_struct_pattern() {
     let input = "fn f(): int { match p { Point { x, y:n } => n, _ => 0 }; }";
-    let expected = "fn f(): int {\n    match p {\n        Point { x, y: n } => n\n        _ => 0\n    };\n}";
+    let expected =
+        "fn f(): int {\n    match p {\n        Point { x, y: n } => n\n        _ => 0\n    };\n}";
     assert_eq!(format_source(input).unwrap(), expected);
 }
 

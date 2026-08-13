@@ -121,8 +121,12 @@ pub struct ImportDef {
     pub prefix: Vec<String>,
     /// Module path segments.
     pub path: Vec<String>,
+    /// Source spans for module path segments.
+    pub path_spans: Vec<SourceSpan>,
     /// Explicit symbols selected from the module path.
     pub symbols: Vec<String>,
+    /// Source spans for explicit symbols selected from the module path.
+    pub symbol_spans: Vec<SourceSpan>,
     /// Whether the import selects every public symbol.
     pub wildcard: bool,
 }

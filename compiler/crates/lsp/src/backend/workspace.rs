@@ -9,7 +9,9 @@ use vinyl_resolver::resolver::{ImportPrefix, Resolver, ResolverMode};
 use vinyl_resolver::structs::DiskFileSystem;
 use vinyl_typecheck::module::ModuleTable;
 
-use crate::backend::state::{Analysis, PublicSymbol, SourceDiagnostic, WorkspaceState};
+use crate::backend::state::{
+    Analysis, FileId, FileInterner, PublicSymbol, SourceDiagnostic, WorkspaceState,
+};
 use crate::vfs::{LspFileSystem, Vfs};
 
 pub(crate) fn is_public_symbol(analysis: &Analysis, name: &str) -> bool {
@@ -39,29 +41,50 @@ pub(crate) fn is_imported(imports: &HashSet<String>, import_name: &str) -> bool 
 
 pub(crate) fn analyze_with_diagnostics(
     path: &Path,
+    file_id: FileId,
     source: &str,
     items: &[Item],
+    source_items: &[Item],
     module_table: &ModuleTable,
 ) -> std::result::Result<Arc<Analysis>, Vec<SourceDiagnostic>> {
     let name = path.to_string_lossy();
-    let (result, _warnings) =
-        vinyl_typecheck::typeck_with_index(items, source, &name, module_table).map_err(
-            |errors| {
-                errors
-                    .into_iter()
-                    .map(|error| SourceDiagnostic {
-                        message: format!("{error}"),
-                        offset: error.span.offset(),
-                        length: error.span.len(),
-                    })
-                    .collect::<Vec<_>>()
-            },
-        )?;
+    let (result, warnings) = vinyl_typecheck::typeck_with_index(items, source, &name, module_table)
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .map(|error| SourceDiagnostic {
+                    message: format!("{error}"),
+                    offset: error.span.offset(),
+                    length: error.span.len(),
+                    warning: false,
+                })
+                .collect::<Vec<_>>()
+        })?;
+    let warnings = warnings
+        .into_iter()
+        .map(|warning| SourceDiagnostic {
+            message: warning.to_string(),
+            offset: warning.span.offset(),
+            length: warning.span.len(),
+            warning: true,
+        })
+        .chain(
+            vinyl_typecheck::unused_import_warnings(source_items, source, &name, module_table)
+                .into_iter()
+                .map(|warning| SourceDiagnostic {
+                    message: warning.to_string(),
+                    offset: warning.span.offset(),
+                    length: warning.span.len(),
+                    warning: true,
+                }),
+        )
+        .collect();
     Ok(Arc::new(Analysis {
-        path: path.to_path_buf(),
+        file_id,
         source: source.to_string(),
         line_index: LineIndex::new(source),
         result,
+        warnings,
     }))
 }
 
@@ -76,6 +99,7 @@ pub(crate) fn parse_file_with_diagnostics(
                 message: format!("could not read {}", path.display()),
                 offset: 0,
                 length: 0,
+                warning: false,
             }]);
         }
     };
@@ -89,6 +113,7 @@ pub(crate) fn parse_file_with_diagnostics(
                     message: format!("{error}"),
                     offset: error.span.offset(),
                     length: error.span.len(),
+                    warning: false,
                 })
                 .collect());
         }
@@ -102,6 +127,7 @@ pub(crate) fn parse_file_with_diagnostics(
                     message: format!("{error}"),
                     offset: error.span.offset(),
                     length: error.span.len(),
+                    warning: false,
                 })
                 .collect());
         }
@@ -162,8 +188,9 @@ pub(crate) fn analyze_workspace(
     }
 
     let mut entry_module_table = ModuleTable::new();
+    let mut files_interner = FileInterner::default();
     let mut analyses = HashMap::new();
-    let mut diagnostics: HashMap<PathBuf, Vec<SourceDiagnostic>> = HashMap::new();
+    let mut diagnostics: HashMap<FileId, Vec<SourceDiagnostic>> = HashMap::new();
     let mut publics = HashMap::new();
 
     let mut read_source = |path: &Path| {
@@ -174,7 +201,11 @@ pub(crate) fn analyze_workspace(
     let mut graph_files: Vec<(PathBuf, String, Vec<Item>)> = Vec::new();
     match parse_file_with_diagnostics(vfs, entry_path) {
         Ok((entry_source, entry_items)) => {
-            collect_publics(&entry_items, entry_path, &mut publics);
+            collect_publics(
+                &entry_items,
+                files_interner.intern(entry_path),
+                &mut publics,
+            );
             let graph = resolver.build_module_graph(entry_path, &entry_items, &mut read_source);
             graph_files = graph.files.clone();
             for issue in &graph.issues {
@@ -182,12 +213,13 @@ pub(crate) fn analyze_workspace(
                     continue;
                 }
                 diagnostics
-                    .entry(non_canonical_key(&issue.file, &resolver, root))
+                    .entry(files_interner.intern(&issue.file))
                     .or_default()
                     .push(SourceDiagnostic {
                         message: issue.message.clone(),
                         offset: issue.offset,
                         length: issue.length,
+                        warning: false,
                     });
             }
             entry_module_table = graph.module_table.clone();
@@ -198,31 +230,40 @@ pub(crate) fn analyze_workspace(
             ) {
                 Ok(()) => match analyze_with_diagnostics(
                     entry_path,
+                    files_interner.intern(entry_path),
                     &entry_source,
                     &graph.all_items,
+                    &entry_items,
                     &entry_module_table,
                 ) {
                     Ok(analysis) => {
-                        analyses.insert(entry_path.to_path_buf(), analysis);
+                        if !analysis.warnings.is_empty() {
+                            diagnostics
+                                .entry(files_interner.intern(entry_path))
+                                .or_default()
+                                .extend(analysis.warnings.clone());
+                        }
+                        analyses.insert(files_interner.intern(entry_path), analysis);
                     }
                     Err(error) => {
-                        diagnostics.insert(entry_path.to_path_buf(), error);
+                        diagnostics.insert(files_interner.intern(entry_path), error);
                     }
                 },
                 Err(error) => {
                     diagnostics.insert(
-                        entry_path.to_path_buf(),
+                        files_interner.intern(entry_path),
                         vec![SourceDiagnostic {
                             message: error.to_string(),
                             offset: error.span.offset(),
                             length: error.span.len(),
+                            warning: false,
                         }],
                     );
                 }
             }
         }
         Err(entry_diagnostics) => {
-            diagnostics.insert(entry_path.to_path_buf(), entry_diagnostics);
+            diagnostics.insert(files_interner.intern(entry_path), entry_diagnostics);
         }
     }
 
@@ -248,32 +289,41 @@ pub(crate) fn analyze_workspace(
         {
             continue;
         }
-        let key = non_canonical_key(file, &resolver, root);
-        if !seen.insert(key.clone()) {
+        let key = files_interner.intern(file);
+        if !seen.insert(key) {
             continue;
         }
-        collect_publics(file_items, file, &mut publics);
+        collect_publics(file_items, files_interner.intern(file), &mut publics);
         let sub_graph = resolver.build_module_graph(file, file_items, &mut read_source);
         for issue in &sub_graph.issues {
             if issue.warning {
                 continue;
             }
             diagnostics
-                .entry(non_canonical_key(&issue.file, &resolver, root))
+                .entry(files_interner.intern(&issue.file))
                 .or_default()
                 .push(SourceDiagnostic {
                     message: issue.message.clone(),
                     offset: issue.offset,
                     length: issue.length,
+                    warning: false,
                 });
         }
         match analyze_with_diagnostics(
             file,
+            files_interner.intern(file),
             file_source,
             &sub_graph.all_items,
+            file_items,
             &sub_graph.module_table,
         ) {
             Ok(analysis) => {
+                if !analysis.warnings.is_empty() {
+                    diagnostics
+                        .entry(key)
+                        .or_default()
+                        .extend(analysis.warnings.clone());
+                }
                 analyses.insert(key, analysis);
             }
             Err(error) => {
@@ -290,7 +340,12 @@ pub(crate) fn analyze_workspace(
     let modules = resolver
         .all_modules()
         .values()
-        .map(|info| (info.import_name.clone(), info.file_path.clone()))
+        .map(|info| {
+            (
+                info.import_name.clone(),
+                files_interner.intern(&info.file_path),
+            )
+        })
         .collect();
     Ok((
         analyses,
@@ -299,10 +354,15 @@ pub(crate) fn analyze_workspace(
         entry_module_table,
         publics,
         modules,
+        files_interner,
     ))
 }
 
-fn collect_publics(items: &[Item], path: &Path, publics: &mut HashMap<String, PublicSymbol>) {
+fn collect_publics(
+    items: &[Item],
+    file_id: crate::backend::state::FileId,
+    publics: &mut HashMap<String, PublicSymbol>,
+) {
     for item in items {
         let (name, span) = match item {
             Item::Function(f) if f.public => (&f.name, f.span),
@@ -311,13 +371,7 @@ fn collect_publics(items: &[Item], path: &Path, publics: &mut HashMap<String, Pu
             Item::Enum(e) if e.public => (&e.name, e.span),
             _ => continue,
         };
-        publics.insert(
-            name.clone(),
-            PublicSymbol {
-                path: path.to_path_buf(),
-                span,
-            },
-        );
+        publics.insert(name.clone(), PublicSymbol { file_id, span });
     }
 }
 
@@ -346,7 +400,9 @@ pub(crate) fn load_imported_modules(vfs: &mut Vfs, root: &Path, opened_path: &Pa
                     span: import.span,
                     prefix: import.prefix.clone(),
                     path,
+                    path_spans: Vec::new(),
                     symbols: Vec::new(),
+                    symbol_spans: Vec::new(),
                     wildcard: false,
                 };
                 load_imported_module(vfs, &mut resolver, opened_path, &synthetic);
