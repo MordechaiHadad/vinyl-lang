@@ -20,6 +20,12 @@ jobs:
         run: |
           python3 scripts/check-release-versions.py "$GITHUB_REF_NAME"
 
+      - name: Install just
+        uses: extractions/setup-just@v1
+
+      - name: Check editor syntax drift
+        run: just check-syntax
+
   build-release:
     name: Build & Package (${{ matrix.target }})
     needs: verify-versions
@@ -141,3 +147,37 @@ jobs:
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-nvim:
+    name: Publish vinyl.nvim
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync and verify nvim queries
+        run: |
+          ./scripts/sync-syntax.sh nvim
+          ./scripts/sync-syntax.sh --check nvim
+
+      - name: Clone vinyl.nvim
+        env:
+          VINYL_NVIM_TOKEN: ${{ secrets.VINYL_NVIM_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${VINYL_NVIM_TOKEN}@github.com/MordechaiHadad/vinyl.nvim.git" vinyl.nvim-dist
+
+      - name: Copy plugin into vinyl.nvim
+        run: |
+          rsync -a --delete --exclude .git editor/nvim/ vinyl.nvim-dist/
+
+      - name: Commit and push
+        env:
+          VINYL_NVIM_TOKEN: ${{ secrets.VINYL_NVIM_TOKEN }}
+        run: |
+          cd vinyl.nvim-dist
+          git config user.name "vinyl-lang release bot"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "release ${GITHUB_REF_NAME}"
+          git push "https://x-access-token:${VINYL_NVIM_TOKEN}@github.com/MordechaiHadad/vinyl.nvim.git" master

@@ -9,3 +9,8 @@
 # Local Python and agent state
 __pycache__/
 .serena/
+
+# vinyl.nvim runtime artifacts (built into the plugin dir at runtime)
+editor/nvim/bin/
+editor/nvim/parser/
+editor/nvim/.parser-src/

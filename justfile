@@ -26,13 +26,14 @@ audit:
 audit-ci:
     cd compiler && cargo audit --deny warnings
 
-# Editor query sync
+# Editor syntax sync
 
-sync-queries:
-    ./scripts/sync-queries.sh all
+sync-syntax:
+    ./scripts/sync-syntax.sh all
 
-check-queries:
-    ./scripts/sync-queries.sh --check all
+check-syntax:
+    ./scripts/sync-syntax.sh --check all
+    python3 scripts/check-highlight-sync.py
 
 # Test stuff
 

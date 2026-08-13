@@ -2,39 +2,17 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Vinyl",
   "patterns": [
-    {
-      "include": "#comments"
-    },
-    {
-      "include": "#attributes"
-    },
-    {
-      "include": "#keywords"
-    },
-    {
-      "include": "#functions"
-    },
-    {
-      "include": "#types"
-    },
-    {
-      "include": "#primitive-types"
-    },
-    {
-      "include": "#constants"
-    },
-    {
-      "include": "#strings"
-    },
-    {
-      "include": "#numbers"
-    },
-    {
-      "include": "#operators"
-    },
-    {
-      "include": "#punctuation"
-    }
+    { "include": "#comments" },
+    { "include": "#attributes" },
+    { "include": "#keywords" },
+    { "include": "#functions" },
+    { "include": "#types" },
+    { "include": "#primitive-types" },
+    { "include": "#constants" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
   ],
   "repository": {
     "comments": {
@@ -62,7 +40,7 @@
       "patterns": [
         {
           "name": "keyword.control.vinyl",
-          "match": "\\b(fn|struct|tuple|enum|import|let|mut|if|else|while|loop|break|continue|return|match|in|self|package|parent|not|and|or)\\b"
+          "match": "\\b(fn|struct|tuple|enum|import|let|mut|if|else|while|loop|break|continue|return|match|type|self|package|parent|not|and|or|public)\\b"
         }
       ]
     },
@@ -71,20 +49,14 @@
         {
           "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
-            "1": {
-              "name": "keyword.control.vinyl"
-            },
-            "2": {
-              "name": "entity.name.function.vinyl"
-            }
+            "1": { "name": "keyword.control.vinyl" },
+            "2": { "name": "entity.name.function.vinyl" }
           }
         },
         {
           "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
           "captures": {
-            "1": {
-              "name": "entity.name.function.call.vinyl"
-            }
+            "1": { "name": "entity.name.function.call.vinyl" }
           }
         }
       ]
@@ -101,7 +73,7 @@
       "patterns": [
         {
           "name": "storage.type.vinyl",
-          "match": "\\b(int8|int16|int32|int64|int128|isize|uint8|uint16|uint32|uint64|uint128|usize|float32|float64|bool|char|string|unit|int|float)\\b"
+          "match": "\\b(int8|int16|int32|int64|int128|isize|uint8|uint16|uint32|uint64|uint128|usize|float32|float64|bool|char|string|unit|int|uint|float)\\b"
         }
       ]
     },

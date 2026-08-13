@@ -28,6 +28,7 @@ def main():
             "editor/jetbrains/lsp-plugin/build.gradle.kts",
             lambda path: read_version(path, r'^\s*version\s*=\s*"([^"]+)"$'),
         ),
+        "Neovim plugin": ("editor/nvim/version.txt", lambda path: path.read_text().strip()),
     }
 
     mismatches = []
